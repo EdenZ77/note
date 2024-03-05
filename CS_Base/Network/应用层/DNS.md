@@ -66,11 +66,98 @@ DNS的一种简单的设计模式就是在因特网上只使用一个DNS服务�
 除了上面三种 DNS 服务器，还有一种不在 DNS 层次结构之中，但是很重要的 DNS 服务器，即本地域名服务器。下面我们分别讲解这四种服务器都是用来干什么的。
 
 ## 根域名服务器
-上面我们提到，ICANN 维护着一张根域名列表，里面记载着顶级域名和对应的托管商，其实根域名列表的正式名称是 DNS 根区（DNS root zone），保存 DNS 根区文件的服务器，就叫做 DNS 根域名服务器（root name server）。根域名服务器保存所有的顶级域名服务器的地址。
+理论上，查询任何域名都需要先查询 ICANN 的根域。因为只有根域才能知道：某个域由谁托管，服务器是哪些。事实上也确实如此，ICANN 维护着一张映射表，记录了每个顶级域名和对应的托管商。举个例子，查询 www.fasionchan.com 这个域名时，我们需要先查询 ICANN 的映射表。它会告诉我 .com 域名由 VeriSign 托管，所以我必须去找 VeriSign ，而 VeriSign 会告诉我查询 fasionchan.com 又该找谁。
 
-由于早期的 DNS 查询结果是一个 512 字节的 UDP 数据包。这个包最多可以容纳 13 个服务器的地址，因此就规定全世界有 13 个根域名服务器，编号从 a.root-servers.net 一直到 m.root-servers.net。其中 10 台设置在美国，另外各有一台设置于荷兰、瑞典和日本。
+ICANN 维护的这个根域名列表，叫做 DNS根区 （ DNS root zone ）。ICANN 官网提供了根区相关信息，包括根区文件。根区文件保存着所有顶级域名的托管信息，所以非常大，超过 2MB 。
 
-前面我们说过，理论上所有域名的查询都必须先查询根域名，所以一般来说所有的域名服务器都会注册一份根域名服务器的 IP 地址的缓存，用于在必要的时候向其发送请求。
+以 .com 这个顶级域为例，从根区可以查询到 13 个域名服务器：
+```sh
+com.			172800	IN	NS	b.gtld-servers.net.
+com.			172800	IN	NS	g.gtld-servers.net.
+com.			172800	IN	NS	f.gtld-servers.net.
+com.			172800	IN	NS	e.gtld-servers.net.
+com.			172800	IN	NS	c.gtld-servers.net.
+com.			172800	IN	NS	j.gtld-servers.net.
+com.			172800	IN	NS	k.gtld-servers.net.
+com.			172800	IN	NS	a.gtld-servers.net.
+com.			172800	IN	NS	i.gtld-servers.net.
+com.			172800	IN	NS	m.gtld-servers.net.
+com.			172800	IN	NS	d.gtld-servers.net.
+com.			172800	IN	NS	h.gtld-servers.net.
+com.			172800	IN	NS	l.gtld-servers.net.
+```
+也就是说， .com 结尾的域名可以到这 13 台服务器中的任一台去查询，比如 a.gtld-servers.net 。
+
+我们注意到，这 13 台服务器还是以域名的形式提供的。换句话讲，我们必须先通过域名，找到 .com 服务器的 IP 地址。但是，这样不就造成循环查询了吗？
+
+为此，DNS 根区还会同时提供这些服务器的 IP 地址，包括 IPv4 和 IPv6 两个版本：
+```sh
+a.gtld-servers.net.	172800	IN	A	192.5.6.30
+b.gtld-servers.net.	172800	IN	A	192.33.14.30
+...
+m.gtld-servers.net.	172800	IN	A	192.55.83.30
+a.gtld-servers.net.	172800	IN	AAAA	2001:503:a83e::2:30
+b.gtld-servers.net.	172800	IN	AAAA	2001:503:231d::2:30
+...
+m.gtld-servers.net.	172800	IN	AAAA	2001:501:b1f9::30
+```
+那 DNS 根区列表保存在哪里呢？答案是 根域名服务器 （ root name server ）。
+
+早年间，全世界只有 13 台根域名服务器，编号从 a.root-servers.net 到 m.root-servers.net 。因为早期的 DNS 查询结果是通过一个 512 字节的 UDP 数据报来传输的，它最多只能容纳 13 个服务器地址。
+
+> 根域名服务器列表可在 [root-servers.org](https://root-servers.org/) 上查询。
+
+这 13 台根域名服务器，由 12 个独立的组织独立运营。其中，A 和 J 这两台是由 VeriSign 公司管理的。每个运营组织为了保证可用性，会部署很多个节点。单单根服务器 A 就部署了 16 个节点，分布在世界各地。13 台根域名服务器（Root Name Servers）保存的顶级域名（Top-Level Domain, TLD）信息是一样的。这些根服务器提供了整个域名系统（DNS）的基础，并且都包含了相同的全球顶级域名的信息。
+
+虽然每个根服务器都部署了多个节点，但他们的 IP 地址都是一样的。拿根服务器 A 来说，它的 16 个节点，IP 地址都是 198.41.0.4 。这也太神奇了吧！这么多节点共用一个 IP 地址，难道不会冲突吗？
+
+得益于 Anycast(任播) 路由技术，分散在不同地理位置的多台服务器，可以使用相同的 IP 地址。当发送方向这个 IP 地址发送数据时，路由协议会自动选择一个最近的节点。Anycast 路由技术先按下不表，后续有机会再展开介绍。
+
+这意味着全球只有 13 台根域名服务器，对应的 IP 地址也只有 13 个，执行 dig 命令即可获得：
+```sh
+root@netbox [ ~ ]  ➜ dig . NS
+
+; <<>> DiG 9.16.1-Ubuntu <<>> @10.2.66.66 . NS
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 42791
+;; flags: qr rd ra; QUERY: 1, ANSWER: 13, AUTHORITY: 0, ADDITIONAL: 8
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 4000
+;; QUESTION SECTION:
+;.				IN	NS
+
+;; ANSWER SECTION:
+.			1700	IN	NS	k.root-servers.net.
+.			1700	IN	NS	m.root-servers.net.
+.			1700	IN	NS	l.root-servers.net.
+.			1700	IN	NS	b.root-servers.net.
+.			1700	IN	NS	g.root-servers.net.
+.			1700	IN	NS	f.root-servers.net.
+.			1700	IN	NS	d.root-servers.net.
+.			1700	IN	NS	e.root-servers.net.
+.			1700	IN	NS	i.root-servers.net.
+.			1700	IN	NS	a.root-servers.net.
+.			1700	IN	NS	h.root-servers.net.
+.			1700	IN	NS	j.root-servers.net.
+.			1700	IN	NS	c.root-servers.net.
+
+;; ADDITIONAL SECTION:
+k.root-servers.net.	3282	IN	A	193.0.14.129
+g.root-servers.net.	2845	IN	A	192.112.36.4
+d.root-servers.net.	118	IN	A	199.7.91.13
+e.root-servers.net.	494	IN	A	192.203.230.10
+a.root-servers.net.	1771	IN	A	198.41.0.4
+j.root-servers.net.	3197	IN	A	192.58.128.30
+c.root-servers.net.	1830	IN	A	192.33.4.12
+
+;; Query time: 14 msec
+;; SERVER: 10.2.66.66#53(10.2.66.66)
+;; WHEN: Thu Apr 08 09:01:17 CST 2021
+;; MSG SIZE  rcvd: 364
+```
 
 ## 顶级域名服务器
 按照根域名服务器管理顶级域名的逻辑，顶级域名服务器显然就是用来管理注册在该顶级域名下的所有二级域名的，记录这些二级域名的 IP 地址。
@@ -93,11 +180,57 @@ DNS的一种简单的设计模式就是在因特网上只使用一个DNS服务�
 - 递归查询
 - 迭代查询
 
-通俗点来说，在递归查询中，如果 A 请求 B，那么 B 作为请求的接收者一定要给 A 想要的答案；而迭代查询则是指，如果接收者 B 没有请求者 A 所需要的准确内容，接收者 B 将告诉请求者 A，如何去获得这个内容，但是自己并不去发出请求。
+## 迭代查询
+当我们查询一个域名时，必须从根服务器开始，逐层查询，这就是所谓的 迭代查询 （ iterative query ）。
+![](image/2024-03-05-22-23-25.png)
 
-一般来说，域名服务器之间的查询使用迭代查询方式，以免根域名服务器的压力过大。通过下面这两个图就能很好的理解了。
-![](image/2024-03-05-16-22-30.png)
-![](image/2024-03-05-16-22-44.png)
+如上图，当我们查询一个域名，例如 www.fasionchan.com 时：
+1. 先查询 根域名服务器 ；
+   - 根域名服务器就 13 台，IP 大家都知道，极少改动；
+   - 根域名服务器保存根区列表，列表包含顶级域名的托管商，以及相关服务器信息；
+   - 根域名服务器根据根区列表，告诉我们 .com 顶级域应该找谁查询；
+2. 根据根服务器返回结果，继续查询负责 .com 解析的服务器，一般叫做 顶级域名服务器 ；
+   - 主域名 fasionchan.com 注册后，需要将负责该域名解析的服务器，登记在 .com 顶级域名服务器上；
+   - .com 顶级域名服务器根据这个信息，告诉我们 fasionchan.com 这个域名应该找谁查询；
+3. 根据顶级域名服务器返回结果，继续查询负责 fasionchan.com 解析的服务器，一般叫做 权威域名服务器 ；
+   - fasionchan.com 子域信息一般都登记在权威服务器上；
+   - 权威服务器取出 www.fasionchan.com 对应记录，并返回给我们，查询结束；
+   - 如果某个子域由其他权威服务器负责，我们还需要继续迭代，直到查询完毕；
+
+无论查询什么域名，都需要先查根域名服务器。这样的话，根服务器不会压力太大了吗？
+
+其实完全不用担心。因为保存在根服务器上的根区列表一般很少改变，因此客户端可以将它缓存起来，以此降低根服务器的查询压力。
+
+## 缓存服务器
+实际上，客户端一般不自己进行迭代解析，而是通过本地的 递归解析器 。以访问网站 www.fasionchan.com 为例：
+![](image/2024-03-05-22-31-58.png)
+
+1. 客户端向本地的递归解析器查询域名 www.fasionchan.com ；
+2. 递归解析器向根域名服务器查询域名 www.fasionchan.com ；
+3. 根域名服务器告诉递归解析器，应该去找 .com 的顶级域名服务器；
+4. 递归解析器向顶级域名服务器查询域名 www.fasionchan.com ；
+5. 顶级域名服务器告诉递归解析器，应该去找 fasionchan.com 的权威域名服务器；
+6. 递归解析器向权威域名服务器查询域名 www.fasionchan.com ；
+7. 权威服务器向递归解析器返回结果；
+8. 递归解析器向客户端返回结果；
+9. 客户端拿到域名对应的 IP 地址后，即可向该 Web 服务器发起请求；
+10. Web 服务器处理请求后，向客户端返回结果；
+
+注意到，递归解析器需要从根服务器开始，逐层查询，这个过程是 迭代解析 。迭代解析最显著的特征在于，如果服务器没有关于待查域名的结果，它会告诉客户端应该去哪里查询，根服务器就是典型的例子。
+
+递归解析器就不一样了。当它收到未知域名的查询请求后，它会替客户端向其他 DNS 服务器发起请求，然后再把结果返回给客户端，这个过程就叫 递归解析 （ recursive query ）。
+
+递归解析对客户端来说是完全透明的，客户端完全不用关心递归解析器背后的其他 DNS 服务器。
+
+此外，递归解析器还会将查询结果在本地缓存起来。当域名再次被查询时，它可直接返回缓存结果，无须重新查询其他 DNS 服务器。正因如此，递归解析器通常被称为 DNS缓存服务器 。
+
+那么，客户端主机如何配置 DNS 缓存服务器呢？以 Linux 系统为例，只需编辑 /etc/resolv.conf 配置文件：
+```sh
+root@netbox [ ~ ]  ➜ cat /etc/resolv.conf
+# This file is included on the metadata iso
+nameserver 192.168.65.1
+```
+关键字 nameserver 后面跟 DNS 缓存服务器地址，可以写多行配置多个 DNS 缓存服务器，以达到冗余效果。
 
 # DNS报文格式
 经过前面学习，我们知道查询一个域名，需要与 DNS 服务器进行通信。那么，DNS 通信过程大概是怎样的呢？DNS 是一个典型的 Client-Server 应用，客户端发起域名查询请求，服务端对请求进行应答：
