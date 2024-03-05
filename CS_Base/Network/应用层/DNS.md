@@ -232,6 +232,372 @@ nameserver 192.168.65.1
 ```
 关键字 nameserver 后面跟 DNS 缓存服务器地址，可以写多行配置多个 DNS 缓存服务器，以达到冗余效果。
 
+# 用dig命令模拟迭代解析
+上一小节，我们学习了 DNS 服务器的工作原理，它们可以分为很多种角色：
+- 根域名服务器
+- 顶级域名服务器
+- 权威域名服务器
+- 递归解析器（DNS缓存服务器）
+
+于此同时，我们还了解了域名 迭代解析 的过程。本节我们趁热打铁，安排一次实验——按迭代解析步骤来解析域名 test.fasionchan.com ，以此加深理解。
+
+迭代解析从 根域名服务器 开始，根服务器列表可以从 root-servers.org 上获取，也可以通过 dig 命令查询：
+<details>
+
+```sh
+root@netbox [ ~ ]  ➜ dig . NS
+
+; <<>> DiG 9.16.1-Ubuntu <<>> @10.2.66.66 . NS
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 42791
+;; flags: qr rd ra; QUERY: 1, ANSWER: 13, AUTHORITY: 0, ADDITIONAL: 8
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 4000
+;; QUESTION SECTION:
+;.				IN	NS
+
+;; ANSWER SECTION:
+.			1700	IN	NS	k.root-servers.net.
+.			1700	IN	NS	m.root-servers.net.
+.			1700	IN	NS	l.root-servers.net.
+.			1700	IN	NS	b.root-servers.net.
+.			1700	IN	NS	g.root-servers.net.
+.			1700	IN	NS	f.root-servers.net.
+.			1700	IN	NS	d.root-servers.net.
+.			1700	IN	NS	e.root-servers.net.
+.			1700	IN	NS	i.root-servers.net.
+.			1700	IN	NS	a.root-servers.net.
+.			1700	IN	NS	h.root-servers.net.
+.			1700	IN	NS	j.root-servers.net.
+.			1700	IN	NS	c.root-servers.net.
+
+;; ADDITIONAL SECTION:
+k.root-servers.net.	3282	IN	A	193.0.14.129
+g.root-servers.net.	2845	IN	A	192.112.36.4
+d.root-servers.net.	118	IN	A	199.7.91.13
+e.root-servers.net.	494	IN	A	192.203.230.10
+a.root-servers.net.	1771	IN	A	198.41.0.4
+j.root-servers.net.	3197	IN	A	192.58.128.30
+c.root-servers.net.	1830	IN	A	192.33.4.12
+
+;; Query time: 14 msec
+;; SERVER: 10.2.66.66#53(10.2.66.66)
+;; WHEN: Thu Apr 08 09:01:17 CST 2021
+;; MSG SIZE  rcvd: 364
+```
+</details>
+
+根域名服务器总共有 13 台，编号从 A 到 M 。我们可以从中选择一台，比如 A ，它的 IP 地址是 198.41.0.4 。
+
+接下来，我们执行 dig 命令，向根域名服务器 A 发起域名解析请求：
+<details>
+
+```sh
+root@netbox [ ~ ]  ➜ dig @198.41.0.4 test.fasionchan.com
+
+; <<>> DiG 9.16.1-Ubuntu <<>> @198.41.0.4 test.fasionchan.com
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 44843
+;; flags: qr rd; QUERY: 1, ANSWER: 0, AUTHORITY: 13, ADDITIONAL: 27
+;; WARNING: recursion requested but not available
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1472
+;; QUESTION SECTION:
+;test.fasionchan.com.		IN	A
+
+;; AUTHORITY SECTION:
+com.			172800	IN	NS	a.gtld-servers.net.
+com.			172800	IN	NS	b.gtld-servers.net.
+com.			172800	IN	NS	c.gtld-servers.net.
+com.			172800	IN	NS	d.gtld-servers.net.
+com.			172800	IN	NS	e.gtld-servers.net.
+com.			172800	IN	NS	f.gtld-servers.net.
+com.			172800	IN	NS	g.gtld-servers.net.
+com.			172800	IN	NS	h.gtld-servers.net.
+com.			172800	IN	NS	i.gtld-servers.net.
+com.			172800	IN	NS	j.gtld-servers.net.
+com.			172800	IN	NS	k.gtld-servers.net.
+com.			172800	IN	NS	l.gtld-servers.net.
+com.			172800	IN	NS	m.gtld-servers.net.
+
+;; ADDITIONAL SECTION:
+a.gtld-servers.net.	172800	IN	A	192.5.6.30
+b.gtld-servers.net.	172800	IN	A	192.33.14.30
+c.gtld-servers.net.	172800	IN	A	192.26.92.30
+d.gtld-servers.net.	172800	IN	A	192.31.80.30
+e.gtld-servers.net.	172800	IN	A	192.12.94.30
+f.gtld-servers.net.	172800	IN	A	192.35.51.30
+g.gtld-servers.net.	172800	IN	A	192.42.93.30
+h.gtld-servers.net.	172800	IN	A	192.54.112.30
+i.gtld-servers.net.	172800	IN	A	192.43.172.30
+j.gtld-servers.net.	172800	IN	A	192.48.79.30
+k.gtld-servers.net.	172800	IN	A	192.52.178.30
+l.gtld-servers.net.	172800	IN	A	192.41.162.30
+m.gtld-servers.net.	172800	IN	A	192.55.83.30
+a.gtld-servers.net.	172800	IN	AAAA	2001:503:a83e::2:30
+b.gtld-servers.net.	172800	IN	AAAA	2001:503:231d::2:30
+c.gtld-servers.net.	172800	IN	AAAA	2001:503:83eb::30
+d.gtld-servers.net.	172800	IN	AAAA	2001:500:856e::30
+e.gtld-servers.net.	172800	IN	AAAA	2001:502:1ca1::30
+f.gtld-servers.net.	172800	IN	AAAA	2001:503:d414::30
+g.gtld-servers.net.	172800	IN	AAAA	2001:503:eea3::30
+h.gtld-servers.net.	172800	IN	AAAA	2001:502:8cc::30
+i.gtld-servers.net.	172800	IN	AAAA	2001:503:39c1::30
+j.gtld-servers.net.	172800	IN	AAAA	2001:502:7094::30
+k.gtld-servers.net.	172800	IN	AAAA	2001:503:d2d::30
+l.gtld-servers.net.	172800	IN	AAAA	2001:500:d937::30
+m.gtld-servers.net.	172800	IN	AAAA	2001:501:b1f9::30
+
+;; Query time: 169 msec
+;; SERVER: 198.41.0.4#53(198.41.0.4)
+;; WHEN: Fri Apr 09 08:38:10 CST 2021
+;; MSG SIZE  rcvd: 843
+```
+</details>
+
+> 其中，@ 指定目标 DNS 服务器的地址。
+
+从 dig 命令的输出可以看到，根域名服务器告诉我们 .com 域名应该去找 a.gtld-servers.net. 等服务器。这些服务器都是 .com 的 顶级域名服务器 ，根域名服务器把它们的地址一并告诉我们了。
+
+我们可以从这些顶级域名服务器中选择一台，比如 a.gtld-servers.net. ，它的 IP 地址是 192.5.6.30 。然后，再次指定 dig 命令，向它发起域名解析请求：
+```sh
+root@netbox [ ~ ]  ➜ dig @192.5.6.30 test.fasionchan.com
+
+; <<>> DiG 9.16.1-Ubuntu <<>> @192.5.6.30 test.fasionchan.com
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 7836
+;; flags: qr rd; QUERY: 1, ANSWER: 0, AUTHORITY: 2, ADDITIONAL: 1
+;; WARNING: recursion requested but not available
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 4096
+;; QUESTION SECTION:
+;test.fasionchan.com.		IN	A
+
+;; AUTHORITY SECTION:
+fasionchan.com.		172800	IN	NS	f1g1ns1.dnspod.net.
+fasionchan.com.		172800	IN	NS	f1g1ns2.dnspod.net.
+
+;; Query time: 212 msec
+;; SERVER: 192.5.6.30#53(192.5.6.30)
+;; WHEN: Fri Apr 09 08:38:58 CST 2021
+;; MSG SIZE  rcvd: 101
+```
+顶级域名服务器告诉我们，fasionchan.com 这个域应该去找 f1g1ns1.dnspod.net. 或 f1g1ns2.dnspod.net. 来解析。这二者就是 fasionchan.com 的 权威域名服务器 。
+
+但这次 .com 域名没有告诉我们 f1g1ns1.dnspod.net. 或 f1g1ns2.dnspod.net. 的 IP 地址。因此，我们必须先自己动手，将它们的域名解析成 IP 地址。
+
+我们可以直接执行 dig 命令，一键完成解析：
+```sh
+root@netbox [ ~ ]  ➜ dig f1g1ns1.dnspod.net.
+
+; <<>> DiG 9.16.1-Ubuntu <<>> f1g1ns1.dnspod.net.
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 6244
+;; flags: qr rd ra; QUERY: 1, ANSWER: 5, AUTHORITY: 0, ADDITIONAL: 0
+
+;; QUESTION SECTION:
+;f1g1ns1.dnspod.net.		IN	A
+
+;; ANSWER SECTION:
+f1g1ns1.dnspod.net.	15	IN	A	58.247.212.36
+f1g1ns1.dnspod.net.	15	IN	A	61.151.180.44
+f1g1ns1.dnspod.net.	15	IN	A	129.211.176.187
+f1g1ns1.dnspod.net.	15	IN	A	162.14.25.230
+f1g1ns1.dnspod.net.	15	IN	A	183.192.164.118
+
+;; Query time: 13 msec
+;; SERVER: 192.168.65.1#53(192.168.65.1)
+;; WHEN: Fri Apr 09 08:39:38 CST 2021
+;; MSG SIZE  rcvd: 116
+```
+> 如果 dig 命令未指定 DNS 服务器，它默认会到本地的 递归解析器 ，也就是 DNS缓存服务器 上去查询。DNS缓存服务器会帮我们做迭代解析，再把结果告诉我们。如果亲不厌其烦，可以自己进行迭代解析。具体步骤也是类似的，附在本文后半部分。
+
+得到权威域名服务器的 IP 地址后，我们就可以向它发起解析请求：
+```sh
+root@netbox [ ~ ]  ➜ dig @58.247.212.36 test.fasionchan.com
+
+; <<>> DiG 9.16.1-Ubuntu <<>> @58.247.212.36 test.fasionchan.com
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 42646
+;; flags: qr aa rd; QUERY: 1, ANSWER: 1, AUTHORITY: 2, ADDITIONAL: 1
+;; WARNING: recursion requested but not available
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 4096
+;; QUESTION SECTION:
+;test.fasionchan.com.		IN	A
+
+;; ANSWER SECTION:
+test.fasionchan.com.	600	IN	A	10.0.0.1
+
+;; AUTHORITY SECTION:
+fasionchan.com.		600	IN	NS	f1g1ns2.dnspod.net.
+fasionchan.com.		600	IN	NS	f1g1ns1.dnspod.net.
+
+;; Query time: 57 msec
+;; SERVER: 58.247.212.36#53(58.247.212.36)
+;; WHEN: Fri Apr 09 08:55:47 CST 2021
+;; MSG SIZE  rcvd: 128
+```
+瞧，我们成功解析域名 test.fasionchan.com ，得到它对应的 IP 地址 10.0.0.1 ！
+
+## 迭代解析 f1g1ns1.dnspod.net.
+如果不想通过递归解析器，可以自行执行迭代解析，查询 f1g1ns1.dnspod.net. 的 IP 地址。
+
+首先，向 根域名服务器 发起解析请求：
+<details>
+
+```sh
+root@netbox [ ~ ]  ➜ dig @198.41.0.4 f1g1ns1.dnspod.net.
+
+; <<>> DiG 9.16.1-Ubuntu <<>> @198.41.0.4 f1g1ns1.dnspod.net.
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 49636
+;; flags: qr rd; QUERY: 1, ANSWER: 0, AUTHORITY: 13, ADDITIONAL: 27
+;; WARNING: recursion requested but not available
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1472
+;; QUESTION SECTION:
+;f1g1ns1.dnspod.net.		IN	A
+
+;; AUTHORITY SECTION:
+net.			172800	IN	NS	a.gtld-servers.net.
+net.			172800	IN	NS	b.gtld-servers.net.
+net.			172800	IN	NS	c.gtld-servers.net.
+net.			172800	IN	NS	d.gtld-servers.net.
+net.			172800	IN	NS	e.gtld-servers.net.
+net.			172800	IN	NS	f.gtld-servers.net.
+net.			172800	IN	NS	g.gtld-servers.net.
+net.			172800	IN	NS	h.gtld-servers.net.
+net.			172800	IN	NS	i.gtld-servers.net.
+net.			172800	IN	NS	j.gtld-servers.net.
+net.			172800	IN	NS	k.gtld-servers.net.
+net.			172800	IN	NS	l.gtld-servers.net.
+net.			172800	IN	NS	m.gtld-servers.net.
+
+;; ADDITIONAL SECTION:
+a.gtld-servers.net.	172800	IN	A	192.5.6.30
+b.gtld-servers.net.	172800	IN	A	192.33.14.30
+c.gtld-servers.net.	172800	IN	A	192.26.92.30
+d.gtld-servers.net.	172800	IN	A	192.31.80.30
+e.gtld-servers.net.	172800	IN	A	192.12.94.30
+f.gtld-servers.net.	172800	IN	A	192.35.51.30
+g.gtld-servers.net.	172800	IN	A	192.42.93.30
+h.gtld-servers.net.	172800	IN	A	192.54.112.30
+i.gtld-servers.net.	172800	IN	A	192.43.172.30
+j.gtld-servers.net.	172800	IN	A	192.48.79.30
+k.gtld-servers.net.	172800	IN	A	192.52.178.30
+l.gtld-servers.net.	172800	IN	A	192.41.162.30
+m.gtld-servers.net.	172800	IN	A	192.55.83.30
+a.gtld-servers.net.	172800	IN	AAAA	2001:503:a83e::2:30
+b.gtld-servers.net.	172800	IN	AAAA	2001:503:231d::2:30
+c.gtld-servers.net.	172800	IN	AAAA	2001:503:83eb::30
+d.gtld-servers.net.	172800	IN	AAAA	2001:500:856e::30
+e.gtld-servers.net.	172800	IN	AAAA	2001:502:1ca1::30
+f.gtld-servers.net.	172800	IN	AAAA	2001:503:d414::30
+g.gtld-servers.net.	172800	IN	AAAA	2001:503:eea3::30
+h.gtld-servers.net.	172800	IN	AAAA	2001:502:8cc::30
+i.gtld-servers.net.	172800	IN	AAAA	2001:503:39c1::30
+j.gtld-servers.net.	172800	IN	AAAA	2001:502:7094::30
+k.gtld-servers.net.	172800	IN	AAAA	2001:503:d2d::30
+l.gtld-servers.net.	172800	IN	AAAA	2001:500:d937::30
+m.gtld-servers.net.	172800	IN	AAAA	2001:501:b1f9::30
+
+;; Query time: 172 msec
+;; SERVER: 198.41.0.4#53(198.41.0.4)
+;; WHEN: Fri Apr 09 08:40:49 CST 2021
+;; MSG SIZE  rcvd: 840
+```
+</details>
+
+根域名服务器告诉我们，.net 应该去找 a.gtld-servers.net. 等服务器，服务器地址附在后面的附加节。
+
+我们选择 a.gtld-servers.net. 这台 顶级域名服务器 ，它的地址是 192.5.6.30 。然后向它发起解析请求：
+```sh
+root@netbox [ ~ ]  ➜ dig @192.5.6.30 f1g1ns1.dnspod.net.
+
+; <<>> DiG 9.16.1-Ubuntu <<>> @192.5.6.30 f1g1ns1.dnspod.net.
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 53457
+;; flags: qr rd; QUERY: 1, ANSWER: 0, AUTHORITY: 2, ADDITIONAL: 7
+;; WARNING: recursion requested but not available
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 4096
+;; QUESTION SECTION:
+;f1g1ns1.dnspod.net.		IN	A
+
+;; AUTHORITY SECTION:
+dnspod.net.		172800	IN	NS	v6ns3.dnsv2.net.
+dnspod.net.		172800	IN	NS	v6ns4.dnsv2.com.
+
+;; ADDITIONAL SECTION:
+v6ns3.dnsv2.net.	172800	IN	A	129.211.176.248
+v6ns3.dnsv2.net.	172800	IN	A	162.14.24.245
+v6ns3.dnsv2.net.	172800	IN	A	183.192.164.118
+v6ns3.dnsv2.net.	172800	IN	A	223.166.151.17
+v6ns3.dnsv2.net.	172800	IN	AAAA	2402:4e00:1430:1102:0:9136:2b2f:bf6b
+v6ns3.dnsv2.net.	172800	IN	A	61.129.8.141
+
+;; Query time: 213 msec
+;; SERVER: 192.5.6.30#53(192.5.6.30)
+;; WHEN: Fri Apr 09 08:41:27 CST 2021
+;; MSG SIZE  rcvd: 210
+```
+顶级域名服务器告诉我们，dnspod.net. 这个域应该去找 v6ns3.dnsv2.net. 或者 v6ns4.dnsv2.com. 。这两者就是所谓的 权威域名服务器 。这次，顶级域名服务器已经在附加节中，附上了它们的 IP 地址。
+
+我们从中挑选一个，比如 129.211.176.248 ，继续发起解析请求：
+```sh
+root@netbox [ ~ ]  ➜ dig @129.211.176.248 f1g1ns1.dnspod.net.
+
+; <<>> DiG 9.16.1-Ubuntu <<>> @129.211.176.248 f1g1ns1.dnspod.net.
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 23542
+;; flags: qr aa rd; QUERY: 1, ANSWER: 5, AUTHORITY: 2, ADDITIONAL: 1
+;; WARNING: recursion requested but not available
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 4096
+;; QUESTION SECTION:
+;f1g1ns1.dnspod.net.		IN	A
+
+;; ANSWER SECTION:
+f1g1ns1.dnspod.net.	172800	IN	A	183.192.164.118
+f1g1ns1.dnspod.net.	172800	IN	A	162.14.25.230
+f1g1ns1.dnspod.net.	172800	IN	A	58.247.212.36
+f1g1ns1.dnspod.net.	172800	IN	A	61.151.180.44
+f1g1ns1.dnspod.net.	172800	IN	A	129.211.176.187
+
+;; AUTHORITY SECTION:
+dnspod.net.		86400	IN	NS	v6ns3.dnsv2.net.
+dnspod.net.		86400	IN	NS	v6ns4.dnsv2.com.
+
+;; Query time: 34 msec
+;; SERVER: 129.211.176.248#53(129.211.176.248)
+;; WHEN: Fri Apr 09 08:42:07 CST 2021
+;; MSG SIZE  rcvd: 185
+```
+最终，我们成功解析到 f1g1ns1.dnspod.net. 对应的 IP 地址，总共有 5 个。
+
 # DNS报文格式
 经过前面学习，我们知道查询一个域名，需要与 DNS 服务器进行通信。那么，DNS 通信过程大概是怎样的呢？DNS 是一个典型的 Client-Server 应用，客户端发起域名查询请求，服务端对请求进行应答：
 ![](image/2024-03-05-16-23-11.png)
@@ -583,12 +949,67 @@ NS 记录，保存着负责该域解析的权威DNS服务器，记录值为DNS�
 
 理论上，根域也需要 NS 记录，来指向全球的 13 台根域名服务器。那根域的 NS 记录维护在哪里呢？由于根服务器极少改动，所以可以通过配置的形式指定。客户端可以查询根域 NS 记录，DNS 缓存服务器会根据自己的配置进行回答：
 ```sh
+root@netbox [ ~ ]  ➜ dig . NS
 
+; <<>> DiG 9.16.1-Ubuntu <<>> . NS
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 10652
+;; flags: qr rd ra; QUERY: 1, ANSWER: 13, AUTHORITY: 0, ADDITIONAL: 4
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 4000
+;; QUESTION SECTION:
+;.				IN	NS
+
+;; ANSWER SECTION:
+.			1767	IN	NS	h.root-servers.net.
+.			1767	IN	NS	l.root-servers.net.
+.			1767	IN	NS	k.root-servers.net.
+.			1767	IN	NS	f.root-servers.net.
+.			1767	IN	NS	b.root-servers.net.
+.			1767	IN	NS	d.root-servers.net.
+.			1767	IN	NS	m.root-servers.net.
+.			1767	IN	NS	i.root-servers.net.
+.			1767	IN	NS	c.root-servers.net.
+.			1767	IN	NS	g.root-servers.net.
+.			1767	IN	NS	e.root-servers.net.
+.			1767	IN	NS	j.root-servers.net.
+.			1767	IN	NS	a.root-servers.net.
+
+;; ADDITIONAL SECTION:
+h.root-servers.net.	2926	IN	A	198.97.190.53
+c.root-servers.net.	37	IN	A	192.33.4.12
+a.root-servers.net.	2217	IN	A	198.41.0.4
+
+;; Query time: 17 msec
+;; SERVER: 10.2.66.66#53(10.2.66.66)
+;; WHEN: Thu Apr 29 19:45:54 CST 2021
+;; MSG SIZE  rcvd: 300
 ```
 
 ## TXT记录
 TXT 记录用来保存一些文本信息，这些信息可以用作配置，但不太常见。我们举个例子：
 ```sh
+root@netbox [ ~ ]  ➜ dig t-txt.fasionchan.com TXT
 
+; <<>> DiG 9.16.1-Ubuntu <<>> t-txt.fasionchan.com TXT
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 23557
+;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 4000
+;; QUESTION SECTION:
+;t-txt.fasionchan.com.		IN	TXT
+
+;; ANSWER SECTION:
+t-txt.fasionchan.com.	600	IN	TXT	"hello world"
+
+;; Query time: 55 msec
+;; SERVER: 10.2.66.66#53(10.2.66.66)
+;; WHEN: Wed Apr 28 18:04:24 CST 2021
+;; MSG SIZE  rcvd: 73
 ```
 很多云平台使用 TXT 记录来验证域名所有权：先让域名所有人配置一条特殊的 TXT 记录，然后查询该记录看结果是否匹配。
