@@ -1041,7 +1041,7 @@ public class ArrayList<E> extends AbstractList<E>
 
 类图如下：
 
-![](img\访问者模式.png)
+![](img/访问者模式.png)
 
 代码如下：
 
