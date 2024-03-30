@@ -75,7 +75,6 @@ not allow to user regexps for throw expectations.
 
 Closes #392
 Breaks foo.bar api, foo.baz should be used instead
-
 ```
 
 接下来，我们详细看看 Angular 规范中 Commit Message 的三个部分。
@@ -127,7 +126,6 @@ Body 部分可以分成多行，而且格式也比较自由。不过，和 Heade
 
 ```
 The body is mandatory for all commits except for those of scope "docs". When the body is required it must be at least 20 characters long.
-
 ```
 
 ### Footer
@@ -141,7 +139,6 @@ BREAKING CHANGE: <breaking change summary>
 // 空行
 // 空行
 Fixes #<issue number>
-
 ```
 
 接下来，我给你详细说明下这两种情况：
@@ -166,7 +163,6 @@ BREAKING CHANGE: isolate scope bindings definition has changed and
       myAttr: '@',
     }
     The removed `inject` wasn't generaly useful for directives so there should be no code using it.
-
 ```
 
 - 关闭的 Issue 列表：关闭的 Bug 需要在 Footer 部分新建一行，并以 Closes 开头列出，例如： `Closes #123`。如果关闭了多个 Issue，可以这样列出： `Closes #123, #432, #886`。例如:
@@ -175,7 +171,6 @@ BREAKING CHANGE: isolate scope bindings definition has changed and
  Change pause version value to a constant for image
 
     Closes #1137
-
 ```
 
 ### Revert Commit
@@ -231,12 +226,11 @@ git rebase 支持的变更操作如下：
 
 在上面的 7 个命令中，squash 和 fixup 可以用来合并 commit。例如用 squash 来合并，我们只需要把要合并的 commit 前面的动词，改成 squash（或者 s）即可。你可以看看下面的示例：
 
-```
+```sh
 pick 07c5abd Introduce OpenPGP and teach basic usage
 s de9b1eb Fix PostChecker::Post#urls
 s 3e7ee36 Hey kids, stop all the highlighting
 pick fa20af3 git interactive rebase, squash, amend
-
 ```
 
 rebase 后，第 2 行和第 3 行的 commit 都会合并到第 1 行的 commit。这个时候，我们提交的信息会同时包含这三个 commit 的提交信息：
@@ -251,7 +245,6 @@ Fix PostChecker::Post#urls
 
 # This is the 3rdCommit Message:
 Hey kids, stop all the highlighting
-
 ```
 
 如果我们将第 3 行的 squash 命令改成 fixup 命令：
@@ -293,26 +286,24 @@ Fix PostChecker::Post#urls
 
 **首先，我们新建一个分支**。我们需要先基于 master 分支新建并切换到 feature 分支：
 
-```
+```sh
 $ git checkout -b feature/user
 Switched to a new branch 'feature/user'
-
 ```
 
 这是我们的所有 commit 历史：
 
-```
+```sh
 $ git log --oneline
 7157e9e docs(docs): append test line 'update3' to README.md
 5a26aa2 docs(docs): append test line 'update2' to README.md
 55892fa docs(docs): append test line 'update1' to README.md
 89651d4 docs(doc): add README.md
-
 ```
 
 **接着，我们在** `feature/user` 分支进行功能的开发和测试，并遵循规范提交 commit，功能开发并测试完成后，Git 仓库的 commit 记录如下：
 
-```
+```sh
 $ git log --oneline
 4ee51d6 docs(user): update user/README.md
 176ba5d docs(user): update user/README.md
@@ -323,7 +314,6 @@ fc70a21 feat(user): add create user function
 5a26aa2 docs(docs): append test line 'update2' to README.md
 55892fa docs(docs): append test line 'update1' to README.md
 89651d4 docs(doc): add README.md
-
 ```
 
 可以看到我们提交了 5 个 commit。接下来，我们需要将 `feature/user` 分支的改动合并到 master 分支，但是 5 个 commit 太多了，我们想将这些 commit 合并后再提交到 master 分支。
@@ -332,7 +322,6 @@ fc70a21 feat(user): add create user function
 
 ```
 $ git rebase -i 7157e9e
-
 ```
 
 执行命令后，我们会进入到一个交互界面，在该界面中，我们可以将需要合并的 4 个 commit，都执行 squash 操作，如下图所示：
@@ -352,19 +341,18 @@ $ git rebase -i 7157e9e
 
 **然后，我们用如下命令来检查 commits 是否成功合并**。可以看到，我们成功将 5 个 commit 合并成为了一个 commit： `d6b17e0`。
 
-```
+```sh
 $ git log --oneline
 d6b17e0 feat(user): add user module with all function implements
 7157e9e docs(docs): append test line 'update3' to README.md
 5a26aa2 docs(docs): append test line 'update2' to README.md
 55892fa docs(docs): append test line 'update1' to README.md
 89651d4 docs(doc): add README.md
-
 ```
 
 **最后，我们就可以将 feature 分支** `feature/user` 的改动合并到主干分支，从而完成新功能的开发 **。**
 
-```
+```sh
 $ git checkout master
 $ git merge feature/user
 $ git log --oneline
@@ -373,7 +361,6 @@ d6b17e0 feat(user): add user module with all function implements
 5a26aa2 docs(docs): append test line 'update2' to README.md
 55892fa docs(docs): append test line 'update1' to README.md
 89651d4 docs(doc): add README.md
-
 ```
 
 这里给你一个小提示，如果你有太多的 commit 需要合并，那么可以试试这种方式：先撤销过去的 commit，然后再建一个新的。
@@ -382,7 +369,6 @@ d6b17e0 feat(user): add user module with all function implements
 $ git reset HEAD~3
 $ git add .
 $ git commit -am "feat(user): add user resource"
-
 ```
 
 需要说明一点：除了 commit 实在太多的时候，一般情况下我不建议用这种方法，有点粗暴，而且之前提交的 Commit Message 都要重新整理一遍。
@@ -404,16 +390,15 @@ $ git commit -am "feat(user): add user resource"
 
 1. 查看当前分支的日志记录。
 
-```
+```sh
 $ git log –oneline
 418bd4 docs(docs): append test line 'update$i' to README.md
 89651d4 docs(doc): add README.md
-
 ```
 
 可以看到，最近一次的 Commit Message 是 `docs(docs): append test line 'update$i' to README.md`，其中 `update$i` 正常应该是 `update1`。
 
-1. 更新最近一次提交的 Commit Message
+2. 更新最近一次提交的 Commit Message
 
 在当前 Git 仓库下执行命令： `git commit --amend`，后会进入一个交互界面，在交互界面中，修改最近一次的 Commit Message，如下图所示：
 
@@ -421,20 +406,18 @@ $ git log –oneline
 
 修改完成后执行:wq 保存，退出编辑器之后，会在命令行显示，该 commit 的 message 的更新结果如下：
 
-```
+```sh
 [master 55892fa] docs(docs): append test line 'update1' to README.md
  Date: Fri Sep 18 13:40:42 2020 +0800
  1 file changed, 1 insertion(+)
-
 ```
 
-1. 查看最近一次的 Commit Message 是否被更新
+3. 查看最近一次的 Commit Message 是否被更新
 
-```
+```sh
 $ git log --oneline
 55892fa docs(docs): append test line 'update1' to README.md
 89651d4 docs(doc): add README.md
-
 ```
 
 可以看到最近一次 commit 的 message 成功被修改为期望的内容。
@@ -445,18 +428,17 @@ $ git log --oneline
 
 1. 查看当前分支的日志记录。
 
-```
+```sh
 $ git log --oneline
 1d6289f docs(docs): append test line 'update3' to README.md
 a38f808 docs(docs): append test line 'update$i' to README.md
 55892fa docs(docs): append test line 'update1' to README.md
 89651d4 docs(doc): add README.md
-
 ```
 
 可以看到倒数第 3 次提交的 Commit Message 是： `docs(docs): append test line 'update$i' to README.md`，其中 update$i 正常应该是 update2。
 
-1. 修改倒数第 3 次提交 commit 的 message。
+2. 修改倒数第 3 次提交 commit 的 message。
 
 在 Git 仓库下直接执行命令 `git rebase -i 55892fa`，然后会进入一个交互界面。在交互界面中，修改最近一次的 Commit Message。这里我们使用 reword 或者 r，保留倒数第3次的变更信息，但是修改其 message，如下图所示：
 
@@ -473,22 +455,20 @@ a38f808 docs(docs): append test line 'update$i' to README.md
  Date: Fri Sep 18 13:45:54 2020 +0800
  1 file changed, 1 insertion(+)
 Successfully rebased and updated refs/heads/master.
-
 ```
 
 `Successfully rebased and updated refs/heads/master.` 说明 rebase 成功，其实这里完成了两个步骤：更新 message，更新该 commit 的 HEAD 指针。
 
 注意：这里一定要传入想要变更 Commit Message 的父 commit ID： `git rebase -i <父 commit ID>`。
 
-1. 查看倒数第 3 次 commit 的 message 是否被更新。
+3. 查看倒数第 3 次 commit 的 message 是否被更新。
 
-```
+```sh
 $ git log --oneline
 7157e9e docs(docs): append test line 'update3' to README.md
 5a26aa2 docs(docs): append test line 'update2' to README.md
 55892fa docs(docs): append test line 'update1' to README.md
 89651d4 docs(doc): add README.md
-
 ```
 
 可以看到，倒数第 3 次 commit 的 message 成功被修改为期望的内容。
