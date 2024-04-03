@@ -1,4 +1,5 @@
 # 14 | 项目管理：如何编写高质量的Makefile？
+
 你好，我是孔令飞。今天我们来聊聊如何编写高质量的Makefile。
 
 我们在 [第10讲](https://time.geekbang.org/column/article/384648) 学习过，要写出一个优雅的Go项目，不仅仅是要开发一个优秀的Go应用，而且还要能够高效地管理项目。有效手段之一，就是通过Makefile来管理我们的项目，这就要求我们要为项目编写Makefile文件。
@@ -7,7 +8,7 @@
 
 下面给你举个例子，你就会理解低质量的Makefile文件是什么样的了。
 
-```
+```makefile
 build: clean vet
 	@mkdir -p ./Role
 	@export GOOS=linux && go build -v .
