@@ -1,4 +1,5 @@
 # 05 | 规范设计（下）：commit 信息风格迥异、难以阅读，如何规范？
+
 你好，我是孔令飞。今天，我们继续学习非编码类规范中的 Commit 规范。
 
 我们在做代码开发时，经常需要提交代码，提交代码时需要填写 Commit Message（提交说明），否则就不允许提交。
@@ -212,6 +213,8 @@ This reverts commit 079360c7cfc830ea8a6e13f4c8b8114febc9b48a.
 
 **git rebase 命令介绍**
 
+> 可参考：https://juejin.cn/post/6844903600976576519
+
 git rebase 的最大作用是它可以重写历史。
 
 我们通常会通过 `git rebase -i <commit ID>` 使用 git rebase 命令， `-i` 参数表示交互（interactive），该命令会进入到一个交互界面中，其实就是 Vim 编辑器。在该界面中，我们可以对里面的 commit 做一些操作，交互界面如图所示：
@@ -233,7 +236,7 @@ s 3e7ee36 Hey kids, stop all the highlighting
 pick fa20af3 git interactive rebase, squash, amend
 ```
 
-rebase 后，第 2 行和第 3 行的 commit 都会合并到第 1 行的 commit。这个时候，我们提交的信息会同时包含这三个 commit 的提交信息：
+rebase 后，第 2 行和第 3 行的 commit 都会合并到第 1 行的 commit。这个时候 `wq` 保存退出后是合并提交的提交信息修改界面，会同时包含这三个 commit 的提交信息：
 
 ```
 # This is a combination of 3 commits.
@@ -271,6 +274,8 @@ Fix PostChecker::Post#urls
 # Hey kids, stop all the highlighting
 
 ```
+
+但是我们一般都会编辑这个默认的合并提交的提交信息，例如改为：`feat: 合并提交。`编辑完保存即可完成commit的合并。
 
 除此之外，我们在使用 git rebase 进行操作的时候，还需要注意以下几点：
 
