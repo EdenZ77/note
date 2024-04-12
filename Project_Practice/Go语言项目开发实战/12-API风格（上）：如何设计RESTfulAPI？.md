@@ -1,4 +1,5 @@
 # 12 | API 风格（上）：如何设计RESTful API？
+
 你好，我是孔令飞。从今天开始，我们就要进入实战第二站，开始学习如何设计和开发Go项目开发中的基础功能了。接下来两讲，我们一起来看下如何设计应用的API风格。
 
 绝大部分的Go后端服务需要编写API接口，对外提供服务。所以在开发之前，我们需要确定一种API风格。API风格也可以理解为API类型，目前业界常用的API风格有三种：REST、RPC和GraphQL。我们需要根据项目需求，并结合API风格的特点，确定使用哪种API风格，这对以后的编码实现、通信方式和通信效率都有很大的影响。
@@ -18,14 +19,12 @@
 REST风格虽然适用于很多传输协议，但在实际开发中，由于REST天生和HTTP协议相辅相成，因此HTTP协议已经成了实现RESTful API事实上的标准。所以，REST具有以下核心特点：
 
 - 以资源(resource)为中心，所有的东西都抽象成资源，所有的行为都应该是在资源上的CRUD操作。
+
   - 资源对应着面向对象范式里的对象，面向对象范式以对象为中心。
   - 资源使用URI标识，每个资源实例都有一个唯一的URI标识。例如，如果我们有一个用户，用户名是admin，那么它的URI标识就可以是/users/admin。
 - 资源是有状态的，使用JSON/XML等在HTTP Body里表征资源的状态。
-
 - 客户端通过四个HTTP动词，对服务器端资源进行操作，实现“表现层状态转化”。
-
 - 无状态，这里的无状态是指每个RESTful API请求都包含了所有足够完成本次操作的信息，服务器端无须保持session。无状态对于服务端的弹性扩容是很重要的。
-
 
 因为怕你弄混概念，这里强调下REST和RESTful API的区别： **REST是一种规范，而RESTful API则是满足这种规范的API接口。**
 
@@ -40,21 +39,17 @@ REST风格虽然适用于很多传输协议，但在实际开发中，由于REST
 资源都是使用URI标识的，我们应该按照一定的规范来设计URI，通过规范化可以使我们的API接口更加易读、易用。以下是URI设计时，应该遵循的一些规范：
 
 - 资源名使用名词而不是动词，并且用名词复数表示。资源分为Collection和Member两种。
+
   - Collection：一堆资源的集合。例如我们系统里有很多用户（User）,这些用户的集合就是Collection。Collection的URI标识应该是 `域名/资源名复数`, 例如 `https:// iam.api.marmotedu.com/users`。
   - Member：单个特定资源。例如系统中特定名字的用户，就是Collection里的一个Member。Member的URI标识应该是 `域名/资源名复数/资源名称`, 例如 `https:// iam.api.marmotedu/users/admin`。
 - URI结尾不应包含 `/`。
-
 - URI中不能出现下划线 `_`，必须用中杠线 `-` 代替（有些人推荐用 `_`，有些人推荐用 `-`，统一使用一种格式即可，我比较推荐用 `-`）。
-
 - URI路径用小写，不要用大写。
-
 - 避免层级过深的URI。超过2层的资源嵌套会很乱，建议将其他资源转化为 `?` 参数，比如：
 
-
-```
+```shell
 /schools/tsinghua/classes/rooma/students/zhang # 不推荐
 /students?school=qinghua&class=rooma # 推荐
-
 ```
 
 这里有个地方需要注意：在实际的API开发中，可能你会发现有些操作不能很好地映射为一个REST资源，这时候，你可以参考下面的做法。
@@ -62,10 +57,9 @@ REST风格虽然适用于很多传输协议，但在实际开发中，由于REST
 - 将一个操作变成资源的一个属性，比如想在系统中暂时禁用某个用户，可以这么设计URI： `/users/zhangsan?active=false`。
 - 将操作当作是一个资源的嵌套资源，比如一个GitHub的加星操作：
 
-```
+```shell
 PUT /gists/:id/star # github star action
 DELETE /gists/:id/star # github unstar action
-
 ```
 
 - 如果以上都不能解决问题，有时可以打破这类规范。比如登录操作，登录不属于任何一个资源，URI可以设计为：/login。
@@ -154,7 +148,7 @@ REST设计原则中，还有一些原则因为内容比较多，并且可以独�
 
 上面介绍了一些概念和原则，这里我们通过一个“Hello World”程序，来教你用Go快速启动一个RESTful API服务，示例代码存放在 [gopractise-demo/apistyle/ping/main.go](https://github.com/marmotedu/gopractise-demo/blob/main/apistyle/ping/main.go)。
 
-```
+```go
 package main
 
 import (
@@ -171,17 +165,15 @@ func main() {
 func pong(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("pong"))
 }
-
 ```
 
 在上面的代码中，我们通过http.HandleFunc，向HTTP服务注册了一个pong handler，在pong handler中，我们编写了真实的业务代码：返回pong字符串。
 
 创建完main.go文件后，在当前目录下执行go run main.go启动HTTP服务，在一个新的Linux终端下发送HTTP请求，进行使用curl命令测试：
 
-```
+```shell
 $ curl http://127.0.0.1:50052/ping
 pong
-
 ```
 
 ## 总结
