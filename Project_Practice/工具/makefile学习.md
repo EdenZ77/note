@@ -528,7 +528,6 @@ bigoutput littleoutput : text.g
 命令行中的 `$@` 将分别被 `bigoutput` 和 `littleoutput` 替换，这取决于 Make 正在构建哪个目标。
 
 * `generate text.g -$(subst output,,$@)` 是调用 `generate` 命令，并将 `text.g` 作为参数传递给它。同时，使用 `subst` 函数替换 `$@` 中的 `output` 文本为空字符串，这样如果 `$@` 是 `bigoutput`，那么替换结果是 `big`；如果 `$@` 是 `littleoutput`，替换结果是 `little`。
-
 * `>` 是重定向操作符，它将 `generate` 命令的输出重定向到 `$@` 指定的文件中，即 `bigoutput` 或 `littleoutput`。
 
 上述规则等价于：
@@ -539,7 +538,6 @@ bigoutput : text.g
 littleoutput : text.g
     generate text.g -little > littleoutput
 ```
-
 
 ## 静态模式=
 
@@ -815,6 +813,117 @@ ifeq ($(origin FOO), undefined)
     FOO = bar
 endif
 ```
+
+## 定义变量
+
+在 Makefile 中，赋值操作符 `?=`, `=`, 和 `:=` 用于定义变量，但它们各自有不同的行为：
+
+### ?= (Conditional Variable Assignment):
+
+`TRIVIAL_TOOLS ?= depth go-callvis gothanks richgo rts kube-score`
+
+`?=` 表示条件赋值操作符。如果变量 `TRIVIAL_TOOLS` 之前没有被定义（即，它没有在 Makefile 中或通过命令行传递给 `make` 的任何地方设置值），那么它将被赋予 `depth go-callvis gothanks richgo rts kube-score` 这个值。如果该变量已有赋值，则 `?=` 将不会改变其值。
+
+#### 情况 1: 变量未提前定义
+
+如果 `TRIVIAL_TOOLS` 在 `?=` 赋值之前没有在 Makefile 或命令行中被定义，那么它将获取 `?=` 右侧指定的值。
+
+**Makefile**:
+
+```makefile
+TRIVIAL_TOOLS ?= depth go-callvis gothanks richgo rts kube-score
+```
+
+**执行**:
+
+```bash
+make
+```
+
+**输出**:
+
+变量 `TRIVIAL_TOOLS` 将被赋值为 "depth go-callvis gothanks richgo rts kube-score"。
+
+#### 情况 2: 变量已在 Makefile 中定义
+
+如果 `TRIVIAL_TOOLS` 已经在 `?=` 赋值之前在 Makefile 中被赋予了一个值，那么 `?=` 赋值将被忽略，变量将保持其原始值。
+
+**Makefile**:
+
+```makefile
+TRIVIAL_TOOLS = my-custom-tool
+TRIVIAL_TOOLS ?= depth go-callvis gothanks richgo rts kube-score
+```
+
+**执行**:
+
+```bash
+make
+```
+
+**输出**:
+
+变量 `TRIVIAL_TOOLS` 将保持为 "my-custom-tool"，`?=` 赋值不会发生。
+
+#### 情况 3: 变量通过命令行传递
+
+如果在命令行中向 `make` 传递了 `TRIVIAL_TOOLS` 变量，即使在 Makefile 中使用了 `?=`, `make` 也会使用命令行中提供的值。
+
+**Makefile**:
+
+```makefile
+TRIVIAL_TOOLS ?= depth go-callvis gothanks richgo rts kube-score
+```
+
+**执行**:
+
+```bash
+make TRIVIAL_TOOLS=my-other-tool
+```
+
+**输出**:
+
+变量 `TRIVIAL_TOOLS` 将被设置为 "my-other-tool"，覆盖 Makefile 中使用 `?=` 赋予的值。
+
+在所有情况下，如果 `TRIVIAL_TOOLS` 已经有值，不管是在 Makefile 中指定的还是从命令行传递的，使用 `?=` 的赋值操作将不会改变它的值。只有在变量尚未定义时，`?=` 才会赋予指定的值。
+
+### = (Recursive Variable Assignment):
+
+```makefile
+TRIVIAL_TOOLS = depth go-callvis gothanks richgo rts kube-score
+```
+
+使用 `=` 进行变量赋值时，赋值是递归的。这意味着变量的值将在使用时才会展开，允许它包含其他变量，并且这些变量将在每次 `TRIVIAL_TOOLS` 被引用时根据其当前值展开。
+
+例如：
+
+```makefile
+A = $(B)
+B = value
+```
+
+当 `A` 被引用时，它将展开为 `value`，因为在展开 `A` 时，`B` 已经被赋值为 `value`。
+
+### := (Simple Variable Assignment):
+
+```makefile
+TRIVIAL_TOOLS := depth go-callvis gothanks richgo rts kube-score
+```
+
+使用 `:=` 进行变量赋值时，赋值是立即的，这意味着变量的值在定义时就立即被展开并确定。这种类型的变量不会递归展开，因此它们不能依赖于后续的变量赋值。这通常用于提高 Makefile 的性能，因为它避免了重复的变量展开计算。
+
+例如：
+
+```makefile
+A := $(B)
+B = value
+```
+
+在这个例子中，`A` 被赋值时 `B` 还没有值，所以 `A` 将为空。稍后定义的 `B` 的值不会影响 `A` 的值。
+
+总结，`?=` 是条件赋值，只有在变量未定义时才会赋值。`=` 是递归赋值，允许变量值延迟展开。`:=` 是简单赋值，立即展开赋值，不依赖于后续赋值。
+
+
 
 # 使用条件判断
 

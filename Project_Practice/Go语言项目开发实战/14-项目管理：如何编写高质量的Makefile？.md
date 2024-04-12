@@ -51,7 +51,7 @@ clean:
 
 下面是IAM项目的Makefile所集成的功能，希望会对你日后设计Makefile有一些帮助。
 
-```
+```shell
 $ make help
 
 Usage: make <TARGETS> <OPTIONS> ...
@@ -143,7 +143,7 @@ help: Makefile
 
 举个例子，下面是IAM项目的Makefile组织结构：
 
-```
+```shell
 ├── Makefile
 ├── scripts
 │   ├── gendoc.sh
@@ -160,7 +160,7 @@ help: Makefile
 
 为了跟Makefile的层级相匹配，golang.mk中的所有目标都按 `go.xxx` 这种方式命名。通过这种命名方式，我们可以很容易分辨出某个目标完成什么功能，放在什么文件里，这在复杂的Makefile中尤其有用。以下是IAM项目根目录下，Makefile的内容摘录，你可以看一看，作为参考：
 
-```
+```makefile
 include scripts/make-rules/golang.mk
 include scripts/make-rules/image.mk
 include scripts/make-rules/gen.mk
@@ -211,10 +211,9 @@ Makefile允许对目标进行类似正则运算的匹配，主要用到的通配
 
 这里，我们来看一个具体的例子， `tools.verify.%`（位于 [scripts/make-rules/tools.mk](https://github.com/marmotedu/iam/blob/master/scripts/make-rules/tools.mk#L17) 文件中）定义如下：
 
-```
+```makefile
 tools.verify.%:
   @if ! which $* &>/dev/null; then $(MAKE) tools.install.$*; fi
-
 ```
 
 `make tools.verify.swagger`, `make tools.verify.mockgen` 等均可以使用上面定义的规则， `%` 分别代表了 `swagger` 和 `mockgen`。
@@ -224,6 +223,8 @@ tools.verify.%:
 另外，这里也能看出 `tools.verify.%` 这种命名方式的好处：tools说明依赖的定义位于 `scripts/make-rules/tools.mk` Makefile中； `verify` 说明 `tools.verify.%` 伪目标属于verify分类，主要用来验证工具是否安装。通过这种命名方式，你可以很容易地知道目标位于哪个Makefile文件中，以及想要完成的功能。
 
 另外，上面的定义中还用到了自动变量 `$*`，用来指代被匹配的值 `swagger`、 `mockgen`。
+
+在 Makefile 中，`$(MAKE)` 是一个特殊的变量，它引用了 `make` 命令本身。这种用法允许 Makefile 在执行时调用另一个 `make` 进程，这个过程通常被称为递归调用 `make`。
 
 ### 技巧2：善用函数
 
@@ -235,7 +236,7 @@ IAM的Makefile文件中大量使用了上述函数，如果你想查看这些函
 
 如果Makefile某个目标的命令中用到了某个工具，可以将该工具放在目标的依赖中。这样，当执行该目标时，就可以指定检查系统是否安装该工具，如果没有安装则自动安装，从而实现更高程度的自动化。例如，/Makefile文件中，format伪目标，定义如下：
 
-```
+```makefile
 .PHONY: format
 format: tools.verify.golines tools.verify.goimports
   @echo "===========> Formating codes"
@@ -247,19 +248,17 @@ format: tools.verify.golines tools.verify.goimports
 
 你可以看到，format依赖 `tools.verify.golines tools.verify.goimports`。我们再来看下 `tools.verify.golines` 的定义：
 
-```
+```makefile
 tools.verify.%:
   @if ! which $* &>/dev/null; then $(MAKE) tools.install.$*; fi
-
 ```
 
 再来看下 `tools.install.$*` 规则：
 
-```
+```makefile
 .PHONY: install.golines
 install.golines:
   @$(GO) get -u github.com/segmentio/golines
-
 ```
 
 通过 `tools.verify.%` 规则定义，我们可以知道， `tools.verify.%` 会先检查工具是否安装，如果没有安装，就会执行 `tools.install.$*` 来安装。如此一来，当我们执行 `tools.verify.%` 目标时，如果系统没有安装golines命令，就会自动调用 `go get` 安装，提高了Makefile的自动化程度。
@@ -285,7 +284,7 @@ install.golines:
 
 具体实现方法如下：
 
-```
+```makefile
 COMMANDS ?= $(filter-out %.md, $(wildcard ${ROOT_DIR}/cmd/*))
 BINS ?= $(foreach cmd,${COMMANDS},$(notdir ${cmd}))
 
