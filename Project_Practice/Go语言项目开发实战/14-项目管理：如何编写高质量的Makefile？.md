@@ -309,10 +309,9 @@ go.build.%:
 
 上述实现中有两个技巧，你可以注意下。首先，通过
 
-```
+```makefile
 COMMANDS ?= $(filter-out %.md, $(wildcard ${ROOT_DIR}/cmd/*))
 BINS ?= $(foreach cmd,${COMMANDS},$(notdir ${cmd}))
-
 ```
 
 获取到了cmd/目录下的所有组件名。
@@ -325,12 +324,11 @@ BINS ?= $(foreach cmd,${COMMANDS},$(notdir ${cmd}))
 
 在执行Makefile的过程中，会输出各种各样的文件，例如 Go 编译后的二进制文件、测试覆盖率数据等，我建议你把这些文件统一放在一个目录下，方便后期的清理和查找。通常我们可以把它们放在 `_output` 这类目录下，这样清理时就很方便，只需要清理 `_output` 文件夹就可以，例如：
 
-```
+```makefile
 .PHONY: go.clean
 go.clean:
   @echo "===========> Cleaning all build output"
   @-rm -vrf $(OUTPUT_DIR)
-
 ```
 
 这里要注意，要用 `-rm`，而不是 `rm`，防止在没有 `_output` 目录时，执行 `make go.clean` 报错。
@@ -341,7 +339,7 @@ go.clean:
 
 例如，IAM项目的Makefile就大量采用了下面这种命名方式。
 
-```
+```makefile
 .PHONY: gen.run
 gen.run: gen.clean gen.errcode gen.docgo
 

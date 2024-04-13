@@ -923,7 +923,75 @@ B = value
 
 总结，`?=` 是条件赋值，只有在变量未定义时才会赋值。`=` 是递归赋值，允许变量值延迟展开。`:=` 是简单赋值，立即展开赋值，不依赖于后续赋值。
 
+### $(MAKEFILE_LIST)内置变量
 
+`$(MAKEFILE_LIST)`是一个Make内置变量，它维护了一份列表，包含了到目前为止解析的所有Makefile文件的名称。这个列表按照Makefile被读取的顺序排列，这样你就可以知道哪个Makefile最后被解析，或者查看所有已经包含的Makefile。
+
+这里是 `$(MAKEFILE_LIST)`的一个简单例子：
+
+#### 文件结构：
+
+```
+/project
+├── Makefile
+├── included.mk
+└── subdir
+    └── nested.mk
+```
+
+#### `/project/Makefile`：
+
+```makefile
+all:
+	@echo "Before including: $(MAKEFILE_LIST)"
+
+include included.mk
+include subdir/nested.mk
+
+after_include:
+	@echo "After including: $(MAKEFILE_LIST)"
+	@echo "Last included Makefile: $(lastword $(MAKEFILE_LIST))"
+```
+
+#### `/project/included.mk`：
+
+```
+# 这个文件本身可能包含一些构建规则或变量定义
+```
+
+#### `/project/subdir/nested.mk`：
+
+```
+# 这个文件同样可能包含一些构建规则或变量定义
+```
+
+当运行 `make`(等于执行 `make all`)，输出如下：
+
+```shell
+Before including: Makefile
+```
+
+当运行 `make after_include` 时，它将执行 `after_include` 目标，并且输出：
+
+```shell
+After including: Makefile included.mk subdir/nested.mk
+Last included Makefile: subdir/nested.mk
+```
+
+在这种情况下，`$(MAKEFILE_LIST)` 包含了当前已经解析的所有 Makefile，包括主 Makefile 和所有被 `include` 命令包含的文件。
+
+如果你想获取最后被解析的Makefile的名称或者路径，可以使用 `$(lastword $(MAKEFILE_LIST))`这样的表达式。这在确定当前操作的Makefile的位置非常有用，特别是在复杂的项目结构中，你可能需要基于最后一个Makefile的位置来设置相对路径或者做其它动作。
+
+当你运行 `make after_include` 命令时，Makefile 会执行 `after_include` 目标，它首先打印出包含操作之后的 `$(MAKEFILE_LIST)` 的内容，然后使用 `$(lastword $(MAKEFILE_LIST))` 打印出最后一个被包含的 Makefile 文件的名称，这在这个例子中将会是 `subdir/nested.mk`。
+
+输出将会是：
+
+```
+After including: Makefile included.mk subdir/nested.mk
+Last included Makefile: subdir/nested.mk
+```
+
+通过这个输出，你可以知道最后一个被包含的 Makefile 是 `subdir/nested.mk`，你可以基于它的路径来设置相对路径或执行其他操作。例如，如果你想在 `subdir/nested.mk` 中引用同目录中的另一个文件，你可以使用 `$(dir $(lastword $(MAKEFILE_LIST)))` 来获得 `nested.mk` 所在目录的路径(即 `subdir/`)，然后相对于这个路径来引用其他文件。
 
 # 使用条件判断
 
@@ -1029,6 +1097,42 @@ $(subst <from>,<to>,<text>)
   >
 
 把 `feet on the street` 中的 `ee` 替换成 `EE` ，返回结果是 `fEEt on the strEEt` 。
+
+### `$(origin VARIABLE)`
+
+它用于确定一个变量 `VARIABLE`的来源。Make变量可以在Makefile中定义，也可以作为环境变量传入，或者是Make的默认变量。`$(origin VARIABLE)`会返回一个字符串，该字符串描述了变量的来源，例如：
+
+- `undefined` 如果变量没有定义。
+- `default` 如果变量是Make的内建默认变量。
+- `environment` 如果变量来自于环境。这意味着 `VARIABLE`这个变量的值是来自操作系统环境变量中的。
+- `file` 如果变量在Makefile或者包含的Makefile中定义。
+- `command line` 如果变量是在Make命令执行时通过命令行定义的。
+- `override` 如果变量是通过Makefile中的 `override`指令定义的。
+- `automatic` 如果变量是Make的自动（隐含）变量。
+
+  通过这个函数，Makefile脚本可以决定是否需要重写变量或者保留用户通过环境或命令行指定的值。
+
+### `$(shell COMMAND)`
+
+它执行一个外部的shell命令 `COMMAND`，并返回该命令的输出。在Makefile中常用该函数来获取外部命令的结果，将其存储在Make变量中。比如，`$(shell go env GOOS)`会执行 `go env GOOS`命令，该命令返回当前Go编译环境中设置的操作系统类型（如 `linux`、`darwin`、`windows`等），然后Make可以使用这个值来设置 `GOOS`变量。
+
+在你提供的那段Makefile脚本中：
+
+```makefile
+ifeq ($(origin GOOS), undefined)
+    GOOS := $(shell go env GOOS)
+endif
+ifeq ($(origin GOARCH), undefined)
+    GOARCH := $(shell go env GOARCH)
+endif
+```
+
+这里的逻辑是：如果 `GOOS`变量的来源是 `undefined`（即它没有被环境变量、命令行参数或Makefile指定），那么脚本将使用 `go env GOOS`命令的输出来设置 `GOOS`变量。同样的逻辑也适用于 `GOARCH`变量。这样可以确保在构建过程中始终有合适的值可以使用。
+
+### `$(eval ...)`
+
+这个函数将其参数作为Makefile代码来执行。它通常用来在运行时动态地构建Makefile语句。
+
 
 # make 的运行
 
