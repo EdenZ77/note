@@ -352,7 +352,6 @@ gen.errcode.code: tools.verify.codegen
 .PHONY: gen.errcode.doc
 gen.errcode.doc: tools.verify.codegen
     ...
-
 ```
 
 ### 技巧8：做好目标拆分
@@ -361,7 +360,7 @@ gen.errcode.doc: tools.verify.codegen
 
 这里来看一个例子：
 
-```
+```makefile
 gen.errcode.code: tools.verify.codegen
 
 tools.verify.%:
@@ -377,9 +376,8 @@ install.codegen:
 
 如果我们的Makefile设计是：
 
-```
+```makefile
 gen.errcode.code: install.codegen
-
 ```
 
 那每次执行gen.errcode.code都要重新安装codegen命令，这种操作是不必要的，还会导致 `make gen.errcode.code` 执行很慢。
@@ -392,7 +390,7 @@ gen.errcode.code: install.codegen
 
 **首先，** 在/Makefile中定义 `USAGE_OPTIONS` 。定义 `USAGE_OPTIONS` 可以使开发者在执行 `make help` 后感知到此OPTION，并根据需要进行设置。
 
-```
+```makefile
 define USAGE_OPTIONS
 
 Options:
@@ -408,25 +406,23 @@ export USAGE_OPTIONS
 
 **接着，** 在 [scripts/make-rules/common.mk](https://github.com/marmotedu/iam/blob/master/scripts/make-rules/common.mk#L70) 文件中，我们通过判断有没有设置V选项，来选择不同的行为：
 
-```
+```makefile
 ifndef V
 MAKEFLAGS += --no-print-directory
 endif
-
 ```
 
 当然，我们还可以通过下面的方法来使用 `V` ：
 
-```
+```makefile
 ifeq ($(origin V), undefined)
 MAKEFLAGS += --no-print-directory
 endif
-
 ```
 
 上面，我介绍了 `V` OPTION，我们在Makefile中通过判断有没有定义 `V` ，来执行不同的操作。其实还有一种OPTION，这种OPTION的值我们在Makefile中是直接使用的，例如 `BINS`。针对这种OPTION，我们可以通过以下方式来使用：
 
-```
+```makefile
 BINS ?= $(foreach cmd,${COMMANDS},$(notdir ${cmd}))
 ...
 go.build: go.build.verify $(addprefix go.build., $(addprefix $(PLATFORM)., $(BINS)))
@@ -439,7 +435,7 @@ go.build: go.build.verify $(addprefix go.build., $(addprefix $(PLATFORM)., $(BIN
 
 我们可以在Makefile中定义一些环境变量，例如：
 
-```
+```makefile
 GO := go
 GO_SUPPORTED_VERSIONS ?= 1.13|1.14|1.15|1.16|1.17
 GO_LDFLAGS += -X $(VERSION_PACKAGE).GitVersion=$(VERSION) \
@@ -465,7 +461,7 @@ XARGS := xargs --no-run-if-empty
 
 在编写Makefile的过程中，你可能会遇到这样一种情况：A-Target目标命令中，需要完成操作B-Action，而操作B-Action我们已经通过伪目标B-Target实现过。为了达到最大的代码复用度，这时候最好的方式是在A-Target的命令中执行B-Target。方法如下：
 
-```
+```makefile
 tools.verify.%:
   @if ! which $* &>/dev/null; then $(MAKE) tools.install.$*; fi
 
@@ -473,7 +469,7 @@ tools.verify.%:
 
 这里，我们通过 `$(MAKE)` 调用了伪目标 `tools.install.$*` 。要注意的是，默认情况下，Makefile在切换目录时会输出以下信息：
 
-```
+```shell
 $ make tools.install.codegen
 ===========> Installing codegen
 make[1]: Entering directory `/home/colin/workspace/golang/src/github.com/marmotedu/iam'
