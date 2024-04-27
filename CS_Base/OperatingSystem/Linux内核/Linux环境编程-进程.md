@@ -176,16 +176,176 @@ ps进程和grep进程都是bash创建的子进程，两者通过管道协同完�
 
 引入了进程组的概念，可以更方便地管理这一组进程了。比如这项工作放弃了，不必向每个进程一一发送信号，可以直接将信号发送给进程组，进程组内的所有进程都会收到该信号。
 
+前文曾提到过，子进程一旦执行exec，父进程就无法调用setpgid函数来设置子进程的进程组ID了，这条规则会影响shell的作业控制。出于保险的考虑，一般父进程在调用fork创建子进程后，会调用setpgid函数设置子进程的进程组ID，同时子进程也要调用setpgid函数来设置自身的进程组ID。这两次调用有一次是多余的，但是这样做能够保证无论是父进程先执行，还是子进程先执行，子进程一定已经进入了指定的进程组中。由于fork之后，父子进程的执行顺序是不确定的，因此如果不这样做，就会造成在一定的时间窗口内，无法确定子进程是否进入了相应的进程组。
 
+可以通过跟踪bash进程的系统调用来证明这一点，下面的2258进程是bash，我们在该bash上执行sleep 200，在执行之前，在另一个终端用strace跟踪bash的系统调用，可以看到，父进程和子进程都执行了一遍setpgid函数，代码如下所示：
 
+```shell
+manu@manu-hacks:~$ sudo strace -f -p 2258
+Process 2258 attached
+    ．．．
+/*父进程调用setpgid函数*/
+[pid  2258] setpgid(2509, 2509 <unfinished ...>．．．
+/*子进程调用setpgid函数*/
+[pid  2509] setpgid(2509, 2509 <unfinished ...>．．．
+/*子进程执行execve*/
+[pid  2509] execve("/bin/sleep", ["sleep", "200"], [/* 31 vars */]) = 0．．．
+```
 
+strace工具说明：`strace` 是 Linux 系统中一个非常有用的命令行工具，它可以跟踪系统调用和信号。
 
+- `-f` 参数告诉 `strace` 跟踪指定进程及其所有的子进程（forked processes）。
+- `-p 2258` 参数告诉 `strace` 要附加（attach）到进程号为 2258 的进程，并开始跟踪它的系统调用。
+
+所以，`sudo strace -f -p 2258` 命令的含义是以超级用户权限（sudo）启动 `strace`，并附加到进程号为 2258 的进程，同时监视该进程及其所有子进程的所有系统调用。使用 `strace` 可以帮助你理解进程在运行时与操作系统如何交互，包括它打开的文件、它发出的网络请求、它如何分配内存等等。这是一种强大的方式来诊断程序中的问题或了解程序的行为。
+
+用户在shell中可以同时执行多个命令。对于耗时很久的命令（如编译大型工程），用户不必傻傻等待命令运行完毕才执行下一个命令。用户在执行命令时，可以在命令的结尾添加“&”符号，表示将命令放入后台执行。这样该命令对应的进程组即为后台进程组。在任意时刻，可能同时存在多个后台进程组，但是不管什么时候都只能有一个前台进程组。只有在前台进程组中进程才能在控制终端读取输入。当用户在终端输入信号生成终端字符（如ctrl+c、ctrl+z、ctr+\等）时，对应的信号只会发送给前台进程组。
+
+shell中可以存在多个进程组，无论是前台进程组还是后台进程组，它们或多或少存在一定的联系，为了更好地控制这些进程组（或者称为作业），系统引入了会话的概念。会话的意义在于将很多的工作囊括在一个终端，选取其中一个作为前台来直接接收终端的输入及信号，其他的工作则放在后台执行。
 
 ### 会话
 
+会话是一个或多个进程组的集合，以用户登录系统为例，可能存在如图所示的情况。
+![](image/2024-04-28-06-23-54.png)
+
+系统提供setsid函数来创建会话，其接口定义如下：
+
+```c
+#include <unistd.h>
+pid_t setsid(void);
+```
+
+如果这个函数的调用进程不是进程组组长，那么调用该函数会发生以下事情：
+1）创建一个新会话，会话ID等于进程ID，调用进程成为会话的首进程。
+2）创建一个进程组，进程组ID等于进程ID，调用进程成为进程组的组长。
+3）该进程没有控制终端，如果调用setsid前，该进程有控制终端，这种联系就会断掉。
+
+调用setsid函数的进程不能是进程组的组长，否则调用会失败，返回-1，并置errno为EPERM。
+
+这个限制是比较合理的。如果允许进程组组长迁移到新的会话，而进程组的其他成员仍然在老的会话中，那么，就会出现同一个进程组的进程分属不同的会话之中的情况，这就破坏了进程组和会话的严格的层次关系了。
+
+Linux提供了setsid命令，可以在新的会话中执行命令，通过该命令可以很容易地验证上面提到的三点：
+
+```shell
+manu@manu-hacks:~$ setsid sleep 100
+manu@manu-hacks:~$ ps ajxf
+PPID   PID  PGID   SID TTY      TPGID STAT   UID   TIME COMMAND…
+1     4469  4469  4469 ?           -1   Ss   1000   0:00 sleep 100
+```
+
+从输出中可以看出，系统创建了新的会话4469，新的会话下又创建了新的进程组，会话ID和进程组ID都等于进程ID，而该进程已经不再拥有任何控制终端了（TTY对应的值为“？”表示进程没有控制终端）。
+
+常用的调用setsid函数的场景是login和shell。除此以外创建daemon进程也要调用setsid函数。
+
 ## 进程的创建之fork()
 
+Linux系统下，进程可以调用fork函数来创建新的进程。调用进程为父进程，被创建的进程为子进程。fork函数的接口定义如下：
+
+```c
+#include <unistd.h>
+pid_t fork(void);
+```
+
+与普通函数不同，fork函数会返回两次。一般说来，创建两个完全相同的进程并没有太多的价值。大部分情况下，父子进程会执行不同的代码分支。fork函数的返回值就成了区分父子进程的关键。fork函数向子进程返回0，并将子进程的进程ID返给父进程。当然了，如果fork失败，该函数则返回-1，并设置errno。
+
+常见的出错情景如表所示。
+![](image/2024-04-28-06-46-08.png)
+
+所以一般而言，调用fork的程序，大多会如此处理：
+
+```c
+ret = fork();
+if(ret == 0)
+{
+    …//此处是子进程的代码分支
+}
+else if(ret > 0)
+{
+    …//此处是父进程的代码分支
+}
+else
+{
+     …// fork失败，执行error handle
+}
+```
+
+注意　fork可能失败。检查返回值进行正确的出错处理，是一个非常重要的习惯。设想如果fork返回-1，而程序没有判断返回值，直接将-1当成子进程的进程号，那么后面的代码执行`kill（child_pid，9）`就相当于执行`kill（-1，9）`。这会发生什么？后果是惨重的，它将杀死除了init以外的所有进程，只要它有权限。读者可以通过`man 2 kill`来查看`kill（-1，9）`的含义。
+
+fork之后，对于父子进程，谁先获得CPU资源，而率先运行呢？从内核2.6.32开始，在默认情况下，父进程将成为fork之后优先调度的对象。采取这种策略的原因是：fork之后，父进程在CPU中处于活跃的状态，并且其内存管理信息也被置于硬件内存管理单元的转译后备缓冲器（TLB），所以先调度父进程能提升性能。从2.6.24起，Linux采用完全公平调度（Completely Fair Scheduler，CFS）。用户创建的普通进程，都采用CFS调度策略。对于CFS调度策略，procfs提供了如下控制选项：
+
+```shell
+/proc/sys/kernel/sched_child_runs_first
+```
+
+该值默认是0，表示父进程优先获得调度。如果将该值改成1，那么子进程会优先获得调度。POSIX标准和Linux都没有保证会优先调度父进程。因此在应用中，决不能对父子进程的执行顺序做任何的假设。如果确实需要某一特定执行的顺序，那么需要使用进程间同步的手段。
+
 ### fork之后父子进程的内存关系
+
+fork之后的子进程完全拷贝了父进程的地址空间，包括栈、堆、代码段等。通过下面的示例代码，我们一起来查看父子进程的内存关系：
+
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <wait.h>
+int g_int = 1;
+int main()
+{
+    int local_int = 1;
+    int *malloc_int = malloc(sizeof(int));
+    *malloc_int = 1;
+    pid_t pid = fork();
+    if(pid == 0) /*子进程*/
+    {
+        local_int = 0;
+        g_int = 0;
+        *malloc_int = 0;
+        fprintf(stderr,"[CHILD ] child change local global malloc value to 0\n");
+        free(malloc_int);
+        sleep(10);
+        fprintf(stderr,"[CHILD ] child exit\n");
+        exit(0);
+    }
+    else if(pid < 0)
+    {
+        printf("fork failed (%s)",strerror(errno));
+        return 1;
+    }
+    fprintf(stderr,"[PARENT] wait child exit\n");
+    waitpid(pid,NULL,0);
+    fprintf(stderr,"[PARENT] child have exit\n");
+    printf("[PARENT] g_int = %d\n",g_int);
+    printf("[PARENT] local_int = %d\n",local_int);
+    printf("[PARENT] malloc_int = %d\n",malloc_int);
+    free(malloc_int);
+    return 0;
+}
+```
+
+这里刻意定义了三个变量，一个是位于数据段的全局变量，一个是位于栈上的局部变量，还有一个是通过malloc动态分配位于堆上的变量，三者的初始值都是1。然后调用fork创建子进程，子进程将三个变量的值都改成了0。
+
+按照fork的语义，子进程完全拷贝了父进程的数据段、栈和堆上的内存，如果父子进程对相应的数据进行修改，那么两个进程是并行不悖、互不影响的。因此，在上面示例代码中，尽管子进程将三个变量的值都改成了0，对父进程而言这三个值都没有变化，仍然是1，代码的输出也证实了这一点。
+
+```shell
+[PARENT] wait child exit
+[CHILD ] child change local global malloc value to 0
+[CHILD ] child exit
+[PARENT] child have exit
+[PARENT] g_int = 1
+[PARENT] local_int = 1
+[PARENT] malloc_int = 1
+```
+
+前文提到过，子进程和父进程执行一模一样的代码的情形比较少见。Linux提供了execve系统调用，构建在该系统调用之上，glibc提供了exec系列函数。这个系列函数会丢弃现存的程序代码段，并构建新的数据段、栈及堆。调用fork之后，子进程几乎总是通过调用exec系列函数，来执行新的程序。
+
+在这种背景下，fork时子进程完全拷贝父进程的数据段、栈和堆的做法是不明智的，因为接下来的exec系列函数会毫不留情地抛弃刚刚辛苦拷贝的内存。为了解决这个问题，Linux引入了写时拷贝（copy-on-write）的技术。
+
+
+
+
 
 ### fork之后父子进程与文件的关系
 
