@@ -1753,7 +1753,7 @@ cpu_usage = ((user time) + (sys time))/(real time)
 
 在多核处理器情况下，`cpu_usage`如果大于1，则表示该进程是计算密集型（CPU bound）的进程，且`cpu_usage`的值越大，表示越充分地利用了多处理器的并行运行优势；如果`cpu_usage`的值小于1，则表示进程为I/O密集型（I/O bound）的进程，多核并行的优势并不明显。
 
-time命令的问题在于要等进程运行完毕后，才能获取到进程的统计信息，正所谓盖棺定论。有些时候，我们需要了解正在运行的进程：它运行了多久，内核态CPU时间和用户态CPU时间分别是多少？procfs在/proc/PID/stat中提供了相关的信息：
+`time`命令的问题在于要等进程运行完毕后，才能获取到进程的统计信息，正所谓盖棺定论。有些时候，我们需要了解正在运行的进程：它运行了多久，内核态CPU时间和用户态CPU时间分别是多少？procfs在`/proc/PID/stat`中提供了相关的信息：
 
 ```shell
 manu@manu-rush:~$ cat /proc/8283/stat
@@ -1788,12 +1788,14 @@ CONFIG_HZ=250
 ```shell
 manu@manu-rush:~$ ps -p 8283 -o etime,cmd,pid
     ELAPSED CMD                            PID
-      02:39 stress -c 1                    8283
+    02:39 stress -c 1                    8283
 ```
 
 **2.可中断睡眠状态和不可中断睡眠状态**
 
-进程并不总是处于可运行的状态。有些进程需要和慢速设备打交道。比如进程和磁盘进行交互，相关的系统调用消耗的时间是非常长的（可能在毫秒数量级甚至会更久），进程需要等待这些操作完成才可以执行接下来的指令。有些进程需要等待某种特定条件（比如进程等待子进程退出、等待socket连接、尝试获得锁、等待信号量等）得到满足后方可以执行，而等待的时间往往是不可预估的。在这种情况下，进程依然占用CPU就不合适了，对CPU资源而言，这是一种极大的浪费。因此内核会将该进程的状态改变成其他状态，将其从CPU的运行队列中移除，同时调度器选择其他的进程来使用CPU资源。Linux存在两种睡眠的状态：可中断的睡眠状态（TASK_INTERRUPTIBLE）和不可中断的睡眠状态（TASK_UNINTERRUPTIBLE）。这两种睡眠状态是很类似的。两者的区别就在于能否响应收到的信号。
+进程并不总是处于可运行的状态。有些进程需要和慢速设备打交道。比如进程和磁盘进行交互，相关的系统调用消耗的时间是非常长的（可能在毫秒数量级甚至会更久），进程需要等待这些操作完成才可以执行接下来的指令。有些进程需要等待某种特定条件（比如进程等待子进程退出、等待socket连接、尝试获得锁、等待信号量等）得到满足后方可以执行，而等待的时间往往是不可预估的。在这种情况下，进程依然占用CPU就不合适了，对CPU资源而言，这是一种极大的浪费。因此内核会将该进程的状态改变成其他状态，将其从CPU的运行队列中移除，同时调度器选择其他的进程来使用CPU资源。
+
+Linux存在两种睡眠的状态：可中断的睡眠状态（TASK_INTERRUPTIBLE）和不可中断的睡眠状态（TASK_UNINTERRUPTIBLE）。这两种睡眠状态是很类似的。两者的区别就在于能否响应收到的信号。
 
 处于可中断的睡眠状态的进程，返回到可运行的状态有以下两种可能性：
 
@@ -1812,7 +1814,7 @@ TASK_UNINTERRUPTIBLE是一种很危险的状态，因为进程进入该状态后
 
 正常情况下，进程处于TASK_UNINTERRUPTIBLE状态的时间会非常短暂，进程不应该长时间处于不可中断的睡眠状态，但是这种情况确实可能会发生（内核代码流程中可能有bug，或者用户内核模块中的相关机制不合理都会导致某些进程长时间处于D状态）。举例来讲，当通过NFS访问远程目录时，异地文件系统的异常可能会使进程进入该状态。如果远端的文件系统始终异常，使进程的I/O请求得不到满足，该进程会一直处于TASK_UNINTERRUPTIBLE状态，无法杀死，除了重启Linux机器之外，无药可救。
 
-内核提供了hung task检测机制，它会启动一个名为khungtaskd的内核线程来检测处于TASK_UNINTERRUPTIBLE状态的进程是否已经失控。khungtaskd定期被唤醒（默认是120秒），它会遍历所有处于TASK_UNINTERRUPTIBLE状态的进程进行检查，如果某进程超过120秒未获得调度，那么内核就会打印出警告信息和该进程的堆栈信息。
+内核提供了`hung task`检测机制，它会启动一个名为`khungtaskd`的内核线程来检测处于TASK_UNINTERRUPTIBLE状态的进程是否已经失控。khungtaskd定期被唤醒（默认是120秒），它会遍历所有处于TASK_UNINTERRUPTIBLE状态的进程进行检查，如果某进程超过120秒未获得调度，那么内核就会打印出警告信息和该进程的堆栈信息。
 
 120秒这个时间是可以定制的，内核提供了控制选项：
 
@@ -1821,9 +1823,9 @@ TASK_UNINTERRUPTIBLE是一种很危险的状态，因为进程进入该状态后
      kernel.hung_task_timeout_secs = 120
 ```
 
-关于khungtaskd的更多细节，可以阅读内核kernel/hung_task.c代码。
+关于`khungtaskd`的更多细节，可以阅读内核`kernel/hung_task.c`代码。
 
-无论进程处于可中断的睡眠状态，还是不可中断的睡眠状态，我们都可能会希望了解进程停在什么位置或在等待什么资源。procfs的wchan提供了这方面的信息，wchan是wait channel的含义。ps命令也可以通过wchan获得该信息：
+无论进程处于可中断的睡眠状态，还是不可中断的睡眠状态，我们都可能会希望了解进程停在什么位置或在等待什么资源。procfs的`wchan`提供了这方面的信息，`wchan`是`wait channel`的含义。ps命令也可以通过`wchan`获得该信息：
 
 ```shell
 manu@manu-rush:~$ echo $$
@@ -1835,7 +1837,7 @@ manu@manu-rush:~$ ps -p 3828 -o pid,wchan,cmd
   3828 wait   -bash
 ```
 
-另外一种方法是查看进程的stack信息，方法如下所示：
+另外一种方法是查看进程的`stack`信息，方法如下所示：
 
 ```shell
 manu@manu-rush:~$ sudo cat /proc/3828/stack
@@ -1845,9 +1847,9 @@ manu@manu-rush:~$ sudo cat /proc/3828/stack
 [<ffffffffffffffff>] 0xffffffffffffffff
 ```
 
-通过procfs的wchan和stack，不难看出，当前的bash正在等待子进程的退出。
+通过`procfs`的`wchan`和`stack`，不难看出，当前的`bash`正在等待子进程的退出。
 
-3.睡眠进程和等待队列
+**3.睡眠进程和等待队列**
 
 进程无论是处于可中断的睡眠状态还是不可中断的睡眠状态，有一个数据结构是绕不开的：等待队列（wait queue）。进程但凡需要休眠，必然是等待某种资源或等待某个事件，内核必须想办法将进程和它等待的资源（或事件）关联起来，当等待的资源可用或等待的事件已发生时，可以及时地唤醒相关的进程。内核采用的方法是等待队列。
 
@@ -1880,50 +1882,567 @@ struct __wait_queue {
 
 ![](image/2024-04-30-17-43-22.png)
 
+内核如何使用等待队列完成睡眠，以及条件满足之后如何唤醒对应的进程呢？
 
+首先要定义和初始化等待队列头部。等待队列头部相当于一杆大旗，没有这杆大旗，将来的等待队列元素将成为“孤魂野鬼”，无处安放。内核提供了`init_waitqueue_head`和`DECLARE_WAIT_QUEUE_HEAD`两个宏，用来初始化等待队列头部。
 
+其次，当进程需要睡眠时，需要定义等待队列元素。内核提供了`init_waitqueue_entry`函数和`init_waitqueue_func_entry`函数来完成等待队列元素的初始化：
 
+```c
+static inline void init_waitqueue_entry(wait_queue_t *q, struct task_struct *p)
+{
+    q->flags = 0;
+    q->private = p;
+    q->func = default_wake_function;/*通用的唤醒回调函数*/
+}
+static inline void init_waitqueue_func_entry(wait_queue_t *q,
+                    wait_queue_func_t func)
+{
+    q->flags = 0;
+    q->private = NULL;
+    q->func = func;
+}
+```
 
+除此以外，内核还提供了宏`DECLARE_WAITQUEUE`，也可用来初始化等待队列元素：
 
+```c
+#define __WAITQUEUE_INITIALIZER(name, tsk) {                \
+    .private    = tsk,                      \
+    .func       = default_wake_function,            \
+    .task_list  = { NULL, NULL } }
+#define DECLARE_WAITQUEUE(name, tsk)                    \
+    wait_queue_t name = __WAITQUEUE_INITIALIZER(name, tsk)
+```
+
+从等待队列元素的初始化函数或初始化宏不难看出，等待队列元素的`private`成员变量指向了进程的进程描述符`task_struct`，因此就有了等待队列元素，就可以将进程挂入对应的等待队列。
+
+第三步是将等待队列元素（即睡眠进程）放入合适的等待队列中。内核同时提供了`add_wait_queue`和`add_wait_queue_exclusive`两个函数来把等待队列元素添加到等待队列头部指向的双向链表，代码如下：
+
+```c
+void add_wait_queue(wait_queue_head_t *q, wait_queue_t *wait)
+{
+    unsigned long flags;
+    wait->flags &= ~WQ_FLAG_EXCLUSIVE;
+    spin_lock_irqsave(&q->lock, flags);
+    __add_wait_queue(q, wait);
+    spin_unlock_irqrestore(&q->lock, flags);
+}
+void add_wait_queue_exclusive(wait_queue_head_t *q, wait_queue_t *wait)
+{
+    unsigned long flags;
+    wait->flags |= WQ_FLAG_EXCLUSIVE;
+    spin_lock_irqsave(&q->lock, flags);
+    __add_wait_queue_tail(q, wait);
+    spin_unlock_irqrestore(&q->lock, flags);
+}
+```
+
+这两个函数的区别在于：
+
+- 一个等待队列元素设置了WQ_FLAG_EXCLUSIVE标志位，而另一个则没有。
+- 一个等待队列元素放到了等待队列的尾部，而另一个则放到了等待队列的头部。
+
+同样是添加到等待队列，为何同时提供了两个函数，`WQ_FLAG_EXCLUSIVE`标志位到底有什么作用？
+
+不妨来思考如下问题：如果存在多个进程在等待同一个条件满足或同一个事件发生（即等待队列上有多个等待队列元素），那么当条件满足时，应该把所有进程一并唤醒还是只唤醒某一个或某几个进程？
+
+答案是具体情况具体分析。有时候需要唤醒等待队列上的所有进程，但又有些时候唤醒操作需要具有排他性（EXCLUSIVE）。比如多个进程等待临界区资源，当锁的持有者释放锁时，如果内核将所有等待在该锁上的进程一起唤醒，那么最终也只能有一个进程竞争到锁资源，而大多数的竞争者，不过是从休眠中醒来，然后继续休眠，这会浪费CPU资源，如果等待队列中的进程数目很大，还会严重影响性能。这就是所谓的惊群效应（thundering herd problem）。因此内核提供了`WQ_FLAG_EXCLUSEVE`标志位来实现互斥等待，`add_wait_queue_exclusive`函数会将带有该标志位的等待队列元素添加到等待队列的尾部。当内核唤醒等待队列上的进程时，等待队列元素中的`WQ_FLAG_EXCLUSEVE`标志位会影响唤醒行为，比如`wake_up`宏，它唤醒第一个带有`WQ_FLAG_EXCLUSEVE`标志位的进程后就会停止。
+
+事实上，当内核需要等待某个条件满足而不得不休眠（或是可中断的睡眠，或是不可中断的睡眠）时，内核封装了一些宏来完成前面提到的流程。这些宏包括：
+
+```c
+wait_event(wq, condition)
+wait_event_timeout(wq, condition, timeout)
+wait_event_interruptible(wq, condition)
+wait_event_interruptible_timeout(wq, condition, timeout)
+```
+
+第一个参数指向的是等待队列头部，表示进程会睡眠在该等队列上。进程醒来时，`condition`需要得到满足，否则继续阻塞。其中`wait_event`和`wait_event_interruptible`的区别在于，睡眠过程中，前者的进程状态是不可中断的睡眠状态，不能被信号中断，而后者是可中断的睡眠状态，可以被信号中断。名字中带有`_timeout`的宏意味着阻塞等待的超时时间，以`jiffy`为单位，当超时时间到达时，无论`condition`是否满足，均返回。
+
+我们不妨以`wait_event`宏为例，欣赏一下内核是如何使用等待队列，等待某个条件的满足的：
+
+```c
+#define wait_event(wq, condition)                   \
+do {                                    \
+    if (condition)                          \
+        break;                          \
+    __wait_event(wq, condition);                    \
+} while (0)
+#define __wait_event(wq, condition)                     \
+do {                                    \
+    DEFINE_WAIT(__wait);                        \
+                                    \
+    for (;;) {                          \
+        prepare_to_wait(&wq, &__wait, TASK_UNINTERRUPTIBLE);    \
+        if (condition)                      \
+            break;                      \
+        schedule();                     \
+    }                               \
+    finish_wait(&wq, &__wait);                  \
+} while (0)
+void
+prepare_to_wait(wait_queue_head_t *q, wait_queue_t *wait, int state)
+{
+    unsigned long flags;
+    wait->flags &= ~WQ_FLAG_EXCLUSIVE;
+    spin_lock_irqsave(&q->lock, flags);
+    if (list_empty(&wait->task_list))
+        __add_wait_queue(q, wait);
+    set_current_state(state);
+    spin_unlock_irqrestore(&q->lock, flags);
+}
+```
+
+`prepare_to_wait`函数负责将等待队列元素添加到对应的等待队列，同时将进程的状态设置成TASK_UNINTERRUPTIBLE，完成`prepare_to_wait`的工作后，会检查条件是否满足条件，如果条件不满足，则调用`schedule()`函数，主动让出CPU使用权，等待被唤醒。
+
+有睡眠就要有唤醒，有`wait_event`系列的宏，与之对应的，就要有`wake_up`系列的宏，它们必须成对出现。这一组宏有：
+
+```c
+wake_up(x)
+wake_up_nr(x, nr)
+wake_up_all(x)
+wake_up_interruptible(x)
+wake_up_interruptible_nr(x, nr)
+wake_up_interruptible_all(x)
+```
+
+这些宏和前面`wait_event`系列宏的配对使用情况如图5-6所示。
 
 ![](image/2024-04-30-17-43-44.png)
 
+其中该系列宏中，名字里带`_interruptible`的宏只能唤醒处于TASK_INTERRUPTIBLE状态的进程，而名字中不带`_interruptible`的宏，既可以唤醒TASK_INTERRUPTIBLE状态的进程，也可以唤醒TASK_UNINTERRUPTIBLE状态的进程。
 
+`wake_up`系列函数中为什么有些函数后面有`_nr`和`_all`这样的后缀？其实不难猜到这些后缀的含义：不带后缀的表示最多只能唤醒一个带有WQ_FLAG_EXCLUSIVE标志位的进程，带`_nr`的表示可以唤醒`nr`个带有WQ_FLAG_EXCLUSIVE标志位的进程，而带`_all`后缀的则表示唤醒等待队列上的所有进程。
 
-
-
-
+这些`wake_up`系列的宏，其实现部分最终都是通过`__wake_up`函数的简单封装来实现的，如图5-7所示。
 
 ![](image/2024-04-30-17-43-57.png)
 
+下面来分析下`__wake_up`函数，看看内核是如何唤醒睡眠在等待队列上的进程的，代码如下：
 
+```c
+void __wake_up(wait_queue_head_t *q, unsigned int mode,
+            int nr_exclusive, void *key)
+{
+    unsigned long flags;
+    spin_lock_irqsave(&q->lock, flags);
+    __wake_up_common(q, mode, nr_exclusive, 0, key);
+    spin_unlock_irqrestore(&q->lock, flags);
+}
+static void __wake_up_common(wait_queue_head_t *q, unsigned int mode,
+            int nr_exclusive, int wake_flags, void *key)
+{
+    wait_queue_t *curr, *next;
+    /*遍历等待队列头部对应的双向链表*/
+    list_for_each_entry_safe(curr, next, &q->task_list, task_list) {
+        unsigned flags = curr->flags;
+        /*最多唤醒nr设置了排他性标志位的等待进程，以防止惊群*/
+        if (curr->func(curr, mode, wake_flags, key) &&
+                (flags & WQ_FLAG_EXCLUSIVE) && !--nr_exclusive)
+            break;
+    }
+}
+```
 
+注意，遍历等待队列上的所有等待队列元素时，对于每一个需要唤醒的进程，执行的是等待队列元素中定义的`func`，最多唤醒`nr_exclusive`个带有WQ_FLAG_EXCLUSIVE的等待队列元素。
 
+在初始化等待队列元素的时候，需要注册回调函数`func`。当内核唤醒该进程时，就会执行等待队列元素中的回调函数。等待队列元素最常用的回调函数是`default_wake_function`，就像它的名字一样，是默认的唤醒回调函数。无论是DECLARE_WAITQUEUE还是`init_waitqueue_entry`，都将等待队列元素的`func`指向`default_wake_function`。而`default_wake_function`仅仅是大名鼎鼎的`try_to_wake_up`函数的简单封装，代码如下：
 
+```c
+int default_wake_function(wait_queue_t *curr, unsigned mode, int wake_flags,
+            void *key)
+{
+    return try_to_wake_up(curr->private, mode, wake_flags);
+}
+```
 
+`try_to_wake_up`是进程调度里非常重要的一个函数，它负责将睡眠的进程唤醒，并将醒来的进程放置到CPU的运行队列中，然后并设置进程的状态为TASK_RUNNING。在本章的后面会对该函数进行详细的分析。
+
+**4.TASK_KILLABLE状态**
+
+很多文章在介绍TASK_UNINTERRUPTIBLE状态时，都喜欢通过下面的例子来创建一个处于TASK_UNINTERRUPTIBLE状态的进程：
+
+```c
+#include<stdio.h>
+int main()
+{
+    if(!vfork())
+    {
+        sleep(100);
+        printf("hello \n");
+    }
+}
+```
+
+运行上述代码编出的程序：
+
+```c
+root@manu-rush:~# ps ax |grep state_d
+  5880 pts/2    D+     0:00 ./state_d
+  5881 pts/2    S+     0:00 ./state_d
+```
+
+很多文章认为，调用`vfork`函数创建子进程时，子进程在调用`exec`函数或退出之前，父进程始终处于TASK_UNINTERRUPTIBLE的状态。其实这种说法是错误的。因为很明显，父进程可以轻易地被信号杀死，这证明父进程并不是处于TASK_UNINTERRUPTIBLE的状态。
+
+```shell
+root@manu-hacks:~# ps ax |grep state_d |grep -v grep
+  6787 pts/2    D+     0:00 ./state_d
+  6788 pts/2    S+     0:00 ./state_d
+root@manu-hacks:~# kill -9 6787
+root@manu-hacks:~# ps ax |grep state_d |grep -v grep
+  6788 pts/2    S      0:00 ./state_d而在程序运行的终端
+manu@manu-hacks:~/code/me/c$ ./state_d
+Killed
+```
+
+为什么进程的状态显示的是D+，按照`ps`命令的说法应该是处于不可中断的睡眠状态，可为什么仍然会被信号杀死呢？这好像和前面的讲述并不一致。
+
+事实上，`ps`命令输出的D状态不能简单地理解成UNINTERRUPTIBLE状态。内核自2.6.25版本起引入了一种新的状态即TASK_KILLABLE状态。可中断的睡眠状态太容易被信号打断，与之对应，不可中断的睡眠状态完全不可以被信号打断，又容易失控，两者都失之极端。而内核新引入的TASK_KILLABLE状态则介于两者之间，是一种调和状态。该状态行为上类似于TASK_UNINTERRUPTIBLE状态，但是进程收到致命信号（即杀死一个进程的信号）时，进程会被唤醒。
+
+上面的例子中`vfork`创建子进程之后，`ps`显示父进程处于`D`的状态，却依然可以被杀死的原因就是进程并不是处于不可中断的睡眠状态，而是处于TASK_KILLABLE状态。而这种状态，是可以响应致命信号的。
+
+有了该状态，`wait_event`系列宏也增加了`killable`的变体，即`wait_event_killable`宏。该宏会将进程置为TASK_KILLABLE状态，同时睡眠在等待队列上。致命信号SIGKILL可以将其唤醒。
+
+**5.TASK_STOPPED状态和TASK_TRACED状态**
+
+TASK_STOPPED状态是一种比较特殊的状态。在第4章曾经提到过，SIGSTOP、SIGTSTP、SIGTTIN和SIGTTOU等信号会将进程暂时停止，停止后进程就会进入到该状态。上述4种信号中的SIGSTOP具有和SIGKILL类似的属性，即不能忽略，不能安装新的信号处理函数，不能屏蔽等。当处于TASK_STOPPED状态的进程收到SIGCONT信号后，可以恢复进程的执行（如图5-8所示）。
 
 ![](image/2024-04-30-17-44-16.png)
 
+TASK_TRACED是被跟踪的状态，进程会停下来等待跟踪它的进程对它进行进一步的操作。如何才能制造出处于TASK_TRACED状态的进程呢？最简单的例子是用`gdb`调试程序，当进程在断点处停下来时，此时进程处于该状态。下面用一个最简单的`hello`程序来验证`gdb`停下的程序的确处于TASK_TRACED的状态。在一个终端，gdb将程序停下，停在断点处：
 
+```c
+Breakpoint 1, main () at hello.c:6
+6        printf("hello world\n");
+```
 
+在另一个终端查看进程的状态：
 
+```shell
+manu@manu-hacks:~$ ps ax  |grep hello
+  3768 pts/2    S+     0:00 gdb ./hello
+  3770 pts/2    t      0:00 /home/manu/code/me/c/hello
+manu@manu-hacks:~$ cat /proc/3770/status
+Name:    hello
+State:    t (tracing stop)
+```
 
+TASK_TRACED和TASK_STOPPED状态的类似之处是都处于暂停状态，不同之处是TASK_TRACED不会被SIGCONT信号唤醒。只有调试进程通过`ptrace`系统调用，下达PTRACE_CONT、PTRACE_DETACH等指令，或者调试进程退出，被调试的进程才能恢复TASK_RUNNING的状态。
 
+**6.EXIT_ZOMBIE状态和EXIT_DEAD状态**
 
+EXIT_ZOMBIE和EXIT_DEAD是两种退出状态，严格说来，它们并不是运行状态。当进程处于这两种状态中的任何一种时，它其实已经死去了。内核会将这两种状态记录在进程描述符的`exit_state`中，不过不想细分的话，可以笼统地说进程处于TASK_DEAD状态。
 
+两种状态的区别在于，如果父进程没有将SIGCHLD信号的处理函数重设为SIG_IGN，或者没有为SIGCHLD设置SA_NOCLDWAIT标志位，那么子进程退出后，会进入僵尸状态等待父进程或`init`进程来收尸，否则直接进入EXIT_DEAD。如果不停留在僵尸状态，进程的退出是非常快的，因此很难观察到一个进程是否处于EXIT_DEAD状态。
 
 
 ### 观察进程状态
 
+在proc文件系统中，在/proc/PID/status中，记录了PID对应进程的状态信息。其中State项记录了该进程的瞬时状态。因为进程状态是不断迁移变化的，所以读出来的结果是瞬时的值。
 
+```shell
+manu@manu-rush:~$ cat /proc/1/status
+Name:    init
+State:    S (sleeping)
+```
 
+procfs中，进程的状态有几种可能的值呢？一起去查看内核的源码。在fs/proc/array.c中，定义了所有可能的值，定义如下：
 
+```c
+static const char * const task_state_array[] = {
+    "R (running)",      /*   0 */
+    "S (sleeping)",      /*   1 */
+    "D (disk sleep)",   /*   2 */
+    "T (stopped)",       /*   4 */
+    "t (tracing stop)", /*   8 */
+    "Z (zombie)",        /*  16 */
+    "X (dead)",     /*  32 */
+    "x (dead)",     /*  64 */
+    "K (wakekill)",     /* 128 */
+    "W (waking)",       /* 256 */
+};
+```
+
+这几种状态都会从procfs中出现吗？并非如此。
+
+```c
+static inline const char *get_task_state(struct task_struct *tsk)
+{
+    unsigned int state = (tsk->state & TASK_REPORT) | tsk->exit_state;
+    const char * const *p = &task_state_array[0];
+    BUILD_BUG_ON(1 + ilog2(TASK_STATE_MAX) != ARRAY_SIZE(task_state_array));
+    while (state) {
+        p++;
+        state >>= 1;
+    }
+    return *p;
+}
+```
+
+只有在TASK_REPORT宏出现的状态加上两个退出状态时，才能出现在procfs中：
+
+```c
+#define TASK_REPORT     (TASK_RUNNING | TASK_INTERRUPTIBLE | \     TASK_UNINTERRUPTIBLE | __TASK_STOPPED | \
+             __TASK_TRACED)
+```
+
+从TASK_REPORT宏中可以看出，并没有TASK_DEAD、TASK_WAKEKILL和TASK_WAKING，也就是说在procfs中，无法观察到下面这三个值，它们从不出现：
+
+```c
+        "x (dead)",             /*  64 */
+        "K (wakekill)",         /* 128 */
+        "W (waking)",           /* 256 */
+```
+
+在vfork那个例子中，在procfs中查询进程状态时，父进程处于D（disk sleep）状态，而并没有出现K（wakekill），原因就在于此。
+
+那么是时候记住，会在procfs中出现的进程状态了：
+
+```c
+        "R (running)",
+        "S (sleeping)",
+        "D (disk sleep)",
+        "T (stopped)",
+        "t (tracing stop)",
+        "Z (zombie)",
+        "X (dead)",
+```
+
+这就是传统的进程7状态，如表5-2所示。
+![](image/2024-05-01-08-46-56.png)
+
+（注：在此处，TASK_STOPPED应为__TASK_STOPPED，为了防止产生不必要的困扰，不做严格区分。）（注：在此处，TASK_TRACED应为__TASK_TRACED，为了防止产生不必要的困扰，不做严格区分。）
 
 
 
 ## 进程调度概述
 
+进程调度，是任何一个现代操作系统都要解决的问题，它是操作系统相当重要的一个组成部分。首先需要理解的一点是，进程调度器是对处于可运行（TASK_RUNNING）状态的进程进行调度，如果进程并非TASK_RUNNING的状态，那么该进程和进程调度是没有关系的。Linux是多任务的操作系统，所谓多任务是指系统能够同时并发地执行多个进程，哪怕是单处理器系统。在单处理器系统上支持多任务，会给用户多个进程同时跑的幻觉，事实上多个进程仅仅是轮流使用CPU资源。只有在多处理器系统中，多个进程才能真正地做到同时、并行地执行。多任务系统可以根据是否支持抢占分成两类：非抢占式多任务和抢占式多任务。在非抢占式多任务的系统中，下一个任务被调度的前提是当前进程主动让出CPU的使用权，因此非抢占式多任务又称为合作型多任务。而抢占式多任务由操作系统来决定进程调度，在某些时间点上，操作系统可以将正在运行的进程调度出去，选择其他进程来执行。毫无疑问，Linux属于抢占式多任务系统。事实上，大多数的现代操作系统都是抢占式的多任务系统。
+
+CPU是一种关键的系统资源。在普通PC上CPU的核数不过4核、8核等，在服务器上可能有16核、32核甚至更多。在系统负载始终比较轻（即可运行状态的进程不多）的情况下，进程调度的重要性并不大。但是如果系统的负载很高，有几百上千的进程处于可运行的状态，那么一套合理高效的调度算法就非常重要了。此外，不同的进程之间，其行为模式可能存在着巨大的差异。进程的行为模式可以粗略地分成两类：CPU消耗型（CPU bound）和I/O消耗型（I/O bound）。所谓CPU消耗型是指进程因为没有太多的I/O需求，始终处于可运行的状态，始终在执行指令。而I/O消耗型是指进程会有大量I/O请求（比如等待键盘键入、读写块设备上的文件、等待网络I/O等），它处于可执行状态的时间不多，而是将更多的时间耗费在等待上。当然这种划分方法并非绝对的，可能有些进程某段时间表现出CPU消耗型的特征，另一段时间又表现出I/O消耗型的特征。还有另外一种进程分类的方法，如下。
+
+·交互型进程：这种类型的进程有很多的人机交互，进程会不断地陷入休眠状态，等待键盘和鼠标的输入。但是这种进程对系统的响应时间要求非常高，用户输入之后，进程必须被及时唤醒，否则用户就会觉得系统反应迟钝。比较典型的例子是文本编辑程序和图形处理程序等。·批处理型进程：这类进程和交互型的进程相反，它不需要和用户交互，通常在后台执行。这样的进程不需要及时的响应。比较典型的例子是编译、大规模科学计算等，一般来说，这种进程总是“被侮辱的和被损害的”。·实时进程：这类进程优先级比较高，不应该被普通进程和优先级比它低的进程阻塞。一般需要比较短的响应时间。系统之中，有很多性格各异的进程，这就增加了设计调度器的难度。有一个很有意思的比喻来描述调度器的困境[插图]：Linux内核调度器就像处境尴尬的主妇，满足孩子对晚餐的要求便有可能会伤害到老人的食欲，做出一桌让男女老少都满意的饭菜实在是太难了。设计一个优秀的进程调度器绝不是一件容易的事情，它还有很多事情需要考虑，很多目标需要达成：
+
+·公平：每一个进程都可以获得调度的机会，不能出现“饿死”的现象。·良好的调度延迟：尽量确保进程在一定的时间范围内，总能够获得调度的机会。·差异化：允许重要的进程获得更多的执行时间。·支持软实时进程：软实时进程，比普通进程具有更高的优先级。·负载均衡：多个CPU之间的负载要均衡，不能出现一些CPU很忙，而另一些CPU很闲的情况。·高吞吐量：单位时间内完成的进程个数尽可能多。·简单高效：调度算法要高效。不应该在调度上花费太长的时间。·低耗电量：在系统并不繁忙的情况下，降低系统的耗电量。在对称多处理器（SMP）的系统上，存在着多个处理器，那么所有处于可运行状态的进程是应该位于一个队列上，还是每个处理器都要有自己的队列？这大概是进程调度首先要解决的问题。
+
+目前Linux采用的是每个CPU都要有自己的运行队列，即per cpu run queue。每个CPU去自己的运行队列中选择进程，这样就降低了竞争。这种方案还有另外一个好处：缓存重利用。某个进程位于这个CPU的运行队列上，经过多次调度之后，内核趋于选择相同的CPU执行该进程。这种情况下上次运行的变量很可能仍然在CPU的缓存中，这样就提升了效率。所有的CPU共用一个运行队列这种方案的弊端是显而易见的，尤其是在CPU数目很多的情况下。我们可以想象一下如果存在1024个CPU，都要去同一个运行队列取下一个调度的进程，这种竞争无疑会降低调度器的性能。但是凡事无绝对，没有最好的，只有最适合的。对于CPU核数比较少的桌面应用来说，只有一个运行队列的Brain Fuck Scheduler（脑残调度器）却表现的异常出色。[插图][插图]
+
+Linux选择了每一个CPU都有自己的运行队列这种解决方案。这种选择也带来了一种风险：CPU之间负载不均衡，可能出现一些CPU闲着而另外一些CPU忙不过来的情况。为了解决这个问题，load_balance就闪亮登场了。load_balance的任务就是在一定的时机下，通过将任务从一个CPU的运行队列迁移到另一个CPU的运行队列，来保持CPU之间的负载均衡。进程调度具体要做哪些事情呢？概括地说，进程调度的职责是挑选下一个执行的进程，如果下一个被调度到的进程和调度前运行的进程不是同一个，则执行上下文切换，将新选择的进程投入运行。下面根据调度的入口点函数schedule（）来看下进程调度做了哪些事情，代码如下：
+
+```c
+asmlinkage void __sched schedule(void)
+{
+    struct task_struct *tsk = current;
+    sched_submit_work(tsk);
+    __schedule();
+}
+static void __sched __schedule(void)
+{
+    struct task_struct *prev, *next;
+    unsigned long *switch_count;
+    struct rq *rq;
+    int cpu;
+need_resched:
+    preempt_disable();
+    cpu = smp_processor_id();
+    rq = cpu_rq(cpu);
+    rcu_note_context_switch(cpu);
+    prev = rq->curr;
+    schedule_debug(prev);
+    if (sched_feat(HRTICK))
+        hrtick_clear(rq);
+    raw_spin_lock_irq(&rq->lock);
+    switch_count = &prev->nivcsw;
+    if (prev->state && !(preempt_count() & PREEMPT_ACTIVE)) {
+        if (unlikely(signal_pending_state(prev->state, prev))) {
+            prev->state = TASK_RUNNING;
+        } else {
+            /*先前的进程不再处于可执行状态，需要将其从运行队列中移除出去*/
+            deactivate_task(rq, prev, DEQUEUE_SLEEP);
+            prev->on_rq = 0;
+            if (prev->flags & PF_WQ_WORKER) {
+                struct task_struct *to_wakeup;
+                to_wakeup = wq_worker_sleeping(prev, cpu);
+                if (to_wakeup)
+                    try_to_wake_up_local(to_wakeup);
+            }
+        }
+        switch_count = &prev->nvcsw;
+    }
+    /*调度之前的准备工作*/
+    pre_schedule(rq, prev);/*当前CPU运行队列上没有可运行的进程了，太闲了，需要负载均衡*/
+    if (unlikely(!rq->nr_running))
+        idle_balance(cpu, rq);
+    /*将被抢占的进程放入指定的合适的位置*/
+    put_prev_task(rq, prev);
+    /*挑选下一个执行的进程*/
+    next = pick_next_task(rq);
+    /*清除被抢占进程的需要调度的标志位*/
+    clear_tsk_need_resched(prev);
+    rq->skip_clock_update = 0;
+    /*如果选中的进程与原进程不是同一个进程，则需要上下文切换*/
+    if (likely(prev != next)) {
+        rq->nr_switches++;
+        rq->curr = next;
+        ++*switch_count;
+        /*上下文切换，切换之后，新选中的进程投入执行*/
+        context_switch(rq, prev, next);
+        cpu = smp_processor_id();
+        rq = cpu_rq(cpu);
+    } else
+        raw_spin_unlock_irq(&rq->lock);
+    post_schedule(rq);
+    preempt_enable_no_resched();
+    if (need_resched())
+        goto need_resched;
+}
+```
+
+Linux是可抢占式内核（Preemptive Kernel），从内核2.6版本开始，Linux不仅支持用户态抢占，也开始支持内核态抢占。可抢占式内核的优势在于可以保证系统的响应时间。当高优先级的任务一旦就绪，总能及时得到CPU的控制权。但是很明显，内核抢占不能随意发生，某些情况下是不允许发生内核抢占的。因此为了更好地支持内核抢占，内核为每一个进程的thread_info引入了preempt_count计数器，数值为0时表示可以抢占，当该计数器的值不为0时，表示禁止抢占。并不是所有的时机都允许发生内核抢占。以自旋锁为例，在内核可抢占的系统中，自旋锁持有期间不允许发生内核抢占，否则可能会导致其他CPU长期不能获得锁而死等。因此在spin_lock函数中（通过__raw_spin_lock），会调用preempt_disable宏，而该宏会将进程preempt_count计数器的值加1，表示不允许抢占。同样的道理，解锁的时候，会将preempt_count的值减1（通过preempt_enable宏）。
+
+```c
+static inline void __raw_spin_lock(raw_spinlock_t *lock)
+{
+    preempt_disable();
+    spin_acquire(&lock->dep_map, 0, 0, _RET_IP_);
+    LOCK_CONTENDED(lock, do_raw_spin_trylock, do_raw_spin_lock);
+}
+```
+
+preempt_count的Bit 28是一个很重要的标志位，即PREEMPT_ACTIVE。该标志位用来标记是否正在进行内核抢占。很明显，设置了该标志位之后，preempt_count就不再为0了，因此也就不允许再次发生内核抢占，从而使得正在执行抢占工作的代码不会再次被抢占。内核的preempt_schedule函数是内核抢占时呼叫调度器的入口，它会调用__schedule函数发起调度。在调用__schedule函数之前，会设置进程的PREEMPT_ACTIVE标志位，表示这是从抢占过程中进入__schedule函数的。
+
+```c
+asmlinkage void __sched notrace preempt_schedule(void)
+{
+    struct thread_info *ti = current_thread_info();
+    if (likely(ti->preempt_count || irqs_disabled()))
+        return;
+    do {
+        add_preempt_count_notrace(PREEMPT_ACTIVE);
+        __schedule();
+        sub_preempt_count_notrace(PREEMPT_ACTIVE);
+        barrier();
+    } while (need_resched());
+}
+```
+
+在__schedule函数中，内核会检查进程的PREEMPT_ACTIVE标志位，如果发现了该标志位置位，就不会调用deactivate_task函数将其从运行队列中移除。PREEMPT_ACTIVE标志位有一个非常重要的作用，即防止不处于TASK_RUNNING状态的进程被抢占过程错误地从运行队列中移除。这句话非常地绕，我们结合__schedule函数的对应代码来分析该标志位的作用。
+
+```c
+    if (prev->state && !(preempt_count() & PREEMPT_ACTIVE)) {
+        if (unlikely(signal_pending_state(prev->state, prev))) {
+            prev->state = TASK_RUNNING;
+        } else {
+            deactivate_task(rq, prev, DEQUEUE_SLEEP);
+            ...
+        }
+        ...}
+```
+
+如果进程设置了PREEMPT_ACTIVE标志位，上述代码最外层的条件就不会得到满足。这么做的用意是：如果进程是被抢占而进入了schedule函数，那么即使它不处于TASK_RUNNING状态，也不能把它从运行队列中移除。为什么这么做？从运行队列中移除不处于TASK_RUNNING状态的进程是schedule函数份内之事，为什么设置了PREEMPT_ACTIVE标志位就不能移除呢？原因是进程从TASK_RUNNING变成其他状态，是一个过程，在这个过程中可能发生抢占。试想如下场景：一个进程刚把自己设置成TASK_INTERRUPTIBLE，它就被抢占了。因为这时候它还没来得及调用schedule（）主动交出CPU控制权，仍然在CPU上执行，这就是非TASK_RUNNING状态的进程也会被抢占的场景。对于这种场景，抢占流程不应擅自将其从运行队列中移除，因为它的切换过程并未完成。下面的代码在wait_event系列宏中不断出现，我们以它为例分析上面提到的问题：
+
+```c
+for (;;) {
+    prepare_to_wait(&wq, &__wait, TASK_UNINTERRUPTIBLE);
+    if (condition)
+        break;
+    schedule();
+}
+```
+
+执行完prepare_to_wait语句，本来是要检查条件是否满足的，如果这时候被抢占，假如没有PREEMPT_ACTIVE标志位，那么抢占过程中调用的__schedule函数就会将进程从运行队列中移除。如果本来condition条件满足了，那就错过了唤醒的机会，也许就会永远休眠了。正确的做法是，继续保留在运行队列中，后面还有机会被调度到继续运行，恢复运行后继续判断条件是否满足。上面讨论了抢占的情况，如果进程不处于TASK_RUNNING的状态，并且PREEMPT_ACTIVE并没有置位，那么就有可能会调用deactivate_task函数将其从运行队列中移除。这里说可能是因为，该进程可能存在尚未处理的信号，如果是这种情况它并不会被移除出运行队列，相反会被再次设置成TASK_RUNNING的状态，获得再次被调度到的机会。__schdule函数的基本流程如图5-9所示。流程图中带有背景色的部分都是调度框架里的hook点。内核的进程调度是模块化的，实现一个新的调度算法，只需要实现一组框架需要的钩子函数即可，内核将会在合适的时机调用这些函数。
+
+不妨以deactivate_task为例，来看下调度框架与具体调度算法中的函数之间的关系。deactivate_task函数的职责可以顾名思义，即进程不再处于TASK_RUNNING的状态，需要将其从对应的运行队列中移除。因此其实现为：
+
+```c
+static void deactivate_task(struct rq *rq, struct task_struct *p, int flags)
+{
+    if (task_contributes_to_load(p))
+        rq->nr_uninterruptible++;
+    dequeue_task(rq, p, flags);
+}
+static void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
+{
+    update_rq_clock(rq);
+    sched_info_dequeued(p);
+    p->sched_class->dequeue_task(rq, p, flags);
+}
+```
+
+内核会调用进程所属调度类的dequeue_task函数，至于调度类的dequeue_task函数具体做了哪些事情，完全由具体的调度类来决定。
+![](image/2024-05-01-08-50-15.png)
+
+调用schedule函数时，当前进程可能仍然处于可运行的状态（主动让出CPU或被其他进程抢占），因此选择下一个占用CPU的进程之前，需要调用put_prev_task函数。该函数的目的是，当前进程被调度出去之前，留给具体调度算法一个时机来更新内部的状态（如图5-9所示）。和deactivate_task函数一样，根据当前进程所属的调度类，调用具体的put_prev_task函数。
+
+```c
+static void put_prev_task(struct rq *rq, struct task_struct *prev)
+{
+    if (prev->on_rq || rq->skip_clock_update < 0)
+        update_rq_clock(rq);
+    prev->sched_class->put_prev_task(rq, prev);
+}
+```
+
+Linux内核实现了如下4种调度类：·stop_sched_class：停止类·rt_sched_class：实时类·fair_sched_class：完全公平调度类·idle_sched_class：空闲类这4种调度类是按照优先级顺序排列的，停止类（stop_sched_class）具有最高的调度优先级，与之对应的，空闲类（idle_sched_class）具有最低的调度优先级。进程调度器挑选下一个执行的进程时，会首先从停止类中挑选进程，如果停止类中没有挑选到可运行的进程，再从实时类中挑选进程，依此类推。pick_next_task函数负责挑选下一个运行的进程，从其实现逻辑中可以看出，系统是按照优先级顺序从调度类中挑选进程的（如图5-10所示）。
+
+```c
+static inline struct task_struct *
+pick_next_task(struct rq *rq)
+{
+    const struct sched_class *class;
+    struct task_struct *p;
+    /*此处是优化，若所有任务都属于公平类，则直接从公平类中挑选下一个类*/
+    if (likely(rq->nr_running == rq->cfs.h_nr_running)) {
+        p = fair_sched_class.pick_next_task(rq);
+        if (likely(p))
+            return p;
+    }
+    /*按照调度类的优先级，从高到低挑选下一个进程，直到挑选到为止*/
+    for_each_class(class) {
+        p = class->pick_next_task(rq);
+        if (p)
+            return p;
+    }
+    ...
+}
+```
+
+图5-10　进程调度类优先级次序
+
+
+![](image/2024-05-01-08-50-33.png)
+
+优先级最高的停止类进程，主要用于多个CPU之间的负载均衡和CPU的热插拔，它所做的事情就是停止正在运行的CPU，以进行任务的迁移或插拔CPU。优先级最低的空闲类，负责将CPU置于停机状态，直到有中断将其唤醒。idle_sched_class类的空闲任务只有在没有其他任务的时候才能被执行。每一个CPU只有一个停止任务和一个空闲任务。从上面的职责描述也可以看出，这两种调度类属于诸神之战，和应用层的关系并不大。应用层无法将进程设置成停止类进程或空闲类进程。和应用层关系比较密切的两种调度类是实时类和完全公平调度类，尤其是完全公平调度类。
+
+
+
 ## 普通进程的优先级
+
+本节将停留在进程调度版图中的完全公平调度类（Completely Fair Scheduler，简称CFS）上。事实上，除非将Linux用在特定的领域，否则在大部分时间里所有可运行的进程都属于完全公平调度类。从内核代码pick_next_task函数（该函数负责挑选下一个进程放到CPU上执行）中所做的优化可见一斑。Linux是多任务系统，在存在多个可运行进程的情况下，系统不能放任当前进程始终占着CPU。每个进程运行多长时间，是任何一个调度算法都不能回避的问题。传统的调度算法面临着一种困境，那就是时间片到底多大才合适？如果时间片太大，进程执行前需要等待的时间就会变长，当CPU运行队列上可运行进程的个数比较多的时候尤为明显，用户可能会感觉到明显的延迟。如果时间片太短，进程调度的频率就会增加，考虑到上下文切换也需要花费时间，可以想见，大量的时间都浪费到了进程调度上。
+
+完全公平调度，使用了一种动态时间片的算法。它给每个进程分配了使用CPU的时间比例。进程调度设计上，有一个很重要的指标是调度延迟，即保证每一个可运行的进程都至少运行一次的时间间隔。比如调度延迟是20毫秒，如果运行队列上只有2个同等优先级的进程，那么可以允许每个进程执行10毫秒，如果运行队列上是4个同等优先级的进程，那么，每个进程可以运行5毫秒。如果可运行的进程比较少，采用这种算法则没有问题。可是如果运行队列上有200个同等优先级的进程怎么办？每个进程运行0.1毫秒？这可不是个好主意。因为时间片太小，进程调度过于频繁，上下文切换的开销就不能忽视了。为了应对这种情况，完全公平调度提供了另一种控制方法：调度最小粒度。调度最小粒度指的是任一进程所运行的时间长度的基准值。任何一个进程，只要分配到了CPU资源，都至少会执行调度最小粒度的时间，除非进程在执行过程中执行了阻塞型的系统调用或主动让出CPU资源（通过sched_yield调用）。
+
+在Linux操作系统中，调度延迟被称为sysctl_sched_latency，记录在/proc/sys/kernel/sched_latency_ns中，而调度最小粒度被称为sysctl_sched_min_granularity，记录在/proc/sys/kernel/sched_min_granularity_ns中，两者的单位都是纳秒。
+
+```shell
+cat /proc/sys/kernel/sched_latency_ns
+12000000
+cat /proc/sys/kernel/sched_min_granularity_ns
+1500000
+```
+
+调度延迟和调度最小粒度综合起来看是比较有意思的，它反映了在调度延迟内允许的最大活动进程数目。这个值被称为sched_nr_latency。如果运行队列上可运行状态的进程太多，超出了该值，调度最小粒度和调度延迟两个目标则不可能被同时实现。内核并没有提供参数来指定sched_nr_latency，它的值完全是由调度延迟和调度最小粒度来决定的。计算公式如下：
+![](image/2024-05-01-09-11-51.png)
+
+![](image/2024-05-01-09-12-10.png)
+
+
+
+
+
+
+
 
 ## 完全公平调度的实现
 
@@ -1932,26 +2451,72 @@ struct __wait_queue {
 ### 时间片和虚拟运行时间
 
 
+![](image/2024-05-01-09-15-12.png)
+
+![](image/2024-05-01-09-15-27.png)
+
+
+![](image/2024-05-01-09-15-46.png)
+
+
+
 
 ### 周期性调度任务
+
+
+![](image/2024-05-01-09-16-05.png)
+
 
 
 
 ### 新进程的加入
 
 
+![](image/2024-05-01-09-16-33.png)
+
+
+![](image/2024-05-01-09-16-54.png)
+
+
+
 
 ### 睡眠进程醒来
 
 
+![](image/2024-05-01-09-17-13.png)
+
+
+![](image/2024-05-01-09-17-28.png)
+
+
+![](image/2024-05-01-09-17-43.png)
+
+
+![](image/2024-05-01-09-17-57.png)
+
+
+![](image/2024-05-01-09-18-11.png)
+
+
+
+
 
 ### 唤醒抢占
+
+![](image/2024-05-01-09-18-33.png)
 
 
 
 
 
 ## 普通进程的组调度
+
+![](image/2024-05-01-09-19-04.png)
+
+![](image/2024-05-01-09-19-18.png)
+
+![](image/2024-05-01-09-19-31.png)
+
 
 ## 实时进程
 
