@@ -52,17 +52,52 @@ API 集成是通过API把不同的软件应用、系统或服务联结在一起�
 
   RAM角色是一种虚拟用户，可以被授予一组权限策略。与RAM用户不同，RAM角色没有永久身份凭证（登录密码或访问密钥），需要被一个可信实体扮演。扮演成功后，可信实体将获得RAM角色的临时身份凭证，即安全令牌（STS Token），使用该安全令牌就能以RAM角色身份访问被授权的资源。
 
-  例如：阿里云账号 A 开放了一个 RAM 角色*a_rr1*，授权 OSS 产品的`FullAccess`，将该 RAM 角色的扮演者指定为阿里云账号 B 的 RAM 用户*b_ru1*。那么开发者可通过登录 B 账号的 RAM 用户*b_ru1*，通过角色扮演 A 账号的*a_rr1*，管理 A 账号的 OSS 资源。
-
-  更多详情，请参见[RAM角色概览](https://help.aliyun.com/zh/ram/user-guide/ram-role-overview)。
+  例如：阿里云账号 A 开放了一个 RAM 角色`a_rr1`，授权 OSS 产品的`FullAccess`，将该 RAM 角色的扮演者指定为阿里云账号 B 的 RAM 用户`b_ru1`。那么开发者可通过登录 B 账号的 RAM 用户`b_ru1`，通过角色扮演 A 账号的`a_rr1`，管理 A 账号的 OSS 资源。
 
 
+## 凭据
+
+凭据是指用户证明其身份的一组信息。用户在系统中进行登录时，需要提供正确的凭据才能验证身份。常见的凭据类型有：
+
+- 阿里云主账号和RAM用户的永久凭据 AccessKey（简称AK）。一组由AccessKey ID和AccessKey Secret组成的密钥对。
+
+  **警告**
+
+  由于主账号 AK 有资源完全的权限，一旦泄露风险巨大。建议您使用RAM用户的AccessKey，并设置定期轮换，创建RAM用户AccessKey的方法请参见[创建AccessKey](https://help.aliyun.com/zh/ram/user-guide/create-an-accesskey-pair)。
+
+- 阿里云RAM角色的STS临时访问Token，简称STS Token。它是可以自定义时效和访问权限的临时身份凭据，更多详情，请参见[什么是STS](https://help.aliyun.com/zh/ram/product-overview/what-is-sts)。
+
+  **说明**
+
+  临时身份凭证只有一定的时效，若过期失效，需要再次调用 STS 获取最新的 STS Token。
+
+- Bearer Token。它是一种身份验证和授权的令牌类型。目前只有云呼叫中心[CCC](https://api.aliyun.com/api/CCC/2020-07-01/ListPrivilegesOfUser)这款产品支持Bearer Token的凭据初始化方式。您可在***鉴权方式配置\***选择Bearer Token方式。
+
+凭据如果发生泄漏，可能会给云上资源及业务带来巨大的安全隐患，日常运维管理要尤其注意凭据的安全使用。更多详情，请参见[凭据的安全使用方案](https://help.aliyun.com/zh/openapi/accesskey-security-solution)。
+
+## 授权
 
 
 
+# 服务接入点
 
+## 服务接入点（Endpoint）
 
+服务接入点是访问阿里云服务的入口点，分公网接入地址和VPC接入地址。服务接入点通常是一个 URL，它指定了服务的访问协议、主机名、端口和路径等信息，客户端可以使用这些信息与服务进行通信。比如 `https://ram.aliyuncs.com`就是[访问控制 RAM](https://help.aliyun.com/zh/ram/product-overview/what-is-ram) 对外提供的服务接入点。
 
+## 公网接入地址 & VPC接入地址
 
+公网接入地址在全球都可访问。VPC接入地址只有在阿里云对应的地域内，且是VPC网络类型才可访问。
 
+VPC地址的好处：
 
+- 高安全性：VPC服务地址只能在VPC内部访问，提供更高的安全性和隐私性。
+- 更快的响应速度：由于VPC服务地址在VPC内部网络中运行，其响应速度通常比公网服务更快，且可以避免公网延迟和带宽限制等问题。
+- 更低的成本：VPC服务地址可以使用内部网络通信。
+
+## 部署类型&接入点域名
+
+一个云产品将服务部署在一个地域，称之为中心化部署；将服务部署在多个地域，则称之为区域化部署。不论是什么类型的部署，云服务都提供了Endpoint作为OpenAPI的入口。
+
+- 对于中心化部署，它的Endpoint为 `<service code>.aliyuncs.com` 的形式。以IMS为例，它的Endpoint是 `ims.aliyuncs.com`。
+- 对于区域化部署，它的Endpoint为 `<service code>.<region id>.aliyuncs.com` 的形式。以STS为例，它在杭州的Endpoint为 `sts.cn-hangzhou.aliyuncs.com` ，在北京的Endpoint为 `sts.cn-beijing.aliyuncs.com`。
