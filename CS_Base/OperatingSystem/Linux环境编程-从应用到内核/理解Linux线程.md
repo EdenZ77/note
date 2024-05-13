@@ -422,13 +422,13 @@ int pthread_attr_getstacksize(pthread_attr_t *attr,size_t *stacksize);
 
 有生就有灭，线程执行完任务，也需要终止。下面的三种方法中，线程会终止，但是进程不会终止（如果线程不是进程组里的最后一个线程的话）：
 
-- 创建线程时的start_routine函数执行了return，并且返回指定值。
-- 线程调用pthread_exit。
-- 其他线程调用了pthread_cancel函数取消了该线程（详见第8章）。
+- 创建线程时的`start_routine`函数执行了`return`，并且返回指定值。
+- 线程调用`pthread_exit`。
+- 其他线程调用了`pthread_cancel`函数取消了该线程（详见第8章）。
 
-如果线程组中的任何一个线程调用了exit函数，或者主线程在main函数中执行了return语句，那么整个线程组内的所有线程都会终止。
+如果线程组中的任何一个线程调用了`exit`函数，或者主线程在`main`函数中执行了`return`语句，那么整个线程组内的所有线程都会终止。
 
-值得注意的是，pthread_exit和线程启动函数（start_routine）执行return是有区别的。在start_routine中调用的任何层级的函数执行pthread_exit（）都会引发线程退出，而return，只能是在start_routine函数内执行才能导致线程退出。
+值得注意的是，`pthread_exit`和线程启动函数（start_routine）执行`return`是有区别的。在`start_routine`中调用的任何层级的函数执行`pthread_exit()`都会引发线程退出，而`return`，只能是在`start_routine`函数内执行才能导致线程退出。
 
 ```c
 void* start_routine(void* param)
@@ -445,15 +445,317 @@ void foo()
 }
 ```
 
+如果`foo`函数执行了`pthread_exit`函数，则线程会立刻退出，后面的`bar`就会没有机会执行了。
 
+下面来看看`pthread_exit`函数的定义：
+
+```c
+#include <pthread.h>
+void pthread_exit(void *value_ptr);
+```
+
+`value_ptr`是一个指针，存放线程的“临终遗言”。线程组内的其他线程可以通过调用`pthread_join`函数接收这个地址，从而获取到退出线程的临终遗言。如果线程退出时没有什么遗言，则可以直接传递NULL指针，如下所示：
+
+```c
+pthread_exit(NULL);
+```
+
+但是这里有一个问题，就是不能将遗言存放到线程的局部变量里，因为如果用户写的线程函数退出了，线程函数栈上的局部变量可能就不复存在了，线程的临终遗言也就无法被接收者读到，示例如下。
+
+```c
+void* thread_work(void* param)
+{
+    int ret = -1;
+    ret = whatever();
+    pthread_exit(&ret);
+}
+```
+
+上述用法是一种典型的错误用法，因为当线程退出时，线程栈已经不复存在了，上面的`ret`变量也已经无法访问了。那我们应该如何正确地传递返回值呢？
+
+- 如果是int型的变量，则可以使用`pthread_exit((int*)ret);`。
+- 使用全局变量返回。
+- 将返回值填入到用`malloc`在堆上分配的空间里。
+- 使用字符串常量，如`pthread_exit(“hello，world”)`。
+
+第一种是tricky的做法，我们将返回值ret进行强制类型转换，接收方再把返回值强制转换成int。但是不推荐使用这种方法。这种方法虽然是奏效的，但是太tricky，而且C标准没有承诺将int型转成指针后，再从指针转成int型时，数据一直保持不变。
+
+第二种方法使用全局变量，其他线程调用`pthread_join`时也可见这个变量。
+
+第三种方法是用`malloc`，在堆上分配空间，然后将返回值填入其中。因为堆上的空间不会随着线程的退出而释放，所以`pthread_join`可以取出返回值。切莫忘记释放该空间，否则会引起内存泄漏。
+
+第四种方法之所以可行，是因为字符串常量有静态存储的生存期限。
+
+传递线程的返回值，除了`pthread_exit`函数可以做到，线程的启动函数（`start_routine`函数）`return`也可以做到，两者的数据类型要保持一致，都是`void*`类型。这也解释了为什么线程的启动函数`start_routine`的返回值总是`void*`类型，如下：
+
+```c
+void pthread_exit(void *retval);
+void * start_routine(void *param)
+```
+
+线程退出有一种比较有意思的场景，即线程组的其他线程仍在执行的情况下，主线程却调用`pthread_exit`函数退出了。这会发生什么事情？
+
+在多线程编程中，当主线程（即程序的初始线程）调用`pthread_exit`函数退出，但其他线程仍在执行时，将发生以下情况： 
+
+1. **主线程退出，但进程不退出：** 主线程的退出并不会导致整个进程退出。`pthread_exit`函数会结束调用它的线程，如果这个线程是主线程，那么主线程会结束执行，但是进程中的其他线程会继续执行。 
+2. **进程继续运行：** 既然进程还有未终止的线程在运行，整个进程就会继续运行。这意味着操作系统会保持该进程的存在，直至所有线程都终止。 
+3. **资源回收和清理：** 当主线程调用`pthread_exit`时，它会释放自己占用的部分资源，比如栈内存。但是，由于进程仍然存在，因此进程级别的资源，比如打开的文件描述符、堆内存等，将会继续存在直到进程结束。 
+4. **进程的最终退出：** 当进程中最后一个线程结束时，或者任一线程调用`exit()`函数，或者主线程调用`pthread_exit`后，某一线程调用`exit()`或`_exit()`函数，此时整个进程才会结束，操作系统会回收进程占用的所有资源。 
+5. **exit()与pthread_exit()的区别：** 如果主线程调用`exit()`、`_exit()`、或者`return`来退出，那么整个进程将立即结束，包括所有的子线程。而`pthread_exit`仅仅结束调用它的线程，对其他线程没有直接影响。 
+6. **主线程等待其他线程：** 在某些场景下，主线程可能会在调用`pthread_exit`之前先调用`pthread_join`或者其他同步机制（如条件变量等），以等待其他线程完成它们的执行。这是一种优雅退出的方式，确保所有线程都可以完成它们的任务。 
+
+总的来说，主线程调用`pthread_exit`而退出时，其他线程仍将继续执行，直到它们自然结束或者被显式地终止。这一行为模式给了多线程程序更大的灵活性和控制力。
 
 # 线程的连接与分离
+
+## 线程的连接
+
+7.5节提到过线程退出时是可以有返回值的，那么如何取到线程退出时的返回值呢？
+
+线程库提供了`pthread_join`函数，用来等待某线程的退出并接收它的返回值。这种操作被称为连接（joining）。
+
+相关函数的接口定义如下：
+
+```c
+#include <pthread.h>
+int pthread_join(pthread_t thread, void **retval);
+```
+
+该函数第一个参数为要等待的线程的线程ID，第二个参数用来接收返回值。
+
+根据等待的线程是否退出，可得到如下两种情况：
+
+- 等待的线程尚未退出，那么`pthread_join`的调用线程就会陷入阻塞。
+- 等待的线程已经退出，那么`pthread_join`函数会将线程的退出值（`void*`类型）存放到`retval`指针指向的位置。
+
+线程的连接（join）操作有点类似于进程等待子进程退出的等待（wait）操作，但细细想来，还是有不同之处：
+
+第一点不同之处是进程之间的等待只能是父进程等待子进程，而线程则不然。线程组内的成员是对等的关系，只要是在一个线程组内，就可以对另外一个线程执行连接（join）操作。如图7-9所示，线程F一样可以连接线程A。
+
+<img src="image/image-20240513214104724.png" alt="image-20240513214104724" style="zoom:67%;" />
+
+第二点不同之处是进程可以等待任一子进程的退出（用下面的代码不难做到），但是线程的连接操作没有类似的接口，即不能连接线程组内的任一线程，必须明确指明要连接的线程的线程ID。
+
+```c
+wait(&status);
+waitpid(-1,&status,optioins)
+```
+
+`pthread_join`不能连接线程组内任意线程的做法，并不是NPTL线程库设计上的瑕疵，而是有意为之的。如果听任线程连接线程组内的任意线程，那么所谓的任意线程就会包括其他库函数私自创建的线程，当库函数尝试连接（join）私自创建的线程时，发现已经被连接过了，就会返回EINVAL错误。如果库函数需要根据返回值来确定接下来的流程，这就会引发严重的问题。正确的做法是，连接已知线程ID的那些线程，就像`pthread_join`函数那样。
+
+下面来分析出错的情况，当调用失败时，和`pthread_create`函数一样，errno作为返回值返回。错误码的情况见表7-7。
+
+![image-20240513215525394](image/image-20240513215525394.png)
+
+`pthread_join`函数之所以能够判断是否死锁和连接操作是否被其他线程捷足先登，是因为目标线程的控制结构体`struct pthread`中，存在如下成员变量，记录了该线程的连接者。
+
+```c
+struct pthread *joinid；
+```
+
+该指针存在三种可能，如下。
+
+- NULL：线程是可连接的，但是尚没有其他线程调用`pthread_join`来连接它。
+- 指向线程自身的`struct pthread`：表示该线程属于自我了断型，执行过分离操作，或者创建线程时，设置的分离属性为PTHREAD_CREATE_DETACHED，一旦退出，则自动释放所有资源，无需其他线程来连接。
+- 指向线程组内其他线程的`struct pthread`：表示`joinid`对应的线程会负责连接。
+
+因为有了该成员变量来记录线程的连接者，所以可以判断如下场景，如图7-10所示。
+
+<img src="image/image-20240513215658221.png" alt="image-20240513215658221" style="zoom:67%;" />
+
+不过两者还是略有区别的，第一种场景，线程A连接线程A，`pthread_join`函数一定会返回EDEADLK。但是第二种场景，大部分情况下会返回EDEADLK，不过也有例外。不管怎样，不建议两个线程互相连接。
+
+如果两个线程几乎同时对处于可连接状态的线程执行连接操作会怎么样？答案是只有一个线程能够成功，另一个则返回EINVAL。
+
+NTPL提供了原子性的保证：
+
+```c
+(atomic_compare_and_exchange_bool_acq（&pd->joined,self,NULL）
+```
+
+如果是NULL，则设置成调用线程的线程ID，CAS操作（Compare And Swap）是原子操作，不可分割，决定了只有一个线程能成功。
+
+如果joinid不是NULL，表示该线程已经被别的线程连接了，或者正处于已分离的状态，在这两种情况下，都会返回EINVAL。
+
+## 为什么要连接退出的线程
+
+不连接已经退出的线程会怎么样？如果不连接已经退出的线程，会导致资源无法释放。所谓资源指的又是什么呢？
+
+下面通过一个测试来让事实说话。测试模拟下面两种情况：
+
+- 主线程并不执行连接操作，待确定创建的第一个线程退出后，再创建第二个线程。
+- 主线程执行连接操作，等到第一个线程退出后，再创建第二个线程。
+
+按照时间线来发展，如图7-11所示。
+
+![image-20240513223013671](image/image-20240513223013671.png)
+
+下面是代码部分，为了简化程序和便于理解，使用sleep操作来确保创建的第一个线程退出后，再来创建第二个线程。须知sleep并不是同步原语，在真正的项目代码中，用sleep函数来同步线程是不可原谅的。
+
+```c
+#define _GNU_SOURCE
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <pthread.h>
+#include <string.h>
+#include <errno.h>
+#include <sys/syscall.h>
+#include <sys/types.h>
+#define NR_THREAD 1
+#define ERRBUF_LEN 4096
+void* thread_work(void* param)
+{
+    int TID = syscall(SYS_gettid);
+    printf("thread-%d IN \n",TID);
+    printf("thread-%d pthread_self return %p \n",TID,(void*)pthread_self());
+    sleep(60);
+    printf("thread-%d EXIT \n",TID);
+    return NULL;
+}
+int main(int argc ,char* argv[])
+{
+    pthread_t tid[NR_THREAD];
+    pthread_t tid_2[NR_THREAD];
+    char errbuf[ERRBUF_LEN];
+    int i, ret;
+    for(i = 0 ; i < NR_THREAD ; i++)
+    {
+        ret = pthread_create(&tid[i],NULL,thread_work,NULL);
+        if(ret != 0)
+        {
+            fprintf(stderr,"create thread failed ,return %d (%s)\n",ret,strerror_r (ret,errbuf,sizeof(errbuf)));
+        }
+    }
+#ifdef NO_JOIN
+    sleep(100);/*sleep是为了确保线程退出之后，再来重新创建线程*/
+#else
+    printf("join thread Begin\n");
+    for(i = 0 ; i < NR_THREAD; i++)
+    {
+        pthread_join(tid[i],NULL);
+    }
+#endif
+    for(i = 0 ; i < NR_THREAD ; i++)
+    {
+        ret = pthread_create(&tid_2[i],NULL,thread_work,NULL);
+        if(ret != 0)
+        {
+            fprintf(stderr,"create thread failed ,return %d (%s)\n",ret,strerror_r (ret,errbuf,sizeof(errbuf)));
+        }
+    }
+    sleep(1000);
+    exit(0);
+}
+```
+
+根据编译选项NO_JOIN，将程序编译成以下两种情况：
+
+- 编译加上`–DNO_JOIN`：主线不执行`pthread_join`，主线程通过`sleep`足够的时间，来确保第一个线程退出以后，再创建第二个线程。
+- 不加`-NO_JOIN`编译选项：主线程负责连接线程，第一个线程退出以后，再来创建第二个线程。
+
+下面按照编译选项，分别编出`pthread_no_join`和`pthread_has_join`两个程序：
+
+```shell
+gcc -o pthread_no_join pthread_join_cmp.c -DNO_JOIN –lpthread
+gcc -o pthread_has_join pthread_join_cmp.c            -lpthread
+```
+
+首先说说`pthread_no_join`的情况，当创建了第一个线程时：
+
+```shell
+manu@manu-hacks:~/code/me/thread$ ./pthread_no_join
+thread-12876 IN
+thread-12876 pthread_self return 0x7fe0c842b700
+```
+
+从输出可以看到，创建了第一个线程，其线程ID为12876，通过pmap和procfs可以看到系统为该线程分配了8MB的地址空间：
+
+```shell
+manu@manu-hacks:~$ pmap 12875 # PID
+00007fe0c7c2b000      4K -----   [ anon ]
+00007fe0c7c2c000   8192K rw---   [ anon ]
+manu@manu-hacks:~$ cat /proc/12875/maps
+7fe0c7c2b000-7fe0c7c2c000 ---p 00000000 00:00 07fe0c7c2c000-7fe0c842c000 rw-p 00000000 00:00 0                    [stack:12876]
+```
+
+当线程12876退出，创建新的线程时：
+
+```shell
+thread-12876 EXIT
+thread-13391 IN
+thread-13391 pthread_self return 0x7fe0c7c2a700
+```
+
+此时查看进程的地址空间：
+
+```shell
+00007fe0c742a000      4K -----   [ anon ]
+00007fe0c742b000   8192K rw---   [ anon ]
+00007fe0c7c2b000      4K -----   [ anon ]
+00007fe0c7c2c000   8192K rw---   [ anon ]
+7fe0c742a000-7fe0c742b000 ---p 00000000 00:00 0
+7fe0c742b000-7fe0c7c2b000 rw-p 00000000 00:00 0                     [stack:13391]
+7fe0c7c2b000-7fe0c7c2c000 ---p 00000000 00:00 07fe0c7c2c000-7fe0c842c000 rw-p 00000000 00:00 0
+```
+
+从上面的输出可以看出两点：
+
+1）已经退出的线程，其空间没有被释放，仍然在进程的地址空间之内。
+2）新创建的线程，没有复用刚才退出的线程的地址空间。
+
+如果仅仅是情况1的话，尚可以理解，但是1和2同时发生，既不释放，也不复用，这就不能忍了，因为这已经属于内存泄漏了。试想如下场景：FTP Server采用thread per connection的模型，每接受一个连接就创建一个线程为之服务，服务结束后，连接断开，线程退出。但线程退出了，线程栈消耗的空间仍不能释放，不能复用，久而久之，内存耗尽，再也不能创建线程，也无法再提供FTP服务。
+
+之所以不能复用，原因就在于没有对退出的线程执行连接操作。下面来看一下主线程调用`pthread_join`的情况：
+
+```shell
+manu@manu-hacks:~/code/me/thread$ ./pthread_has_join
+join thread Begin
+thread-14581 IN
+thread-14581 pthread_self return 0x7f726020f700
+thread-14581 EXIT
+thread-14871 IN
+thread-14871 pthread_self return 0x7f726020f700
+thread-14871 EXIT
+```
+
+两次创建的线程，`pthread_t`类型的线程ID完全相同，看起来好像前面退出的栈空间被复用了，事实也的确如此：
+
+```shell
+manu@manu-hacks:~$ cat /proc/14580/maps
+7f725fa0f000-7f725fa10000 ---p 00000000 00:00 0
+7f725fa10000-7f7260210000 rw-p 00000000 00:00 0                     [stack:14581]
+```
+
+12581退出后，线程栈被后创建的线程复用了：
+
+```shell
+manu@manu-hacks:~$ cat /proc/14580/maps
+7f725fa0f000-7f725fa10000 ---p 00000000 00:00 0
+7f725fa10000-7f7260210000 rw-p 00000000 00:00 0                     [stack:14871]
+```
+
+通过前面的比较，可以看出执行连接操作的重要性：如果不执行连接操作，线程的资源就不能被释放，也不能被复用，这就造成了资源的泄漏。
+
+当线程组内的其他线程调用`pthread_join`连接退出线程时，内部会调用`__free_tcb`函数，该函数会负责释放退出线程的资源。
+
+值得一提的是，纵然调用了`pthread_join`，也并没有立即调用`munmap`来释放掉退出线程的栈，它们是被后建的线程复用了，这是NPTL线程库的设计。释放线程资源的时候，NPTL认为进程可能再次创建线程，而频繁地`munmap`和`mmap`会影响性能，所以NTPL将该栈缓存起来，放到一个链表之中，如果有新的创建线程的请求，NPTL会首先在栈缓存链表中寻找空间合适的栈，有的话，直接将该栈分配给新创建的线程。
+
+始终不将线程栈归还给系统也不合适，所以缓存的栈大小有上限，默认是40MB，如果缓存起来的线程栈的空间总和大于40MB，NPTL就会扫描链表中的线程栈，调用`munmap`将一部分空间归还给系统。
+
+## 线程的分离
 
 
 
 
 
 # 互斥量
+
+
+
+
+
+
 
 
 
