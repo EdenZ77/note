@@ -1,7 +1,5 @@
 # 04-安装部署GitLab服务
 
-
-
 ## rpm方式
 
 源地址：https://mirrors.tuna.tsinghua.edu.cn/gitlab-ce/yum/el7/
@@ -24,32 +22,65 @@ gitlab-ctl stop
 
 
 
-
-
 ## Docker方式
-
-
 
 ```shell
 mkdir -p ~/data/gitlab/config ~/data/gitlab/logs ~/data/gitlab/data
 docker pull gitlab/gitlab-ce:12.9.0-ce.0
 
-docker run -d  -p 443:443 -p 80:80 -p 222:22 --name gitlab --restart always -v /Users/zeyang/data/gitlab/config:/etc/gitlab -v /Users/zeyang/data/gitlab/logs:/var/log/gitlab -v /Users/zeyang/data/gitlab/data:/var/opt/gitlab gitlab/gitlab-ce:12.9.0-ce.0
+# 启动
+docker run -d  -p 443:443 -p 80:80 -p 222:22 --name gitlab --restart always -v /root/data/gitlab/config:/etc/gitlab -v /root/data/gitlab/logs:/var/log/gitlab -v /root/data/gitlab/data:/var/opt/gitlab gitlab/gitlab-ce:12.9.0-ce.0
 
-
-docker exec -it gitlab   bash 
-vim /etc/gitlab.rb   # 编辑站点地址
-gitlab-ctl reconfigure  # 配置
-
-docker restart gitlab
+# 编辑gitlab配置文件
+ cd /root/data/gitlab/config       #进入配置文件所在目录下
+ cp gitlab.rb gitlab.rb.bak        #修改配置文件之前先备份
+ vim gitlab.rb                      #下列显示的都是编辑器中内容
+ # external_url 'GENERATED_EXTERNAL_URL'           #找到这一行,修改为下面这一行
+  external_url 'http://192.168.58.143'           #后面的地址改为gitlab地址
+# gitlab_rails['gitlab_shell_ssh_port'] = 22      #找到这一行,修改为下面一行
+  gitlab_rails['gitlab_shell_ssh_port'] = 222    #开启gitlab的ssh功能并且端口改为222;
 
 #服务控制
+docker restart gitlab
 docker start gitlab
 docker stop gitlab
 docker rm gitlab
+
+# 如果忘记root密码
+docker exec -it gitlab   bash # 进入容器
+root@897b598a109d:/# gitlab-rails console production
+# 如果执行上面的指令提示
+Traceback (most recent call last):
+        8: from bin/rails:4:in `<main>'
+        7: from bin/rails:4:in `require'
+        6: from /opt/gitlab/embedded/lib/ruby/gems/2.6.0/gems/railties-6.0.2/lib/rails/commands.rb:18:in `<top (required)>'
+        5: from /opt/gitlab/embedded/lib/ruby/gems/2.6.0/gems/railties-6.0.2/lib/rails/command.rb:46:in `invoke'
+        4: from /opt/gitlab/embedded/lib/ruby/gems/2.6.0/gems/railties-6.0.2/lib/rails/command/base.rb:69:in `perform'
+# 则可能是Gitlab版本不一样，然后参数方式不一样，需要用如下方式：
+root@897b598a109d:/# gitlab-rails console -e production
+--------------------------------------------------------------------------------
+ GitLab:       12.9.0 (9a382ff2c82) FOSS
+ GitLab Shell: 12.0.0
+ PostgreSQL:   10.12
+--------------------------------------------------------------------------------
+
+Loading production environment (Rails 6.0.2)
+irb(main):001:0>
+# 查询用户
+irb(main):002:0>  user = User.where(username:"root").first
+=> #<User id:1 @root>
+# 修改密码
+irb(main):003:0> user.password = "12345678"
+=> "12345678"
+# 保存
+irb(main):004:0> user.save!
+Enqueued ActionMailer::DeliveryJob (Job ID: 018fdb35-d12e-40d7-8fa7-9682a2cbd70f) to Sidekiq(mailers) with arguments: "DeviseMailer", "password_change", "deliver_now", #<GlobalID:0x00007f4bf2ea94e0 @uri=#<URI::GID gid://gitlab/User/1>>
+=> true
+irb(main):005:0>
+
+# 浏览器访问
+http://192.168.58.143/       root/12345678
 ```
-
-
 
 
 
@@ -207,3 +238,8 @@ kubectl create -f gitlab.yaml
 kubectl delete -f gitlab.yaml
 ```
 
+
+
+# 总结
+
+本次我尝试了使用Docker方式安装GitLab，很顺利，详细步骤写在了相应小节。对于K8S的方式，后期再来看一下如何安装，目前就是先简单使用起来。

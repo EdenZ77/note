@@ -1,9 +1,5 @@
 # 02-GitLab CI/CD功能简介
 
-
-
-
-
 ## GitLab 内置持续集成功能
 
 ### 持续集成 （CI）
@@ -16,11 +12,9 @@
 - 可通过结构化的部署管道确保将经过CI验证的代码交付给您的应用程序。
 - CD可以将经过验证的代码更快地移至您的应用程序。
 
-CI/CD 一起 可以加快团队为客户和利益相关者交付成果的速度。CI和CD必须无缝协作，以使您的团队快速有效地进行构建，并且对于确保完全优化的开发实践至关重要。
+CI/CD 一起可以加快团队为客户和利益相关者交付成果的速度。CI和CD必须无缝协作，以使您的团队快速有效地进行构建，并且对于确保完全优化的开发实践至关重要。
 
 ![images](images/02.png)
-
----
 
 
 
@@ -42,10 +36,6 @@ CI/CD 一起 可以加快团队为客户和利益相关者交付成果的速度�
 
 ![imags](images/03.png)
 
----
-
-
-
 ## GitLab CI/CD特点
 
 - 多平台： Unix，Windows，macOS和任何其他支持Go的平台上执行构建。
@@ -63,13 +53,7 @@ CI/CD 一起 可以加快团队为客户和利益相关者交付成果的速度�
 - 受保护的变量： 在部署期间使用受每个环境保护的变量安全地存储和使用机密。
 - 环境： 定义多个环境。
 
-
-
 ![imags](images/04.jpeg)
-
----
-
-
 
 
 
@@ -77,19 +61,11 @@ CI/CD 一起 可以加快团队为客户和利益相关者交付成果的速度�
 
 ### GitLab CI / CD 
 
-GitLab的一部分，GitLab是一个Web应用程序，具有将其状态存储在数据库中的API。
-除了GitLab的所有功能之外，它还管理项目/构建并提供一个不错的用户界面。
+GitLab的一部分，GitLab是一个Web应用程序，具有将其状态存储在数据库中的API。除了GitLab的所有功能之外，它还管理项目/构建并提供一个不错的用户界面。
 
 ### GitLab Runner 
 
-是一个处理构建的应用程序。
-它可以单独部署，并通过API与GitLab CI / CD一起使用。
-
-
-
-![images](images/01.png)
-
-
+是一个处理构建的应用程序。它可以单独部署，并通过API与GitLab CI / CD一起使用。
 
 ### .gitlab-ci.yml
 
@@ -97,21 +73,11 @@ GitLab的一部分，GitLab是一个Web应用程序，具有将其状态存储�
 
 ![images](images/05.png)
 
-
-
 **为了运行测试，至少需要一个 GitLab 实例、一个 GitLab Runner、一个gitlab-ci文件**
 
 
 
----
-
-
-
-
-
 ## GitLab CI/CD工作原理
-
-
 
 - 将代码托管到Git存储库。
 
@@ -121,23 +87,17 @@ GitLab的一部分，GitLab是一个Web应用程序，具有将其状态存储�
 
 - 脚本被分组为**作业**，它们共同组成了一个**管道**。
 
-  
 
 ![images](images/06.png)
-
-
 
 管道状态也会由GitLab显示：
 
 ![images](images/07.png)
 
-
-
 最后，如果出现任何问题，可以轻松地 [回滚](https://docs.gitlab.com/12.9/ee/ci/environments.html#retrying-and-rolling-back)所有更改：
 
 ![images](images/08.png)
 
+# 总结
 
-
----
-
+该部分内容仍然过于理论，主要理解“GitLab CI/CD架构”、“GitLab CI/CD工作原理”
