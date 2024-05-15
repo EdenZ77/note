@@ -870,35 +870,51 @@ C:\Users\zhuqiqi>dig qq.com MX
 ; <<>> DiG 9.11.3 <<>> qq.com MX
 ;; global options: +cmd
 ;; Got answer:
-;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 38140
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 15861
 ;; flags: qr rd ra; QUERY: 1, ANSWER: 3, AUTHORITY: 0, ADDITIONAL: 1
 
 ;; OPT PSEUDOSECTION:
 ; EDNS: version: 0, flags:; udp: 4096
-; COOKIE: 45a333336d1a07db (echoed)
+; COOKIE: 200caf6be20b6e8f (echoed)
 ;; QUESTION SECTION:
 ;qq.com.                                IN      MX
 
 ;; ANSWER SECTION:
-qq.com.                 30      IN      MX      30 mx1.qq.com.
 qq.com.                 30      IN      MX      10 mx3.qq.com.
 qq.com.                 30      IN      MX      20 mx2.qq.com.
+qq.com.                 30      IN      MX      30 mx1.qq.com.
 
-;; Query time: 27 msec
+;; Query time: 5 msec
 ;; SERVER: 172.30.3.22#53(172.30.3.22)
-;; WHEN: Tue Mar 05 18:13:04 中国标准时间 2024
+;; WHEN: Wed May 15 17:21:54 中国标准时间 2024
 ;; MSG SIZE  rcvd: 143
+
+C:\Users\zhuqiqi>dig qq.com
+
+; <<>> DiG 9.11.3 <<>> qq.com
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 37757
+;; flags: qr rd ra; QUERY: 1, ANSWER: 2, AUTHORITY: 0, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 4096
+; COOKIE: df1c5e272c8a6dbe (echoed)
+;; QUESTION SECTION:
+;qq.com.                                IN      A
+
+;; ANSWER SECTION:
+qq.com.                 30      IN      A       123.150.76.218
+qq.com.                 30      IN      A       113.108.81.189
+
+;; Query time: 6 msec
+;; SERVER: 172.30.3.22#53(172.30.3.22)
+;; WHEN: Wed May 15 17:21:57 中国标准时间 2024
+;; MSG SIZE  rcvd: 91
 ```
-数字（10、20、30）代表优先级，数值越小，优先级越高。邮件服务器会首先尝试连接优先级最高的 MX 服务器（这里是 mx3.qq.com.）。由此可见，QQ邮箱总共有 3 个邮件交换服务，分别是：
-- mx1.qq.com.
-- mx2.qq.com.
-- mx3.qq.com.
+数字（10、20、30）代表优先级，数值越小，优先级越高。邮件服务器会首先尝试连接优先级最高的 MX 服务器（这里是 mx3.qq.com.）。
 
-我们可以从中挑选一台优先级最高的：mx3.qq.com. 要连接到 mx3.qq.com，您需要知道它的 IP 地址。通常，邮件客户端需要解析 mx3.qq.com 的 IP 地址。这通常通过再次查询 DNS 来完成，这次是请求 mx3.qq.com 域名的 A（IPv4）或 AAAA（IPv6）记录。得到 IP 地址后，邮件客户端会尝试通过 SMTP 协议与该 IP 地址上的邮件服务器建立连接，通常在端口 25、587（用于提交邮件的端口），或者如果使用加密连接，则可能是端口 465。
-
-读到此处，您可能会有疑问了：根据域名找到邮件服务器，A 记录不也能够胜任吗？
-
-确实如此，A 记录理论上也是可以胜任的。只不过在互联网发展早期，电子邮件是一个重量级应用。网络先驱们为它特地设计了 MX 记录，也就不奇怪了。
+我们可以从中挑选一台优先级最高的：mx3.qq.com. 要连接到 mx3.qq.com，您需要知道它的 IP 地址。通常，发件人的邮件服务器需要解析 mx3.qq.com 的 IP 地址。这通常通过再次查询 DNS 来完成，这次是请求 mx3.qq.com 域名的 A（IPv4）或 AAAA（IPv6）记录。得到 IP 地址后，邮件服务器会尝试通过 SMTP 协议与该 IP 地址上的邮件服务器建立连接，通常在端口 25、587（用于提交邮件的端口），或者如果使用加密连接，则可能是端口 465。
 
 实际上，腾讯不止 QQ 邮箱一个产品，还有腾讯网。由于邮件服务有自己的 MX 记录，腾讯网可以使用 A 记录。这样一来，两者可以使用相同的域名qq.com：
 ![](image/2024-03-05-18-08-12.png)
@@ -929,7 +945,92 @@ qq.com.                 30      IN      A       123.150.76.218
 ;; MSG SIZE  rcvd: 91
 ```
 
+### 真实场景中的`MX`记录使用过程:
+
+当一封电子邮件从 `sender@example.com` 发出并发往 `recipient@qq.com` 时，以下是电子邮件系统如何使用 `qq.com` 的 `MX` 记录来路由邮件的详细步骤：
+
+1. **邮件客户端发送邮件**：
+   `sender@example.com` 在邮件客户端（如 Outlook、Gmail 等）中发送一封邮件到 `recipient@qq.com`。
+
+2. **邮件客户端将邮件发送给发件人的邮件服务器**：
+   邮件客户端将邮件提交给发件人的邮件服务器（`mail.example.com`）。
+
+3. **发件人的邮件服务器进行DNS查询**：
+
+   1. **查询 MX 记录**：
+      发件人的邮件服务器解析 `recipient@qq.com` 的域名，首先查询 `qq.com` 的 MX 记录。举例中的查询结果为：
+
+      ```
+      qq.com. 30 IN MX 10 mx3.qq.com.
+      qq.com. 30 IN MX 20 mx2.qq.com.
+      qq.com. 30 IN MX 30 mx1.qq.com.
+      ```
+
+      这些记录表明邮件应首先尝试发送给 `mx3.qq.com`，如果失败，再依次尝试 `mx2.qq.com` 和 `mx1.qq.com`。
+
+   2. **查询 A 记录**：
+      服务器将需要解析 MX 记录中列出的主机名（如 `mx3.qq.com`）的A记录，以获取其IP地址。假设 `mx3.qq.com` 解析出的 A 记录为 `202.96.134.133`。
+
+4. **连接到目标邮件服务器**：
+   发件人的邮件服务器尝试连接到优先级最高的邮件服务器（这里是 `mx3.qq.com`）。
+
+   - 如果成功，邮件会直接发送到 `mx3.qq.com`。
+   - 如果连接失败（例如 `mx3.qq.com` 无法连接），则尝试连接下一个优先级的服务器 `mx2.qq.com`，依此类推。
+
+5. **发送邮件**：
+   一旦成功连接到承载邮件服务器，发件人的邮件服务器将使用 SMTP 协议与接收方的邮件服务器（如 `mx3.qq.com`）交互并传输邮件。
+
+6. **接收方邮件服务器处理邮件**：
+   `qq.com` 的邮件服务器（例如 `mx3.qq.com`）接收到邮件后，会根据其内部逻辑（如用户收件箱、反垃圾处理等）存储和处理邮件。
+
+7. **收件人读取邮件**：
+   最终，`recipient@qq.com` 的邮件客户端（通过IMAP或POP等协议）从 `qq.com` 的邮件服务器（如 `mx3.qq.com`）检索到邮件，显示给收件人。
+
+### 图示过程简述：
+
+1. **发件人客户端 --> 发件人邮件服务器**:
+
+   ```
+   sender@example.com  --> mail.example.com
+   ```
+
+2. **发件人邮件服务器查询并解析 MX 记录并连接到收件人邮件服务器**:
+
+   ```
+   mail.example.com  --> [查询DNS] --> qq.com MX records
+                              |
+                              v
+                         1. mx3.qq.com
+                         2. mx2.qq.com
+                         3. mx1.qq.com
+                              |
+                              v
+                     [解析A记录] --> mx3.qq.com --> 202.96.134.133
+                              |
+                              v
+                 [连接] --> SMTP --> 202.96.134.133
+   ```
+
+3. **接收方邮件服务器处理邮件并存储**:
+
+   ```
+   mx3.qq.com 接收到邮件，存储在用户收件箱中
+   ```
+
+4. **收件人客户端检索邮件**:
+
+   ```
+   recipient@qq.com  -->  [IMAP/POP] --> mx3.qq.com
+   ```
+
+### 总结
+
+MX记录的优先级机制确保邮件尽可能地被成功路由和接收。如果某个优先级较高的邮件服务器故障，发送邮件的服务器会自动尝试使用优先级较低的服务器。这种多重备份机制增加了邮件系统的可靠性和可用性。
+
+
+
 ## NS记录
+
 NS 记录，保存着负责该域解析的权威DNS服务器，记录值为DNS服务器的域名。
 
 以我的域名 fasionchan.com 为例，它在腾讯云 dnspod 上解析。我注册域名后，需要配置 NS 记录，指向 dnspod 服务器。这个 NS 记录，最终会被同步到 .com 顶级域名服务器。
