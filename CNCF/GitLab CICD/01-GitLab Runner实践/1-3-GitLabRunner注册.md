@@ -4,21 +4,20 @@
 
 大概过程： 获取runner token -> 进行注册
 
-
-
 ## GitLabRunner 类型
 
-- shared ： 运行整个平台项目的作业（gitlab）
-- group： 运行特定group下的所有项目的作业（group）
-- specific: 运行指定的项目作业（project）
-- locked： 无法运行项目作业 
-- paused： 不会运行作业
+- shared 共享类型： 运行整个平台项目的作业（gitlab）
+- group 项目组类型： 运行特定group下的所有项目的作业（group）
+- specific 项目类型: 运行指定的项目作业（project）
+
+**状态**
+
+- locked 锁定状态： 无法运行项目作业 
+- paused 暂停状态： 不会运行作业
 
 
 
 ## 获取runner token
-
-
 
 **获取`shared`类型runnertoken**
 
@@ -48,13 +47,7 @@
 
 ## 进行注册
 
-
-
-
-
 ### Docker
-
-
 
 方式1： 启动容器交互式注册
 
@@ -81,8 +74,6 @@ Please enter the executor: parallels, virtualbox, docker-ssh+machine, kubernetes
 shell
 Runner registered successfully. Feel free to start it, but if it's running already the config should be automatically reloaded!
 ```
-
-
 
 
 
@@ -132,8 +123,6 @@ docker run -itd --rm -v ~/data/gitlab-runner/config:/etc/gitlab-runner  gitlab/g
 
 
 
-
-
 效果
 
 ![images](images/22.png)
@@ -141,10 +130,6 @@ docker run -itd --rm -v ~/data/gitlab-runner/config:/etc/gitlab-runner  gitlab/g
 
 
 ## 其他变量
-
-
-
-
 
 关于注册的选项
 
@@ -341,23 +326,7 @@ OPTIONS:
 
 
 
-
-
-```
-
-```
-
-
-
-
-
-
-
 ## Docker runner执行器
-
-
-
-
 
 ```
 ZeyangdeMacBook-Pro:~ zeyang$ gitlab-runner register

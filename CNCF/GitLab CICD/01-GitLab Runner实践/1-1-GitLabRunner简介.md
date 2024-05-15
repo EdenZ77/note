@@ -1,22 +1,14 @@
-
-
 # Gitlab-runner
-
-
 
 GitLab Runner是一个开源项目，用于运行您的作业并将结果发送回GitLab。它与[GitLab CI](https://about.gitlab.com/product/continuous-integration/)结合使用，[GitLab CI](https://about.gitlab.com/product/continuous-integration/)是[GitLab](https://about.gitlab.com/product/continuous-integration/)随附的用于协调作业的开源持续集成服务。
 
-
-
 ### 要求
 
-- GitLab Runner是用[Go](https://golang.org/)编写的，可以作为一个二进制文件运行，不需要特定于语言的要求。它旨在在GNU / Linux，macOS和Windows操作系统上运行。只要您可以在其他操作系统上编译Go二进制文件，其他操作系统就可能会运行。
+- GitLab Runner是用[Go](https://golang.org/)编写的，可以作为一个二进制文件运行。它旨在在GNU / Linux，macOS和Windows操作系统上运行。
 
 - 如果要[使用Docker](https://docs.gitlab.com/12.8/runner/executors/docker.html)，请安装最新版本。GitLab Runner需要最少的Docker `v1.13.0`。
 
 - GitLab Runner版本应与GitLab版本同步。尽管较旧的Runner仍可以使用较新的GitLab版本，反之亦然，但在某些情况下，如果版本存在差异，则功能可能不可用或无法正常工作。在次要版本更新之间可以保证向后兼容性，但是请注意，GitLab的次要版本更新会引入新功能，这些新功能将要求Runner在同一次要版本上使用。
-
-
 
 ### 特点
 
@@ -41,7 +33,6 @@ GitLab Runner是一个开源项目，用于运行您的作业并将结果发送�
 - 嵌入式Prometheus指标HTTP服务器。
 - 裁判工作者监视Prometheus度量标准和其他特定于工作的数据并将其传递给GitLab。
 
+# 总结
 
-
-
-
+本节我主要看了“要求”部分，特点这些仍然是需要使用后才有体会的东西，建议在基本使用之后再看回顾。其实这也是很多入门课程需要注意的点，刚开始强调了很多理论的东西，然而这些东西对于初学者来说真的看不懂，会挫败信心，应该刚开始直接将项目跑起来，给出一种直观的感受，结合实战给出总结和特性分析，而不是直接一来就长篇累牍的介绍理论；当然，在有了基本使用之后，这些理论还是很重要的，只是总结理论的时机要把握好。
