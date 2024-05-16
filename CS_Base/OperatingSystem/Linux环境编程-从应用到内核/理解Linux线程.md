@@ -579,7 +579,7 @@ NTPL提供了原子性的保证：
 
 ## 为什么要连接退出的线程
 
-不连接已经退出的线程会怎么样？如果不连接已经退出的线程，会导致资源无法释放。所谓资源指的又是什么呢？
+**不连接已经退出的线程会怎么样？如果不连接已经退出的线程，会导致资源无法释放。**所谓资源指的又是什么呢？
 
 下面通过一个测试来让事实说话。测试模拟下面两种情况：
 
@@ -735,9 +735,9 @@ manu@manu-hacks:~$ cat /proc/14580/maps
 7f725fa10000-7f7260210000 rw-p 00000000 00:00 0                     [stack:14871]
 ```
 
-通过前面的比较，可以看出执行连接操作的重要性：如果不执行连接操作，线程的资源就不能被释放，也不能被复用，这就造成了资源的泄漏。
+**通过前面的比较，可以看出执行连接操作的重要性：如果不执行连接操作，线程的资源就不能被释放，也不能被复用，这就造成了资源的泄漏。**
 
-当线程组内的其他线程调用`pthread_join`连接退出线程时，内部会调用`__free_tcb`函数，该函数会负责释放退出线程的资源。
+**当线程组内的其他线程调用`pthread_join`连接退出线程时，内部会调用`__free_tcb`函数，该函数会负责释放退出线程的资源。**
 
 值得一提的是，纵然调用了`pthread_join`，也并没有立即调用`munmap`来释放掉退出线程的栈，它们是被后建的线程复用了，这是NPTL线程库的设计。释放线程资源的时候，NPTL认为进程可能再次创建线程，而频繁地`munmap`和`mmap`会影响性能，所以NTPL将该栈缓存起来，放到一个链表之中，如果有新的创建线程的请求，NPTL会首先在栈缓存链表中寻找空间合适的栈，有的话，直接将该栈分配给新创建的线程。
 
@@ -745,15 +745,178 @@ manu@manu-hacks:~$ cat /proc/14580/maps
 
 ## 线程的分离
 
+默认情况下，新创建的线程处于可连接（Joinable）的状态，可连接状态的线程退出后，需要对其执行连接操作，否则线程资源无法释放，从而造成资源泄漏。
 
+如果其他线程并不关心线程的返回值，那么连接操作就会变成一种负担：你不需要它，但是你不去执行连接操作又会造成资源泄漏。这时候你需要的东西只是：线程退出时，系统自动将线程相关的资源释放掉，无须等待连接。
 
+NPTL提供了`pthread_detach`函数来将线程设置成已分离（detached）的状态，如果线程处于已分离的状态，那么线程退出时，系统将负责回收线程的资源，如下：
 
+```c
+#include <pthread.h>
+int pthread_detach(pthread_t thread);
+```
+
+可以是线程组内其他线程对目标线程进行分离，也可以是线程自己执行`pthread_detach`函数，将自身设置成已分离的状态，如下：
+
+```c
+pthread_detach(pthread_self())
+```
+
+线程的状态之中，可连接状态和已分离状态是冲突的，一个线程不能既是可连接的，又是已分离的。因此，如果线程处于已分离的状态，其他线程尝试连接线程时，会返回EINVAL错误。
+
+`pthread_detach`出错的情况见表7-8所示。
+
+![image-20240517062352895](image/image-20240517062352895.png)
+
+需要强调的是，不要误解已分离状态的内涵。所谓已分离，并不是指线程失去控制，不归线程组管理，而是指线程退出后，系统会自动释放线程资源。若线程组内的任意线程执行了`exit`函数，即使是已分离的线程，也仍然会受到影响，一并退出。
+
+将线程设置成已分离状态，并非只有`pthread_detach`一种方法。另一种方法是在创建线程时，将线程的属性设定为已分离：
+
+```c
+#include <pthread.h>
+int pthread_attr_setdetachstate(pthread_attr_t *attr,int detachstate);
+int pthread_attr_getdetachstate(pthread_attr_t *attr,int *detachstate);
+```
+
+其中detachstate的可能值如表7-9所示。
+
+![image-20240517062458277](image/image-20240517062458277.png)
+
+有了这个，如果确实不关心线程的返回值，可以在创建线程之初，就指定其分离属性为PTHREAD_CREATE_DETACHED。
 
 # 互斥量
 
+## 为什么需要互斥量
 
+大部分情况下，线程使用的数据都是局部变量，变量的地址在线程栈空间内，这种情况下，变量归属于单个线程，其他线程无法获取到这种变量。
 
+如果所有的变量都是如此，将会省去无数的麻烦。但实际的情况是，很多变量都是多个线程共享的，这样的变量称为共享变量（shared variable）。可以通过数据的共享，完成多个线程之间的交互。
 
+但是多个线程并发地操作共享变量，会带来一些问题。下面来看一个例子，如图7-12所示。
+
+<img src="image/image-20240517070844175.png" alt="image-20240517070844175" style="zoom:67%;" />
+
+如果存在4个线程，不加任何同步措施，共同操作一个全局变量`global_cnt`，假设每个线程执行1000万次自加操作，那么会发生什么事情呢？4个线程结束的时候，`global_cnt`等于几？
+
+这个问题看起来是小学题目，当然是4000万，但实际结果又如何呢？
+
+```c
+#define _GNU_SOURCE
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <pthread.h>
+#include <string.h>
+#include <errno.h>
+#include <sys/types.h>
+#define LOOP_TIMES 10000000
+#define NR_THREAD  4
+pthread_rwlock_t rwlock;
+int global_cnt = 0;
+void* thread_work(void* param)
+{
+    int i;
+    pthread_rwlock_rdlock(&rwlock);
+    for(i = 0 ; i < LOOP_TIMES; i++ )
+    {
+        global_cnt++;
+    }
+    pthread_rwlock_unlock(&rwlock);
+    return NULL;
+}
+int main(int argc ,char* argv[])
+{
+    pthread_t tid[NR_THREAD];
+    char err_buf[1024];
+    int i, ret;
+    ret = pthread_rwlock_init(&rwlock,NULL);
+    if(ret)
+    {
+        fprintf(stderr,"init rw lock failed (%s)\n",strerror_r(ret,err_buf, sizeof(err_buf)));
+        exit(1);
+    }
+    pthread_rwlock_wrlock(&rwlock);
+    for(i = 0 ; i < NR_THREAD ; i++)
+    {
+        ret = pthread_create(&tid[i],NULL,thread_work,NULL);
+        if(ret != 0)
+        {
+            fprintf(stderr,"create thread failed ,return %d (%s)\n",
+                    ret,strerror_r(ret,err_buf,sizeof(err_buf)));
+        }
+    }
+    pthread_rwlock_unlock(&rwlock);
+    for(i = 0 ; i < NR_THREAD; i++)
+    {
+        pthread_join(tid[i],NULL);
+    }
+    pthread_rwlock_destroy(&rwlock);
+    printf("thread num       : %d\n",NR_THREAD);
+    printf("loops per thread : %d\n",LOOP_TIMES);
+    printf("expect result    : %d\n",LOOP_TIMES*NR_THREAD);
+    printf("actual result    : %d\n",global_cnt);
+    exit(0);
+}
+```
+
+上面的代码中，引入了读写锁，来确保线程位于同一起跑线，同时开始执行自加操作，不受线程创建先后顺序的影响。创建4个线程之前，主线程先占住读写锁的写锁，任一线程创建好了之后，要先申请读锁，申请成功方能执行`global_cnt++`，但是写锁已经被主线程占据，所以无法执行。待4个线程都创建成功后，主线程会释放写锁，从而保证4个线程一起执行。
+
+执行结果又如何呢？来看看：
+
+```shell
+thread num       : 4
+loops per thread : 10000000
+expect result    : 40000000
+actual result    : 11115156
+```
+
+结果并不是期待的4000万，而是11115156，一个很奇怪的数字。而且每次执行，最后的结果都不相同。
+
+为什么无法获得正确的结果？看一下汇编代码，先通过如下指令读取到汇编代码：
+
+```shell
+objdump -d pthread_no_sync > pthread_no_sync.objdump
+```
+
+然后在汇编代码中取出`global_cnt++`这部分代码相关的汇编代码，就是如下指令：
+
+```assembly
+40098c:    8b 05 1a 07 20 00    mov   0x20071a(%rip),%eax   # 6010ac <global_cnt>
+400992:    83 c0 01             add   $0x1,%eax
+400995:    89 05 11 07 20 00    mov   %eax,0x200711(%rip)   # 6010ac <global_cnt>
+```
+
+`++`操作，并不是一个原子操作（atomic operation），而是对应了如下三条汇编指令。
+
+- Load：将共享变量`global_cnt`从内存加载进寄存器，简称L。
+- Update：更新寄存器里面的`global_cnt`值，执行加1操作，简称U。
+- Store：将新的值，从寄存器写回到共享变量`global_cnt`的内存地址，简称为S。
+
+将上述情况用伪代码表示，就是如下情况：
+
+```
+L操作：register = global_cnt
+U操作：register = register + 1
+S操作：global_cnt = register
+```
+
+以两个线程为例，如果两个线程的执行如图7-13所示，就会引发结果不一致：执行了两次`++`操作，最终的结果却只加了1。
+
+<img src="image/image-20240517071329517.png" alt="image-20240517071329517" style="zoom: 50%;" />
+
+上面的例子表明，应该避免多个线程同时操作共享变量，对于共享变量的访问，包括读取和写入，都必须被限制为每次只有一个线程来执行。
+
+用更详细的语言来描述下，解决方案需要能够做到以下三点。
+
+1）代码必须要有互斥的行为：当一个线程正在临界区中执行时，不允许其他线程进入该临界区中。
+2）如果多个线程同时要求执行临界区的代码，并且当前临界区并没有线程在执行，那么只能允许一个线程进入该临界区。
+3）如果线程不在临界区中执行，那么该线程不能阻止其他线程进入临界区。
+
+上面说了这么多，本质其实就是一句话，我们需要一把锁（如图7-14所示）。
+
+<img src="image/image-20240517071425160.png" alt="image-20240517071425160" style="zoom:50%;" />
+
+锁是一个很普遍的需求，当然用户可以自行实现锁来保护临界区。但是实现一个正确并且高效的锁非常困难。纵然抛下高效不谈，让用户从零开始实现一个正确的锁也并不容易。正是因为这种需求具有普遍性，所以Linux提供了互斥量。
 
 
 
