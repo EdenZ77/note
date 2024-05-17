@@ -918,15 +918,463 @@ S操作：global_cnt = register
 
 锁是一个很普遍的需求，当然用户可以自行实现锁来保护临界区。但是实现一个正确并且高效的锁非常困难。纵然抛下高效不谈，让用户从零开始实现一个正确的锁也并不容易。正是因为这种需求具有普遍性，所以Linux提供了互斥量。
 
+## 互斥量的接口
+
+**1.互斥量的初始化**
+
+互斥量采用的是英文mutual exclusive（互相排斥之意）的缩写，即mutex。正确地使用互斥量来保护共享数据，首先要定义和初始化互斥量。POSIX提供了两种初始化互斥量的方法。
+
+第一种方法是将PTHREAD_MUTEX_INITIALIZER赋值给定义的互斥量，如下：
+
+```c
+#include <pthread.h>
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+```
+
+如果互斥量是动态分配的，或者需要设定互斥量的属性，那么上面静态初始化的方法就不适用了，NPTL提供了另外的函数`pthread_mutex_init()`对互斥量进行动态的初始化：
+
+```c
+int pthread_mutex_init(pthread_mutex_t *restrict mutex,
+                  const pthread_mutexattr_t *restrict attr);
+```
+
+第二个`pthread_mutexattr_t`指针的入参，是用来设定互斥量的属性的。大部分情况下，并不需要设置互斥量的属性，传递NULL即可，表示使用互斥量的默认属性。
+
+调用`pthread_mutex_init()`之后，互斥量处于没有加锁的状态。
+
+**2.互斥量的销毁**
+
+在确定不再需要互斥量的时候，就要销毁它。在销毁之前，有三点需要注意：
+
+- 使用PTHREAD_MUTEX_INITIALIZER初始化的互斥量无须销毁。
+- 不要销毁一个已加锁的互斥量，或者是正在配合条件变量使用的互斥量。
+- 已经销毁的互斥量，要确保后面不会有线程再尝试加锁。
+
+销毁互斥量的接口如下：
+
+```c
+int pthread_mutex_destroy(pthread_mutex_t *mutex);
+```
+
+当互斥量处于已加锁的状态，或者正在和条件变量配合使用，调用`pthread_mutex_destroy`函数会返回EBUSY错误码。
+
+**3.互斥量的加锁和解锁**
+
+POSIX提供了如下接口：
+
+```c
+int pthread_mutex_lock(pthread_mutex_t *mutex);
+int pthread_mutex_trylock(pthread_mutex_t *mutex);
+int pthread_mutex_unlock(pthread_mutex_t *mutex);
+```
+
+在调用`pthread_lock()`的时候，可能会遭遇以下几种情况：
+
+- 互斥量处于未锁定的状态，该函数会将互斥量锁定，同时返回成功。
+- 发起函数调用时，其他线程已锁定互斥量，或者存在其他线程同时申请互斥量，但没有竞争到互斥量，那么`pthread_lock()`调用会陷入阻塞，等待互斥量解锁。
+
+在等待的过程中，如果互斥量持有线程解锁互斥量，可能会发生如下事件：
+
+	- 函数调用线程是唯一等待者，获得互斥量，成功返回。
+	- 函数调用线程不是唯一等待者，但成功获得互斥量，返回。
+	- 函数调用线程不是唯一等待者，没能获得互斥量，继续阻塞，等待下一轮。
+
+- 如果在调用`pthread_lock()`线程时，之前已经调用过`pthread_lock()`且已经持有了互斥量，则根据互斥锁的类型，存在以下三种可能。
+
+	- PTHREAD_MUTEX_NORMAL：这是默认类型的互斥锁，这种情况下会发生死锁，调用线程永久阻塞，线程组的其他线程也无法申请到该互斥量。
+	- PTHREAD_MUTEX_ERRORCHECK：第二次调用`pthread_mutex_lock`函数时返回EDEADLK。
+	- PTHREAD_MUTEX_RECURSIVE：这种类型的互斥锁内部维护有引用计数，允许锁的持有者再次调用加锁操作。
+
+有了互斥量，重新运行7.7.1节的程序，将`global_cnt++`改写成：
+
+```c
+pthread_mutex_lock(&mutex);
+global_cnt++;
+pthread_mutex_lock(&mutex);
+```
+
+使用互斥量之后，程序获取了正确的执行结果：
+
+```shell
+thread num       : 4
+loops per thread : 10000000
+expect result    : 40000000
+actual result    : 40000000
+```
 
 
 
+
+## 临界区的大小
+
+现在，我们已经意识到需要用锁来保护共享变量。不过还有另一个需要注意的事项，即合理地设定临界区的范围。
+
+第一临界区的范围不能太小，如果太小，可能起不到保护的目的。考虑如下场景，如果哈希表中不存在某元素，那么向哈希表中插入某元素，代码如下：
+
+```c
+if(!htable_contain(hashtable,elem.key))
+{
+    pthread_mutex_lock(&mutex);
+    htable_insert(hashtable,&elem);
+    pthread_mutex_lock(&mutex);
+}
+```
+
+表面上看，共享变量`hashtable`得到了保护，在插入时有锁保护，但是结果却不是我们想要的。上面的程序不希望哈希表中有重复的元素，但是其临界区太小，多线程条件下可能达不到预设的效果。
+
+如果时序如图7-15所示，那么就会有重复的元素被插入哈希表中，没有达到最初的目的。究其原因，就是临界区小了，没有将判断部分加入临界区以内。
+
+临界区也不能太大，临界区的代码不能并发，如果临界区太大，就无法充分利用多处理器发挥多线程的优势。对于被互斥量保护的临界区内的代码，一定要好好审视，不要将不相干的（特别是可能陷入阻塞的）代码放入临界区内执行。
+
+![image-20240518071207145](image/image-20240518071207145.png)
+
+
+
+## 互斥量的性能
+
+还是以前面的例子为例进行说明，4个线程分别对全局变量累加1000万次，使用互斥量版本的程序和不使用互斥量的版本相比，会消耗更多的时间，如表7-10所示。
+
+![image-20240518071612341](image/image-20240518071612341.png)
+
+互斥量版本需要消耗更长的时间，其原因有以下三点：
+
+1）对互斥量的加锁和解锁操作，本身有一定的开销。
+2）临界区的代码不能并发执行。
+3）进入临界区的次数过于频繁，线程之间对临界区的争夺太过激烈，若线程竞争互斥量失败，就会陷入阻塞，让出CPU，所以执行上下文切换的次数要远远多于不使用互斥量的版本。
+
+看到这个结果，又有一个疑问涌上心头，互斥量的性能如何？
+
+Linux下，互斥量的实现采用了futex（fast user space mutex）机制。传统的同步手段，进入临界区之前会申请锁，而此时不得不执行系统调用，查看是否存在竞争；当离开临界区释放锁的时候，需要再次执行系统调用，查看是否需要唤醒正在等待锁的进程。但是在竞争并不激烈的情况下，加锁和解锁的过程中可能会出现以下两种情况：
+
+- 申请锁时，执行系统调用，从用户模式进入内核模式，却发现并无竞争。
+- 释放锁时，执行系统调用，从用户模式进入内核模式，尝试唤醒正在等待锁的进程，却发现并没有进程正在等待锁的释放。
+
+考虑到系统调用的开销，这两种情况耗资靡费，却劳而无功。
+
+futex机制的出现有效地解决了这两个问题。futex的全称是fast userspace mutex，中文名为快速用户空间互斥体，它是一种用户态和内核态协同工作的同步机制。glibc使用内核提供的futex系统调用实现了互斥量。
+
+glibc的互斥量实现，含有大量的汇编代码，不易读懂，下面用伪代码来描述下互斥量的加锁和解锁操作：
+
+```c
+void lock(mutex* lock)
+{
+    int c；
+    if(c = cmpxchg(lock,0,1) != 0)
+    // 如果原始值是0，则表示处于没加锁的状态，将lock改成1，直接返回
+    // 如果原始值不是0，则表示互斥量已被加锁，需要继续执行
+    do
+    {
+/* 此处有以下可能性：1) c==2 表示已被加锁，并且有其他正在等待的线程,应立即调用futex_wait2) 原子地检查lock是否为1，如果是，则将lock改成2，然后调用futex_wait
+  如果不是，则表示其他线程释放了锁，将lock改成了0，需要执行while语句争夺锁
+        */
+        if （c == 2 || cmpxchg(lock, 1, 2) != 0)
+        {
+           //如果执行futex_wait时，lock已经被改写，不等于2，则当即返回
+            futex_wait(lock, 2);
+        }
+    } while （(c = cmpxchg(lock, 0, 2))！= 0）;
+    //表示有线程unlock，但是不知道解锁后是1还是2，保险起见，写成2
+}
+void unlock(mutex* lock)
+{
+    //atomic_dec的作用是减1并返回原始值
+    if (atomic_dec(lock) != 1)
+    {
+        // 原始值是2，有线程等待互斥量，才会进入
+        // 如果原始值是1，则表示没有线程等待，没必要futex_wake
+        lock = 0;
+        futex_wake(lock, 1);
+    }
+}
+```
+
+上面的cmpxchg和atomic_dec都是原子操作。
+
+- cmpxchg（lock，a，b）：表示如果lock的值等于a，那么将lock改为b，并将原始值返回，否则直接将原始值返回。
+- atomic_dec（lock）：表示将lock的值减去1，并且返回原始值。glibc的互斥量中维护了一个值lock，该值有以下三种情况。
+- 0：表示互斥量并未上锁。
+- 1：表示互斥量已经上锁，但是并没有线程正在等待该锁。
+- 2：表示互斥量已经上锁，并且有线程正在等待该锁。
+
+加锁时，如果发现该值是0，那么直接将该值改为1，无须执行任何系统调用，因为并没有线程持有该锁，无须等待；
+
+解锁时，如果发现该值是1，直接将该值改成0，无须执行任何系统调用，因为并没有线程正在等待该锁，无须唤醒。
+
+当然，在这两种情况下，比较和修改操作（Compare And Swap）必须是原子操作，否则会出现问题。如果无竞争，可以看出，互斥量的加锁和解锁非常轻量级。
+
+用一个简单的实验也可以证明，无竞争条件下，加锁解锁的操作是很轻量级的。下面用一个循环执行加锁和解锁操作1000万次，统计下加锁解锁一次消耗的平均时间，即：
+
+```c
+clock_gettime(CLOCK_MONOTONIC,&start);
+for (int i = 0; i < TIMES; ++i) {
+    pthread_mutex_lock(&lock);
+    pthread_mutex_unlock(&lock);
+}
+clock_gettime(CLOCK_MONOTONIC,&end);
+```
+
+在笔者用的2.13GHz i3处理器的Ubuntu上，加锁解锁一次，平均消耗24纳秒左右，证明了在无竞争的条件下，互斥量的加锁和解锁操作的确是十分轻量级的。
+
+接下来考虑存在竞争的情况，这时候，就需要内核来参与了。
+
+内核提供了futex_wait和futex_wake两个操作（futex系统调用支持的两个命令）：
+
+```c
+int futex_wait(int *uaddr, int val);
+int futex_wake(int *uaddr, int n);
+```
+
+`futex_wait`是用来协助加锁操作的。线程调用`pthread_mutex_lock`，如果发现锁的值不是0，就会调用`futex_wait`，告知内核，线程须要等待在`uaddr`对应的锁上，请将线程挂起。内核会建立与`uaddr`地址对应的等待队列。
+
+为什么需要内核维护等待队列？因为一旦互斥量的持有者线程释放了互斥量，就需要及时通知那些等待在该互斥量上的线程。如果没有等待队列，内核将无法通知到那些正陷入阻塞的线程。
+
+如果整个系统有很多这种互斥量，是不是需要为每个uaddr地址建立一个等待队列呢？事实上不需要。理论上讲，futex只需要在内核之中维护一个队列就够了，当线程释放互斥量时，可能会调用futex_wake，此时会将uaddr传进来，内核会去遍历该队列，查找等待在该uaddr地址上的线程，并将相应的线程唤醒。
+
+但是只有一个队列的话查找效率有点低，作为优化，内核实现了多个队列。插入等待队列时，会先计算hash值，然后根据hash插入到对应的链表之中，如图7-16所示。
+
+值得一提的是，`futex_wait`操作需要的val入参，乍看之下好像没什么用处。事实上并非如此。从用户程序判断锁的值，到调用`futex_wait`操作是有时间窗口的，在这个时间窗口之内，有可能发生线程解锁的操作，从而可能无须等待。因此`futex_wait`操作会检查`uaddr`对应的锁的值是否等于`val`的值，只有在等于`val`的情况下，内核才会让线程等待在对应的队列上，否则会立刻返回，让用户程序再次申请锁。
+
+![image-20240518071834998](image/image-20240518071834998.png)
+
+`futex_wake`操作是用来实现解锁操作的。glibc就是使用该操作来实现互斥量的解锁函数`pthread_mutex_unlock`的。当线程执行完临界区代码，解锁时，内核需要通知那些正在等待该锁的线程。这时候就需要发挥`futex_wake`操作的作用了。`futex_wake`的第二个参数n，对于互斥量而言，该值总是1，表示唤醒1个线程。当然，也可以唤醒所有正在等待该锁的线程，但是这样做并无好处，因为被唤醒的多个线程会再次竞争，却只能有一个线程抢到锁，这时其他线程不得不再次睡去，徒增了很多开销。
+
+使用strace跟踪系统调用的时候，看不到`futex_wait`和`futex_wake`两个系统调用，看到的是futex系统调用，如下。
+
+```c
+#include <linux/futex.h>
+#include <sys/time.h>
+int futex(int *uaddr, int op, int val,
+ const struct timespec *timeout,int *uaddr2, int val3);
+```
+
+该系统调用是一个综合的系统调用，根据第二个参数op来决定具体的行为。当op为FUTEX_WAIT时，对应的是前面讨论的`futex_wait`操作，当op为FUTEX_WAKE时，对应的是前面讨论的`futex_wake`操作。
+
+细心的话，可以发现，互斥量加锁和解锁时，调用futex的op参数并非FUTEX_WAIT和FUTEX_WAKE，而是FUTEX_WAIT_PRIVATE和FUTEX_WAKE_PRIVATE，这是为了改进futex的性能而进行的优化。因为futex也可以用在不同的进程之间，加上后缀_PRIVATE是为了明确告知内核，互斥的行为是用在线程之间的。
+
+从上面的角度分析，当存在竞争时，如果线程申请不到互斥量，就会让出CPU，系统会发生上下文切换。在线程个数众多，临界区竞争异常激烈的情况下，上下文切换会是一笔不小的开销。
+
+如果临界区非常小，线程之间对临界区的竞争并不激烈，只会偶尔发生，这种情况下，忙-等待的策略要优于互斥量的“让出CPU，陷入阻塞，等待唤醒”的策略。采用忙-等待策略的锁为自旋锁。
+
+关于futex的原理，Ulrich Drepper《Futexes Are Tricky》一文就是非常好的参考文献。
+
+## 互斥锁的公平性
+
+互斥锁是公平的吗？
+
+首先要定义什么是公平（fairness）。对于锁而言，如果A在B之前调用lock（）方法，那么A应该先于B获得锁，进入临界区。多处理器条件下，很难确定是哪个线程率先调用的lock（）方法。纵然能判定是哪个线程率先调用的lock（）方法，要实现指令级的公平也是很难的。常见的判断锁公平性的方法是，将锁的实现代码分成如下两个部分：
+
+- 门廊区
+- 等待区
+
+门廊区必须在有限的操作内完成，等待区则可能有无穷的步骤，它们会陷入未知结束时间的等待中。
+
+如果锁能满足以下条件，就称锁是先来先服务（FCFS）的：
+
+如果线程A门廊区的结束在线程B门廊区的开始之前，那么线程A一定不会被线程B赶超。
+
+互斥量也有门廊区和等待区，就像7.7.4节分析的，如果没有竞争，线程执行几个指令就加锁成功，顺利返回了。在这种情况下，互斥量在门廊区就解决了所有的需要。但是如果有竞争，互斥锁在门廊区判断出存在竞争，线程取不到锁，就不得不执行futex_wait，让内核将其挂起，并记录在等待队列上。需要等待多久？不知道。
+
+从表面上看，内核会将等待互斥量的线程放入队列，每来一个等待线程，就把线程记录在队列的尾部，当互斥量的持有线程解锁时，内核只会唤醒一个线程，而唤醒的正是队列中等待该互斥量的第一个等待者。队列的先入先出（FIFO），看起来已经保证了互斥量的公平性。但是，这样就能确保公平吗？
+
+答案是否定的，互斥锁并没有做到先来先服务。
+
+根据7.7.4节的伪代码可知，当互斥量的lock的值是2，或者尝试调用CAS操作将lock从1改成2并且成功时，线程会调用futex_wait陷入阻塞。值得一提的是，CAS操作在尝试将1改成2时，也可能存在竞争，比如其他线程有解锁操作，lock值已经被改成了0，而这时候恰好存在另外一个线程刚刚调用加锁操作，这时就会发生门廊区的争夺，对于这种情况不做详细分析。假设加锁调用了`futex_wait`，内核将线程挂起在等待队列上，从那时起，线程就进入了漫长的等待区。
+
+如果互斥量的持有线程解锁，会首先将互斥量的lock值设置成0，然后唤醒内核等待队列中等待在该地址上的第一个线程。看起来比较公平，但是问题就出在此处，被唤醒的线程并不是自动就持有了互斥锁，反而须要执行while（）中包裹的`cmpxchg`操作，再次竞争互斥量。如果竞争失败，则被另外一个初来乍到的线程将0改成了1，那么线程刚刚醒来就不得不再次执行`futex_wait`，再次沉睡。这次竞争失败的代价是巨大的，因为`futex_wait`操作会将线程挂载到等待队列的队尾。
+
+由上面的分析可以得出如下结论：
+
+- 线程可能多次调用futex_wait进入等待区，在线程被futex_wait唤醒后，并不会自动拥有互斥量，而是再次进入门廊区，和其他线程争夺锁。
+- 在已经有很多线程处于内核等待队列的情况下，新来的加锁请求可能会后发先至，率先获得锁。
+- futex_wait唤醒的线程如果没有竞争到锁，那么会再次调用futex_wait函数，陷入睡眠，不过内核会将其放入等待队列的队尾，这种行为加剧了不公平性。
+
+所以，综合上面的讨论，互斥量不是一个公平的锁，没有做到先来先服务。关于futex的早期论文《Fuss，Futexes and Furwocks：Fast Userlevel Locking in Linux》，已经指出了这个问题。futex_up_fair系统调用尝试解决这个不公平的问题，但是最终没有进入内核主线。
+
+为什么开发者并不在意这种不公平性？因为要实现这种公平性会牺牲性能，而这种牺牲并无必要。绝大多数情况下，由于调度的原因，用户根本无法判断哪个线程会优先调用加锁操作，那么内核或glibc维持这种先来先服务（FCFS）就变得毫无意义。如果可以在不牺牲性能的情况下做到公平，自然最好，但是实际情况并非如此。实现这种公平，对性能的伤害很大。就像Ulrich Drepple在Thread starvation with mutex的回复中所说的：
+
+```
+Is there a reason why NPTL does not use this "fair" method?
+It's slow and unnecessary.
+```
+
+综上所述，结论如下：内核维护等待队列，互斥量实现了大体上的公平；由于等待线程被唤醒后，并不自动持有互斥量，需要和刚进入门廊区的线程竞争，所以互斥量并没有做到先来先服务。
+
+## 互斥锁的类型
+
+前面讨论的都是默认类型的互斥锁，除默认类型外，互斥锁还有几个变种，它们的行为模式和默认互斥锁有一定的差异。互斥量有以下4种类型：
+
+- PTHREAD_MUTEX_TIMED_NP
+- PTHREAD_MUTEX_RECURSIVE
+- PTHREAD_MUTEX_ERRORCHECK
+- PTHREAD_MUTEX_ADAPTIVE_NP
+
+glibc提供了接口来查询和设置互斥锁的类型：
+
+```c
+#include <pthread.h>
+int pthread_mutexattr_gettype(const pthread_mutexattr_t *restrict attr,int *restrict type);
+int pthread_mutexattr_settype(pthread_mutexattr_t *attr,int type);
+```
+
+可以仿照如下代码来设置互斥量的类型：
+
+```c
+/*忽略了出错判断，真实代码中需要判断error*/
+pthread_mutex  mtx;
+pthread_mutexattr_t mtxAttr;
+pthread_mutexattr_init(&mtxAttr);
+pthread_mutexattr_settype(&mtxAttr,PTHREAD_MUTEX_ADAPTIVE_NP);
+pthread_mutex_init(&mtx,&mtxAttr);
+```
+
+其中manual给出了4种类型，但并非前面提到的这4种类型，略有差异，差异在于：manual中存在PTHREAD_MUTEX_DEFAULT类型，而少了一个PTHREAD_MUTEX_ADAPTIVE_NP类型。manual中给出的是标准unix 98定义的4种类型。
+
+对于NPTL的实现，具体如下：
+
+```c
+PTHREAD_MUTEX_NORMAL  = PTHREAD_MUTEX_TIMED_NP,
+PTHREAD_MUTEX_DEFAULT = PTHREAD_MUTEX_NORMAL；
+```
+
+所以，glibc的实现比标准的Unix 98多了一个PTHREAD_MUTEX_ADAPTIVE_NP类型，下面来分别介绍这几个互斥量的特点。
+
+- PTHREAD_MUTEX_NORMAL：最普通的一种互斥锁。前文讨论的就是这种类型的锁。它不具备死锁检测功能，如线程对自己锁定的互斥量再次加锁，则会发生死锁。
+- PTHREAD_MUTEX_RECURSIVE_NP：支持递归的一种互斥锁，该互斥量的内部维护有互斥锁的所有者和一个锁计数器。当线程第一次取到互斥锁时，会将锁计数器置1，后续同一个线程再次执行加锁操作时，会递增该锁计数器的值。解锁则递减该锁计数器的值，直到降至0，才会真正释放该互斥量，此时其他线程才能获取到该互斥量。解锁时，如果互斥量的所有者不是调用解锁的线程，则会返回EPERM。
+- PTHREAD_MUTEX_ERRORCHECK_NP：支持死锁检测的互斥锁。互斥量的内部会记录互斥锁的当前所有者的线程ID（调度域的线程ID）。如果互斥量的持有线程再次调用加锁操作，则会返回EDEADLK。解锁时，如果发现调用解锁操作的线程并不是互斥锁的持有者，则会返回EPERM。
+
+终于轮到PTHREAD_MUTEX_ADAPTIVE_NP这种类型了。这种类型堪称互斥锁中的战斗机，特点就是一个字——快，libc的文档里面直接将其称为fast mutex。那么它和普通的互斥量相比有何差异，它是如何快速实现的呢？
+
+所有锁的实现都会面临一个相同的问题：加锁时竞争失败了该怎么办？普通互斥量的做法是立刻调用futex_wait，陷入阻塞，让出CPU，安静地等待内核将其唤醒。在临界区非常小且很少发生竞争的情况下，这种策略并不算好，因为如果该线程肯自旋，很可能只需要极短的时间，它就能等到锁的持有线程解锁，继续执行。而调用futex_wait，执行系统调用和上下文切换的开销可能远大于自旋。
+
+出于这种考虑，glibc引入了线程自旋锁。自旋锁采用了和互斥量完全不同的策略，自旋锁加锁失败，并不会让出CPU，而是不停地尝试加锁，直到成功为止。这种机制在临界区非常小且对临界区的争夺并不激烈的场景下，效果非常好，如下。
+
+```c
+#include <pthread.h>
+int pthread_spin_destroy(pthread_spinlock_t *lock);
+int pthread_spin_init(pthread_spinlock_t *lock, int pshared);
+int pthread_spin_lock(pthread_spinlock_t *lock);
+int pthread_spin_trylock(pthread_spinlock_t *lock);
+int pthread_spin_unlock(pthread_spinlock_t *lock);
+```
+
+自旋锁的效果好，但是副作用也大，如果使用不当，自旋锁的持有者迟迟无法释放锁，那么，自旋接近于死循环，会消耗大量的CPU资源，造成CPU使用率飙高。因此，使用自旋锁时，一定要确保临界区尽可能地小，不要有系统调用，不要调用sleep。使用strcpy/memcpy等函数也需要谨慎判断操作内存的大小，以及是否会引起缺页中断。
+
+自旋锁副作用大，而互斥量在某些情况下效率可能不够高，有没有一种方法能够结合两种方法的长处呢？
+
+答案是肯定的。这就是PTHREAD_MUTEX_ADAPTIVE_NP类型的互斥量，也被称为自适应锁。大多数操作系统（Solaris、Mac OS X、FreeBSD）都有类似的接口，如果竞争锁失败，首先与自旋锁一样，持续尝试获取，但过了一定时间仍然不能申请到锁，就放弃尝试，让出CPU并等待。PTHREAD_MUTEX_ADAPTIVE_NP类型的互斥量，采用的就是这种机制，如下：
+
+```c
+if (LLL_MUTEX_TRYLOCK (mutex) != 0)
+{
+    int cnt = 0;
+    int max_cnt = MIN (MAX_ADAPTIVE_COUNT,
+           mutex->__data.__spins * 2 + 10);
+    do
+    {
+        if (cnt++ >= max_cnt)
+        {
+            /*自旋也没有等到锁，只能睡去*/
+            LLL_MUTEX_LOCK (mutex);
+            break;
+        }
+#ifdef BUSY_WAIT_NOP
+        BUSY_WAIT_NOP;
+#endif
+    }
+    while (LLL_MUTEX_TRYLOCK (mutex) != 0);
+    mutex->__data.__spins += (cnt - mutex->__data.__spins) / 8;
+}
+```
+
+到底等待多长时间才合适呢？这种互斥量定义了一个名为`__spins`的变量，该值和MAX_ADAPTIVE_COUNT共同决定自旋多久。该类型之所以叫自适应（ADAPTIVE），是因为带有反馈机制，它会根据实际情况，智能地调整`__spins`的值。
+
+```c
+mutex->__data.__spins += (cnt - mutex->__data.__spins) / 8;
+```
+
+当然自旋不是无止境的向上增长时，MAX_ADAPTIVE_COUNT决定了上限，即调用BUSY_WAIT_NOP的最大次数：
+
+```c
+# define MAX_ADAPTIVE_COUNT 100
+```
+
+对于7.7.1节中对global_cnt自加1000万次的程序，如果把for循环体内的锁换成自适应互斥锁，会比普通的互斥量更快吗？答案是否定的，在这种时时刻刻要加锁和解锁的激烈竞争下，让其他线程睡去，利用上下文切换的时间间隔，让一个线程飞快地自加，执行时间反而是最短的。
+
+但是，真实场景下临界区的争夺不可能激烈到这种程度，如果竞争真的激烈到这种程度，那首先需要反省的是设计问题。在临界区非常小，偶尔发生竞争的情况下，自适应互斥锁的性能要优于普通的互斥锁。
+
+## 死锁和活锁
+
+对于互斥量而言，可能引起的最大问题就是死锁（dead lock）了。最简单、最好构造的死锁就是图7-17所示的这种场景了。
+
+<img src="image/image-20240518073044044.png" alt="image-20240518073044044" style="zoom:67%;" />
+
+线程1已经成功拿到了互斥量1，正在申请互斥量2，而同时在另一个CPU上，线程2已经拿到了互斥量2，正在申请互斥量1。彼此占有对方正在申请的互斥量，结局就是谁也没办法拿到想要的互斥量，于是死锁就发生了。上面的例子比较简单，但实际工程中死锁可能会发生在复杂的函数调用之中。可以想象随着程序复杂度的增加，很多死锁并不像上面的例子那样一目了然，如图7-18所示。
+
+<img src="image/image-20240518073105197.png" alt="image-20240518073105197" style="zoom:67%;" />
+
+在多线程程序中，如果存在多个互斥量，一定要小心防范死锁的形成。存在多个互斥量的情况下，避免死锁最简单的方法就是总是按照一定的先后顺序申请这些互斥量。还是以刚才的例子为例，如果每个线程都按照先申请互斥量1，再申请互斥量2的顺序执行，死锁就不会发生。有些互斥量有明显的层级关系，但是也有一些互斥量原本就没有特定的层级关系，不过没有关系，可以人为干预，让所有的线程必须遵循同样的顺序来申请互斥量。另一种方法是尝试一下，如果取不到锁就返回。Linux提供了如下接口来表达这种思想：
+
+```c
+int pthread_mutex_trylock(pthread_mutex_t *mutex);
+int pthread_mutex_timedlock(pthread_mutex_t?*restrict mutex, const struct timespec *restrict abs_timeout);
+```
+
+这两个函数反应了这种尝试一下，不行就算了的思想。对于pthread_mutex_trylock（）接口，如果互斥量已然被锁定，那么当即返回EBUSY错误，而不像pthread_mutex_lock（）接口一样陷入阻塞。对于pthread_mutex_timedlock（）接口，提供了一个时间参数abs_timeout，如果申请互斥量的时候，互斥量已被锁定，那么等待；如果到了abs_timeout指定的时间，仍然没有申请到互斥量，那么返回ETIMEOUT错误。除此以外，这两个接口的表现与pthread_mutex_lock是一致的。在实际的应用中，这两个接口使用的频率远低于pthread_mutex_lock函数。trylock不行就回退的思想有可能会引发活锁（live lock）。生活中也经常遇到两个人迎面走来，双方都想给对方让路，但是让的方向却不协调，反而互相堵住的情况（如图7-19所示）。活锁现象与这种场景有点类似。
+
+<img src="image/image-20240518073152443.png" alt="image-20240518073152443" style="zoom: 50%;" />
+
+考虑下面两个线程，线程1首先申请锁mutex_a后，之后尝试申请mutex_b，失败以后，释放mutex_a进入下一轮循环，同时线程2会因为尝试申请mutex_a失败，而释放mutex_b，如果两个线程恰好一直保持这种节奏，就可能在很长的时间内两者都一次次地擦肩而过。当然这毕竟不是死锁，终究会有一个线程同时持有两把锁而结束这种情况。尽管如此，活锁的确会降低性能。这种情况的示例代码如下：
+
+```c
+//线程1
+void func1()
+{
+    int done = 0;
+    while(!done)
+    {
+        pthread_mutex_lock(&mutex_a);
+        if (pthread_mutex_trylock (&mutex_b))
+        {
+            counter++;
+            pthread_mutex_unlock(&mutex_b);
+            pthread_mutex_unlock(&mutex_a);
+            done = 1;
+        }
+        else
+        {
+            pthread_mutex_unlock(&mutex_a);
+        }
+    }
+}
+// 线程 2
+void func2()
+{
+    int done = 0;
+    while(!done)
+    {
+        pthread_mutex_lock (&mutex_b);
+        if (pthread_mutex_trylock (&mutex_a))
+         {
+            counter++;
+            pthread_mutex_unlock (&mutex_a);
+            pthread_mutex_unlock (&mutex_b);
+            done = 1;
+        }
+        else
+         {
+            pthread_mutex_unlock (&mutex_b);
+        }
+    }
+}
+```
 
 
 
 # 读写锁
 
+很多时候，对共享变量的访问有以下特点：大多数情况下线程只是读取共享变量的值，并不修改，只有极少数情况下，线程才会真正地修改共享变量的值。对于这种情况，读请求之间是无需同步的，它们之间的并发访问是安全的。然而写请求必须锁住读请求和其他写请求。这种情况在实际中是存在的，比如配置项。大多数时间内，配置是不会发生变化的，偶尔会出现修改配置的情况。如果使用互斥量，完全阻止读请求并发，则会造成性能的损失。出于这种考虑，POSIX引入了读写锁。读写锁比较简单，从表7-11可以看出，对于这种情况，读写锁做了优化，允许大家一起读。
 
+![image-20240518073247115](image/image-20240518073247115.png)
 
 
 
@@ -935,3 +1383,166 @@ S操作：global_cnt = register
 
 
 # 性能杀手：伪共享
+
+
+
+
+
+
+
+
+
+
+
+
+
+# 条件等待
+
+条件等待是线程间同步的另一种方法。线程经常遇到这种情况：要想继续执行，可能要依赖某种条件。如果条件不满足，它能做的事情就是等待，等到条件满足为止。通常条件的达成，很可能取决于另一个线程，比如生产者-消费者模型。当另外一个线程发现条件符合的时候，它会选择一个时机去通知等待在这个条件上的线程。有两种可能性，一种是唤醒一个线程，一种是广播，唤醒其他线程。就像工厂里生产车间没有原料了，所有生产车间都停工了，工人们都在车间睡觉。突然进来一批原料，如果原料充足，你会发广播给所有车间，原料来了，快来开工吧。如果进来的原料很少，只够一个车间开工的，你可能只会通知一个车间开工。为什么要有条件等待？考虑生产者-消费者模型，如果任务队列处于空的状态，那么消费者线程就应该停工等待，一直等到队列不空为止。如果没有条件等待，那么消费者线程的代码可能会写成这样：
+
+```c
+pthread_mutex_t m = PTHREAD_MUTEX_INITIALIZER;
+int WaitForTrue()
+{
+    pthread_mutex_lock(&m);
+    while (condition is false)//条件不满足
+    {
+        pthread_mutex_unlock(&m);//解锁等待其他线程改变共享数据
+        sleep(n);//睡眠n秒后再次加锁验证条件是否满足
+        pthread_mutex_lock(&m);
+    }
+}
+```
+
+如果条件不满足，就只能睡眠。上面的代码虽然也能满足这个要求，但存在严重的效率问题。考虑如下场景：解锁之后，sleep之前，等待的条件突然满足了，但很不幸，该线程仍然会睡眠n秒。很自然需要这么一种机制：线程在条件不满足的情况下，主动让出互斥量，让其他线程去折腾，线程在此处等待，等待条件的满足；一旦条件满足，线程就可以立刻被唤醒。线程之所以可以安心等待，依赖的是其他线程的协作，它确信会有一个线程在发现条件满足以后，将向它发送信号，并且让出互斥量。如果其他线程不配合（不发信号，不让出互斥量），这个主动让出互斥量并等待事件发生的线程就真的要等到花儿都谢了。
+
+## 条件变量的创建和销毁
+
+
+
+
+
+
+
+## 条件变量的使用
+
+
+
+
+
+
+
+
+
+# 线程取消
+
+线程可以通过调用pthread_cancel函数来请求取消同一进程中的其他线程。从编程的角度来讲，不建议使用这个接口。笔者对该接口的评价不高，该接口实现了一个似是而非的功能，却引入了一堆问题。陈硕在《Linux多线程服务器编程》一书中也提到过，不建议使用取消接口来使线程退出，个人表示十分赞同。
+
+## 函数取消接口
+
+
+
+## 线程清理函数
+
+
+
+
+
+# 线程局部存储
+
+
+
+## 使用NPTL库函数实现线程局部存储
+
+
+
+
+
+## 使用__thread关键字实现线程局部存储
+
+
+
+
+
+# 线程与信号
+
+## 设置线程的信号掩码
+
+
+
+
+
+## 向线程发送信号
+
+
+
+
+
+## 多线程程序对信号的处理
+
+
+
+# 多线程与fork()
+
+多线程和fork函数的协作性非常差。对于多线程和fork，最重要的建议就是永远不要在多线程程序里面调用fork。请跟我再念一遍：永远不要在多线程程序里面调用fork。Linux的fork函数，会复制一个进程，对于多线程程序而言，fork函数复制的是调用fork的那个线程，而并不复制其他的线程。fork之后其他线程都不见了。Linux不存在forkall语义的系统调用，无法做到将多线程全部复制。多线程程序在fork之前，其他线程可能正持有互斥量处理临界区的代码。fork之后，其他线程都不见了，那么互斥量的值可能处于不可用的状态，也不会有其他线程来将互斥量解锁。下面用一个例子来描述这种场景：
+
+```c
+#include <stdio.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <pthread.h>
+#include <sys/wait.h>
+static void* worker(void* arg)
+{
+    pthread_detach(pthread_self());
+    for (;;)
+    {
+        setenv("foo", "bar", 1);
+        usleep(100);
+    }
+    return NULL;
+}
+static void sigalrm(int sig)
+{
+    char a = 'a';
+    write(fileno(stderr), &a, 1);
+}
+int main()
+{
+    pthread_t setenv_thread;
+    pthread_create(&setenv_thread, NULL, worker, 0);
+    for (;;)
+    {
+        pid_t pid = fork();
+        if (pid == 0)
+        {
+            signal(SIGALRM, sigalrm);
+            alarm(1);
+            unsetenv("bar");
+            exit(0);
+        }
+        wait3(NULL, WNOHANG, NULL);
+        usleep(2500);
+    }
+    return 0;
+}
+```
+
+上面的代码比较简单，创建了一个线程周期性地执行setenv函数，修改环境变量。主线程会fork子进程，子进程负责执行unsetenv函数，同时调用了alarm，一秒钟后会收到SIGALRM信号。子进程通过执行signal函数，注册了SIGALRM信号的处理函数，即向标准错误打印字母‘a’。fork创建的子进程在调用alarm注册的闹钟之后，只执行unsetenv函数，然后就会调用exit退出。因此，在正常情况下子进程很快就会退出，alarm约定的1秒钟时间还未到就退出了。也就是说，信号处理函数不应该被执行，自然也就不应该打印出字母‘a’。可是实际情况是：
+
+```
+./thread_fork
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa^C
+```
+
+原因何在？在某些情况下，子进程为什么不能及时退出，以至于过了1秒之后，子进程还没有退出？选择一个阻塞的线程，用gdb调试下，看看到底阻塞在何处。
+
+```
+(gdb) bt
+#0  __lll_lock_wait_private () at ../nptl/sysdeps/unix/sysv/linux/x86_64/lowlevellock.S:95
+#1  0x00007fd5c50270f6 in _L_lock_740 () from /lib/x86_64-linux-gnu/libc.so.6
+#2  0x00007fd5c5026f2a in __unsetenv (name=0x400b24 "bar") at setenv.c:325
+#3  0x0000000000400a6d in main () at fork.c:41
+```
+
