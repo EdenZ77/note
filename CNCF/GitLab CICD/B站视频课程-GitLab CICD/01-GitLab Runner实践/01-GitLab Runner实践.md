@@ -527,18 +527,6 @@ OPTIONS:
 
 
 
-## Docker runner执行器
-
-执行器功能对比表
-
-![image-20240519074908439](image/image-20240519074908439.png)
-
-执行器兼容性对比表
-
-![image-20240519075039629](image/image-20240519075039629.png)
-
-
-
 ## 总结
 
 这部分基本都是实操环境了，可以动手测试验证。
@@ -671,8 +659,31 @@ deploy:
 
 ```
 
-
-
-## 测试流水线
-
 <img src="image/image-20240521111329785.png" alt="image-20240521111329785" style="zoom:67%;" />
+
+## 简单流水线示例
+
+为了让读者对.gitlab-ci.yml文件有清晰的认识，我们来看一个简单流水线示例。
+
+```yaml
+stages:
+  - install
+  - build
+  - deploy
+  
+install_job:
+  stage: install
+  script: echo 'hello install'
+  
+build_job:
+  stage: build
+  script: echo 'hello build'
+  
+deploy_job:
+  stage: deploy
+  script: echo 'hello deploy'
+```
+
+作业的执行顺序一般由阶段来定义。一个阶段是由一组作业组成的，同一个阶段的作业是并行运行的。也就是说，运行完一个阶段的所有作业再去运行下一阶段的作业。当然，也有例外，例如使用关键词need来实现作业之间的依赖。
+
+![image-20240521112903470](image/image-20240521112903470.png)
