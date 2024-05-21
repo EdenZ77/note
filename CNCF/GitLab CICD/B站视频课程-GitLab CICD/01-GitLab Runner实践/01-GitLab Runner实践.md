@@ -1,38 +1,5 @@
 # GitLabRunner简介
 
-GitLab Runner是一个开源项目，用于运行您的作业并将结果发送回GitLab。它与[GitLab CI](https://about.gitlab.com/product/continuous-integration/)结合使用，[GitLab CI](https://about.gitlab.com/product/continuous-integration/)是[GitLab](https://about.gitlab.com/product/continuous-integration/)随附的用于协调作业的开源持续集成服务。
-
-## 要求
-
-- GitLab Runner是用[Go](https://golang.org/)编写的，可以作为一个二进制文件运行。它旨在在GNU / Linux，macOS和Windows操作系统上运行。
-
-- 如果要[使用Docker](https://docs.gitlab.com/12.8/runner/executors/docker.html)，请安装最新版本。GitLab Runner需要最少的Docker `v1.13.0`。
-
-- GitLab Runner版本应与GitLab版本同步。尽管较旧的Runner仍可以使用较新的GitLab版本，反之亦然，但在某些情况下，如果版本存在差异，则功能可能不可用或无法正常工作。在次要版本更新之间可以保证向后兼容性，但是请注意，GitLab的次要版本更新会引入新功能，这些新功能将要求Runner在同一次要版本上使用。
-
-## 特点
-
-- 允许运行：
-  - 同时执行多个作业。
-  - 对多个服务器（甚至每个项目）使用多个令牌。
-  - 限制每个令牌的并行作业数。
-- 可以运行作业：
-  - 在本地。
-  - 使用Docker容器。
-  - 使用Docker容器并通过SSH执行作业。
-  - 使用Docker容器在不同的云和虚拟化管理程序上自动缩放。
-  - 连接到远程SSH服务器。
-- 用Go编写并以单个二进制文件的形式分发，而没有其他要求。
-- 支持Bash，Windows Batch和Windows PowerShell。
-- 在GNU / Linux，macOS和Windows（几乎可以在任何可以运行Docker的地方）上运行。
-- 允许自定义作业运行环境。
-- 自动重新加载配置，无需重启。
-- 易于使用的设置，并支持Docker，Docker-SSH，Parallels或SSH运行环境。
-- 启用Docker容器的缓存。
-- 易于安装，可作为GNU / Linux，macOS和Windows的服务。
-- 嵌入式Prometheus指标HTTP服务器。
-- 裁判工作者监视Prometheus度量标准和其他特定于工作的数据并将其传递给GitLab。
-
 ## 总结
 
 本节我主要看了“要求”部分，“特点” 这些仍然是需要使用后才有体会的东西，建议在基本使用之后再看回顾。其实这也是很多入门课程需要注意的点，刚开始强调了很多理论的东西，然而这些东西对于初学者来说真的看不懂，会挫败信心，应该刚开始直接将项目跑起来，给出一种直观的感受，结合实战给出总结和特性分析，而不是直接一来就长篇累牍的介绍理论；当然，在有了基本使用之后，这些理论还是很重要的，只是总结理论的时机要把握好。
@@ -199,57 +166,6 @@ sudo gitlab-runner start
 
 
 
-## 3.在MacOS中安装
-
-在macOS上安装GitLab Runner有两种方法：
-
-- [手动安装](https://docs.gitlab.com/12.6/runner/install/osx.html#manual-installation-official)。GitLab正式支持和推荐此方法。
-- [自制安装](https://docs.gitlab.com/12.6/runner/install/osx.html#homebrew-installation-alternative)。使用[Homebrew进行](https://brew.sh/)安装，以替代手动安装。
-
-### 手动安装
-
-下载二进制包
-
-```
-sudo curl --output /usr/local/bin/gitlab-runner https://gitlab-runner-downloads.s3.amazonaws.com/v12.6/binaries/gitlab-runner-darwin-amd64
-```
-
-授予其执行权限：
-
-```
-sudo chmod +x /usr/local/bin/gitlab-runner
-```
-
-将Runner作为服务安装并启动它：
-
-```
-cd ~
-gitlab-runner install
-gitlab-runner start
-```
-
-### 自动安装
-
-安装，启动
-
-```
-brew install gitlab-runner
-brew services start gitlab-runner
-```
-
-### 更新
-
-```
-gitlab-runner stop
-
-sudo curl -o /usr/local/bin/gitlab-runner https://gitlab-runner-downloads.s3.amazonaws.com/latest/binaries/gitlab-runner-darwin-amd64
-
-sudo chmod +x /usr/local/bin/gitlab-runner
-gitlab-runner start
-```
-
-
-
 ## 4. 在容器中运行GitLab Runner
 
 ```shell
@@ -292,6 +208,30 @@ OS/Arch:      linux/amd64
 
 - locked 锁定状态： 无法运行项目作业 
 - paused 暂停状态： 不会运行作业
+
+## 基本概念
+
+GitLab CI/CD由以下两部分构成。
+
+(1)运行流水线的环境。它是由GitLab Runner提供的，这是一个由GitLab开发的开源软件包，要搭建GitLab CI/CD就必须安装它，因为它是流水线的运行环境。
+
+(2)定义流水线内容的.gitlab-ci.yml文件。这是一个YAML文件，它以一种结构化的方式来声明一条流水线—— 官方提供了很多关键词来覆盖各种业务场景，使你在编写极少Shell脚本的情况下也能应对复杂的业务场景。
+
+除此之外，在定义的流水线中，还需要掌握的概念有以下几个。
+
+(1)流水线(pipeline)。在GitLab CI/CD中，流水线由.gitlab-ci.yml文件来定义。实际上，它是一系列的自动化作业。这些作业按照一定顺序运行，就形成了一条有序的流水线。触发流水线的时机可以是代码推送、创建tag、合并请求，以及定时触发等。通常，由创建tag触发的流水线叫作tag流水线，由合并请求触发的流水线叫作合并请求流水线。此外，还有定时触发的定时流水线、跨项目流水线以及父子流水线等。
+
+(2)阶段(stages)。阶段在流水线之下，主要用于给作业分组，并规定每个阶段的运行顺序。它可以将几个作业归纳到一个群组里，比如构建阶段群组、测试阶段群组和部署阶段群组。
+
+(3)作业(job)。作业在阶段之下，是最基础的执行单元。它是最小化的自动运行任务，比如安装Node.js依赖包、运行测试用例。
+
+在GitLab的UI中，流水线的详情如图1-1所示。
+
+![image-20240521105351230](image/image-20240521105351230.png)
+
+可以看到，流水线包含3个阶段，分别是Install、Build和Deploy。其中，Install阶段包含两个作业，即install_job和job_name。
+
+至此，我们介绍了GitLab CI/CD的几个基本概念。理解这几个概念，有助于快速地构建基本的GitLab CI/CD知识体系。如果你要使用GitLab CI/CD，只需要安装一个GitLab Runner，然后在项目根目录创建一个.gitlab-ci.yml文件。是不是很简单？你不需要使用复杂的插件来实现自己的需求，也不需要写太多的Shell脚本，只需一个可用的runner以及七八个关键词，就能将一个项目的流水线运行起来。
 
 ## 获取runner token
 
@@ -587,10 +527,6 @@ OPTIONS:
 
 
 
-
-
-
-
 ## Docker runner执行器
 
 执行器功能对比表
@@ -739,7 +675,4 @@ deploy:
 
 ## 测试流水线
 
-![images](image/01.png)
-
-
-
+<img src="image/image-20240521111329785.png" alt="image-20240521111329785" style="zoom:67%;" />
