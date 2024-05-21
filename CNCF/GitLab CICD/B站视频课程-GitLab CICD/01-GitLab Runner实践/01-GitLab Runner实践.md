@@ -321,6 +321,8 @@ OS/Arch:      linux/amd64
 
 ## 进行注册
 
+在设备上安装了GitLab Runner后，让我们看一下如何使用它。要使用GitLab Runner运行某个项目的流水线，需要使用GitLab Runner为这个项目注册一个runner。注册runner的过程就是将一个runner与项目绑定起来。这个runner会与GitLab建立联系，并在适当的时候进行通信。
+
 方式1： 启动容器交互式注册
 
 ```shell
@@ -352,14 +354,14 @@ root@f4d1e5610264:/#
 docker run --rm -v ~/data/gitlab-runner/config:/etc/gitlab-runner gitlab/gitlab-runner:v12.6.0 register \
   --non-interactive \  # 非交互模式，不会提示用户输入信息，所有需要的信息都通过其他参数提供。
   --executor "docker" \ # 指定使用 Docker 作为执行器。
-  --docker-image alpine:latest \ # 指定使用 alpine:latest 作为 Runner 的默认 Docker 镜像。
+  --docker-image alpine:latest \ # 指定使用 alpine:latest 作为 runner 的默认 Docker 镜像。
   --url "http://192.168.1.200:30088/" \ # 指定 GitLab 实例的 URL
-  --registration-token "JRzzw2j1Ji6aBjwvkxAv" \ # 用于注册 Runner 的令牌，从 GitLab 实例中获取。
-  --description "docker-runner" \ # 为这个 Runner 设置描述
-  --tag-list "docker,aws" \ # 给 Runner 设置标签，方便在 GitLab 中进行任务调度，这里是 docker 和 aws。
-  --run-untagged="true" \ # 允许 Runner 执行没有标签的任务
-  --locked="false" \ # 设定这个 Runner 不被锁定，可以给其他项目使用
-  --access-level="not_protected" # 将这个 Runner 的访问级别设定为 "not_protected"，意味着它可以运行在非保护分支和提交上。
+  --registration-token "JRzzw2j1Ji6aBjwvkxAv" \ # 用于注册 runner 的令牌，从 GitLab 实例中获取。
+  --description "docker-runner" \ # 为这个 runner 设置描述
+  --tag-list "docker,aws" \ # 给 runner 设置标签，方便在 GitLab 中进行任务调度，这里是 docker 和 aws。
+  --run-untagged="true" \ # 允许 runner 执行没有标签的任务
+  --locked="false" \ # 设定这个 runner 不被锁定，可以给其他项目使用
+  --access-level="not_protected" # 将这个 runner 的访问级别设定为 "not_protected"，意味着它可以运行在非保护分支和提交上。
 ```
 
 ```shell
@@ -585,6 +587,10 @@ OPTIONS:
 
 
 
+
+
+
+
 ## Docker runner执行器
 
 执行器功能对比表
@@ -699,10 +705,6 @@ gitlab-runner status #此命令显示GitLab Runner服务的状态。当服务正
 我们搭建好了GitLab肯定要将代码推送上来，那如何推送代码呢？可以通过在页面上“New project”的方式创建新项目然后通过`git clone`来拉取项目到本地，上传项目代码。这里我们为了方便通过`import project`的方式将老师的代码直接导入到GitLab中。
 
 测试java项目： https://github.com/zeyangli/gitlabci-demo-maven-service
-
-
-
-
 
 ## 编写一个简单的yaml文件
 
