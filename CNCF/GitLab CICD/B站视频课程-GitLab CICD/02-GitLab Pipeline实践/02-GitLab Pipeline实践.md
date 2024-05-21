@@ -1,6 +1,645 @@
+# 关键词概述
 
+在14.1.0版本中，共有35个关键词（其中variables既是全局关键词，也是作业关键词），包括31个作业关键词（定义在作业上的，只对当前作业起作用，分别是after_script、allow_failure、artifacts、before_script、cache、coverage、dependencies、dast_configuration、environment、except、extends、image、inherit、interruptible、needs、only、pages、parallel、release、resource_group、retry、rules、script、secrets、services、stage、tags、timeout、trigger、variables和when，以及5个全局关键词（定义在流水线全局的，对整个流水线起作用，分别是stages、workflow、include、default和variables）。使用这些关键词，开发者可以很方便地编写流水线。
 
 # Pipeline基础语法(一)
+
+## script
+
+script关键词用于定义当前作业要执行的脚本。通常情况下，每个作业都需要定义script的内容（除了使用trigger触发的作业）。用script定义的内容会在runner的执行器中执行。让我们来看清单4-3所示的示例。
+
+```yaml
+npm_inst:
+  script: npm install
+```
+
+这里定义了一个`npm_inst`的作业，`script`关键词定义了一行内容`npm install`，这是一个`npm`命令，用于安装Node.js依赖包。
+
+需要说明的是，在每个作业开始时，runner会进行一系列的初始化，这些初始化包括将当前的项目代码下载到执行器的工作目录，并进入项目的根目录，同时清空一些不需要的文件。在不同的执行器上，会有一些差异，详见2.4节。
+
+在执行`npm install`时，其实就是在项目的根目录下执行。如果GitLab Runner是直接在宿主机上安装的，而不是使用Docker，那么在执行`npm install`之前，你需要在宿主机上安装`Node.js`。但如果开发者的执行器是Docker，就需要在这个作业上指定node镜像，这样`script`的内容才可以正常执行。
+
+下面我们使用node镜像来编写多行脚本作业
+
+```yaml
+npm_inst:
+  image: node
+  script: 
+    - npm install
+    - npm build
+```
+
+多行脚本内容使用YAML文件中的数组来表示，使用-开头来表示每一行脚本。如果script中的内容有引号，则需要用单引号将整段内容包裹起来，如清单4-5所示。
+
+```yaml
+use_curl_job:
+  script:
+    - 'curl --request POST --header "Content-Type: application/json" "https://gitlab.com/api/v4/projects"'
+```
+
+### runner的初始化过程
+
+每当一个作业开始时，GitLab Runner 会执行一系列初始化步骤：
+
+1. **检出项目代码**：GitLab Runner 会将当前项目的代码从 GitLab 仓库检出到执行器的工作目录中。
+2. **进入项目根目录**：执行器会进入项目的根目录，以确保 `script` 部分中定义的命令在正确的目录下执行。
+3. **处理环境变量和缓存**：GitLab Runner 会设置必要的环境变量，并处理可能的缓存和工件（artifacts）以优化构建过程。
+
+**直接在宿主机上运行与使用 Docker**
+
+如果 GitLab Runner 直接安装在宿主机上（非 Docker 环境），那么在执行 `npm install` 之前，宿主机上必须已经安装了 Node.js 和 npm。(由于我是通过docker安装的gitlab-runner，所以需要进入gitlab-runner容器中安装Node.js等)
+
+但是，对于使用 Docker 执行器的 Runner，通常项目中的依赖应通过 Docker 镜像来提供。通过指定一个包含 Node.js 环境的 Docker 镜像，可以确保脚本能够正常运行。
+
+例如，使用 Docker 执行器，可以这样指定：
+
+```yaml
+stages:
+  - install
+  - test
+
+npm_inst:
+  stage: install
+  image: node:14 # 指定 Node.js Docker 镜像
+  script:
+    - npm install
+```
+
+我们可以扩展 `.gitlab-ci.yml` 文件以包括测试阶段：
+
+```yaml
+stages:
+  - install
+  - test
+
+npm_inst:
+  stage: install
+  image: node:14
+  script:
+    - npm install
+
+run_tests:
+  stage: test
+  image: node:14
+  script:
+    - npm test
+```
+
+在这个示例中：
+
+- `npm_inst` 作业在 `install` 阶段运行，使用 Node.js 14 的 Docker 镜像并执行 `npm install`。
+- `run_tests` 作业在 `test` 阶段运行，同样使用 Node.js 14 的 Docker 镜像并执行 `npm test`。
+
+![image-20240521145914392](image/image-20240521145914392.png)
+
+**总结**
+
+在 GitLab CI/CD 中，使用 `script` 关键字定义作业要执行的具体脚本是至关重要的，脚本会在 Runner 的执行器上下文中执行。根据 Runner 的类型（宿主机或 Docker），可能需要相应地配置执行器的环境来确保所需的依赖和工具可用。通过清楚地定义阶段和作业，可以实现有序和自动化的 CI/CD 流程。
+
+### 多个runner的工作流程
+
+当项目具有多个 GitLab Runner 时，执行流程涉及以下几个关键步骤，从作业调度到作业执行，并确保优化资源和调度策略的有效性。
+
+1. **注册 Runner**：每个 Runner 必须先通过 GitLab-Runner  配置注册到 GitLab 实例。每个 Runner 注册时，都会向 GitLab CI 服务器汇报其能力和可用性。
+
+2. **作业调度**：当有新的 CI/CD 作业触发时，GitLab CI/CD 管道将根据配置和可用性确定作业被哪个 Runner 执行。
+
+3. **匹配 Runner 标签**：如果作业或 Runner 使用了标签（标签用于限定某些特定类型的 Runner 去执行作业），那么 GitLab 会先根据这些标签进行匹配。例如：
+
+   ```yaml
+   stages:
+     - build
+     - test
+   
+   job:
+     stage: build
+     script:
+       - echo "Building"
+     tags:
+       - docker
+   ```
+
+   只有具有 `docker` 标签的 Runner 才能竞争执行这个 `job`。
+
+4. **加载均衡**：
+
+   - GitLab 会根据每个 Runner 的负载和空闲状态来动态分配作业。
+   - 如果多个 Runner 使用相同的标签，则 GitLab 会将作业分配给最先响应的空闲 Runner。
+
+5. **执行作业**：
+
+   - 一旦作业分配给一个 Runner，该 Runner 会开始执行作业定义的脚本（如 `script` 部分）。
+   - 每个 Runner 会按如下步骤进行操作：
+     - 初始化工作环境。
+     - 检出项目代码。
+     - 切换到项目根目录。
+     - 执行定义的 `script`（例如，运行 `npm install`、`npm test` 等）。
+
+6. **报告结果**：
+
+   - 作业执行完成后，Runner 将结果返回给 GitLab CI/CD。
+   - GitLab 更新作业的状态，并根据作业的成功或失败，继续后续的管道阶段或作业。
+
+**示例：多 Runner 配置的 `.gitlab-ci.yml`**
+
+假设有两个 Runner，一个是 Docker 环境，另一个是宿主机环境，并且这两个 Runner 使用不同的标签。
+
+```yaml
+stages:
+  - build
+  - test
+
+docker_build:
+  stage: build
+  script:
+    - echo "Building in Docker"
+  tags:
+    - docker
+
+host_test:
+  stage: test
+  script:
+    - echo "Testing on Host"
+  tags:
+    - host
+```
+
+**注册 Runner 时指定标签**
+
+Docker Runner 标签示例：
+
+```bash
+gitlab-runner register \
+  --url https://gitlab.example.com/ \
+  --registration-token YOUR_REGISTRATION_TOKEN \
+  --executor docker \
+  --description "Docker Runner" \
+  --tag-list "docker" \
+  --docker-image "node:14"   # 这是默认的镜像，当job没有image字段时就使用这个默认镜像
+```
+
+Shell Runner 标签示例：
+
+```bash
+gitlab-runner register \
+  --url https://gitlab.example.com/ \
+  --registration-token YOUR_REGISTRATION_TOKEN \
+  --executor shell \
+  --description "Host Runner" \
+  --tag-list "host"
+```
+
+**调度过程**
+
+1. **Docker Build 作业**：`docker_build` 作业由于使用了 `docker` 标签，GitLab 会分配给注册时带有 `docker` 标签的 Docker Runner 来执行。
+2. **Host Test 作业**：`host_test` 作业由于使用了 `host` 标签，GitLab 会分配给注册时带有 `host` 标签的 Shell Runner 来执行。
+
+**负载均衡和并行作业**
+
+- GitLab CI/CD 会尝试均匀地分配作业以确保 Runner 的高效利用和系统负载平衡。
+- 如果多个 Runner 满足标签和作业需求，并且它们都处于闲置状态，GitLab 将随机选择一个 Runner 来执行作业。
+- 如果作业量较大，GitLab 可以同时启动多个 Runner 来并行执行不同的作业，从而加快整体的作业执行时间。
+
+**总结**
+
+当项目具有多个 GitLab Runner 时，GitLab CI/CD 会根据作业的标签、Runner 的标签、负载和可用性来动态调度作业。通过合理配置标签和取舍注册策略，可以确保不同类型的 Runner 更有效地执行作业负载，实现自动化 CI/CD 流程的高效运行。
+
+
+
+## cache=
+
+为什么会用到缓存呢？这是因为流水线中的每个作业都是独立运行的，如果没有缓存，运行上一个作业时安装的项目依赖包，运行下一个作业还需要安装一次。如果将上一个作业安装的依赖包缓存起来，在下一个作业运行时将其恢复到工作目录中，就可以大大减少资源的浪费。
+
+缓存用得最多的场景就是缓存项目的依赖包。每一种编程语言都有自己的包管理器，例如，Node.js应用使用NPM来管理依赖包，Java应用使用Maven来管理依赖包，Python应用使用pip来管理依赖包。这些依赖包安装完成后，可能不只为一个作业所使用，项目的构建作业需要使用它们，测试作业也需要使用它们。由于多个作业的执行环境可能不一致，而且在某些执行器中作业被执行完成后会自动清空所有依赖包，在这些情况下，就需要将这些依赖包缓存起来，以便在多个作业之间传递使用。
+
+注意要缓存的文件，路径必须是当前工作目录的相对路径。
+
+关键词cache的配置项有很多，最重要的是paths这个属性，用于指定要缓存的文件路径。配置cache的代码如清单4-6所示。
+
+```yaml
+npm_init:
+  script: npm install
+  cache:
+    paths:
+      - node_modules
+      - binaries/*.apk
+      - .config
+```
+
+可以看到，npm_init作业执行npm install，安装了项目所需要的依赖包。在这个作业结束后，执行器会将工作目录中的node_modules目录、binaries目录下所有以.apk为扩展名的文件以及当前目录下的.config文件压缩成一个压缩包，缓存起来。
+
+如果项目有多个分支，想要设置多个缓存，这时可以使用全局配置cache的key来设置，如清单4-7所示。
+
+```yaml
+default:
+  cache:
+    key: "$CI_COMMIT_REF_SLUG"
+    paths:
+      - binaries/
+```
+
+key的值可以使用字符串，也可以使用变量，其默认值是default。在清单4-7中，key的值就是CI中的变量、当前的分支或tag。在执行流水线的过程中，对于使用相同key缓存的作业，执行器会先尝试恢复之前的缓存。
+
+在一个作业中最多可以定义4个key。清单4-8所示的示例，配置了2个key。
+
+```yaml
+test-job:
+  stage: build
+  cache:
+    - key:
+        files:
+          - Gemfile.lock
+      paths:
+        - vendor/ruby
+    - key:
+        files:
+          - yarn.lock
+      paths:
+        - .yarn-cache/
+  script:
+    - bundle install --path=vendor
+    - yarn install --cache-folder .yarn-cache
+    - echo 'install done'
+```
+
+
+
+## before_script=
+
+用于定义一个命令，该命令在每个作业之前运行。必须是一个数组。指定的[`script`](http://s0docs0gitlab0com.icopy.site/12.9/ee/ci/yaml/README.html#script)与主脚本中指定的任何脚本串联在一起，并在单个shell中一起执行。
+
+
+
+## after_script=
+
+用于定义将在每个作业（包括失败的作业）之后运行的命令。这必须是一个数组。指定的脚本在新的shell中执行，与任何`before_script`或`script`脚本分开。
+
+可以在全局定义，也可以在job中定义。在job中定义会覆盖全局。
+
+```
+before_script:
+  - echo "before-script!!"
+
+variables:
+  DOMAIN: example.com
+
+stages:
+  - build
+  - deploy
+ 
+
+build:
+  before_script:
+    - echo "before-script in job"
+  stage: build
+  script:
+    - echo "mvn clean "
+    - echo "mvn install"
+  after_script:
+    - echo "after script in job"
+
+
+deploy:
+  stage: deploy
+  script:
+    - echo "hello deploy"
+    
+after_script:
+  - echo "after-script"
+```
+
+
+
+after_script失败不会影响作业失败。
+
+![images](image/02.png)
+
+before_script失败导致整个作业失败，其他作业将不再执行。作业失败不会影响after_script运行。
+
+![images](image/03.png)
+
+
+
+## stages
+
+stages是一个全局的关键词，它的值是一个数组，用于说明当前流水线包含哪些阶段，一般在.gitlab-ci.yml文件的顶部定义。stages有5个默认值，如下所示。
+
+- .pre
+- build
+- test
+- deploy
+- .post
+
+注意，.pre与.post不能单独在作业中使用，必须要有其他阶段的作业才能使用。如果官方提供的stages不满足业务需要，开发者可以自定义stages的值，如清单4-1所示。
+
+```yaml
+stages:
+  - pre-compliance
+  - build
+  - test
+  - pre-deploy-compliance
+  - deploy
+  - post-compliance
+```
+
+在清单4-1中，我们定义了6个阶段(stages)。如前所述，通常，作业的执行顺序是根据定义阶段顺序来确定的。在上述示例中，流水线会先执行pre-compliance阶段的作业，直到该阶段的所有作业顺利完成后，才会执行build阶段的作业，以此类推。
+
+## .pre & .post=
+
+.pre始终是整个管道的第一个运行阶段，.post始终是整个管道的最后一个运行阶段。 用户定义的阶段都在两者之间运行。`.pre`和`.post`的顺序无法更改。如果管道仅包含`.pre`或`.post`阶段的作业，则不会创建管道。
+
+## stage
+
+stage关键词是定义在具体作业上的，定义了当前作业的阶段，其配置值必须取自全局关键词stages。注意，全局关键词是stages，定义作业的阶段是stage。如果流水线中没有定义stages的值，那么作业的stage有以下几个默认值可供使用。
+
+- .pre
+- build
+- test
+- deploy
+- .post
+
+开发者可以在不定义全局stages的情况下直接定义作业的stage，例如，清单4-2中的示例就使用了默认的stage。
+
+```yaml
+ready_job:
+  stage: build  
+  script: echo '1'
+test_code:
+  stage: test  
+  script: echo '1'
+test_business:
+  stage: test  
+  script: echo '1'
+deploy_job:
+  stage: deploy  
+  script: echo '1'
+```
+
+<img src="image/image-20240521135303868.png" alt="image-20240521135303868" style="zoom:67%;" />
+
+作业的stage属性默认值是test。如果一条流水线既没有定义stages，其中的作业也没有指定stage，那么该流水线的所有作业都属于test阶段。
+
+注意：如果定义了stages，就必须把作业使用的stage值都定义出来，即使使用的默认值，不然流水线会报错。
+
+可能遇到的问题： 阶段并没有并行运行。在这里我把这两个阶段在同一个runner运行了，所以需要修改runner每次运行的作业数量。默认是1，改为10。
+
+vim /etc/gitlab-runner/config.toml 更改后自动加载无需重启。
+
+```
+concurrent = 10
+```
+
+## image
+
+image关键词用于指定一个Docker镜像作为基础镜像来执行当前的作业，比如开发者要使用Node.js来构建前端项目，可以像清单4-9这样写。
+
+```yaml
+use_image_job:
+  image: node:12.21.0
+  script: npm - v
+```
+
+如果runner的执行器是Docker，这样指定image是没什么问题的。但如果注册的runner执行器是Shell，那么image是没有任何作用的。Shell执行器需要在宿主机上安装Node.js才能运行NPM的指令。这是Docker执行器与Shell执行器的一大区别。
+
+如果当前的作业既需要Node.js的镜像，又需要Golang的镜像，那么可以采用的处理方法有两种：一种是将其拆分成两个作业，一个作业使用Node.js镜像执行对应的脚本，另一个作业使用Golang镜像处理对应的内容；另一种是构建一个新的镜像，将Golang镜像和Node.js的镜像包括在其中，使之包含所需要的Golang环境和Node.js环境。开发者甚至可以将流水线中所有用到的镜像构建到一个镜像中，虽然镜像会比较大，但是很方便。此外，image关键词也支持使用私有仓库的镜像。
+
+### 注意
+
+现注册一个docker执行器的runner
+
+```toml
+[[runners]]
+  name = "docker-runner"
+  url = "http://192.168.220.129"
+  token = "zteoN3iAN11pPQscUBoe"
+  executor = "docker"
+  [runners.custom_build_dir]
+  [runners.cache]
+    [runners.cache.s3]
+    [runners.cache.gcs]
+    [runners.cache.azure]
+  [runners.docker]
+    tls_verify = false
+    image = "node:14"
+    privileged = false
+    disable_entrypoint_overwrite = false
+    oom_kill_disable = false
+    disable_cache = false
+    volumes = ["/cache"]
+    shm_size = 0
+```
+
+项目的.gitlab-ci.yml文件如下：
+
+```yaml
+stages:
+  - install
+  - test
+
+npm_inst:
+  stage: install
+  script:
+    - node -v
+
+run_tests:
+  stage: test
+  image: golang:1.19.0
+  script:
+    - go env
+```
+
+CICD执行结果如下：
+
+对于`npm_inst`这个job，使用的镜像为runner注册时输入的默认镜像
+
+![image-20240521170647161](image/image-20240521170647161.png)
+
+对于`run_tests`这个job使用的是yml文件中image指定的镜像
+
+![image-20240521170842674](image/image-20240521170842674.png)
+
+## tags
+
+tags关键词用于指定使用哪个runner来执行当前作业。在为项目注册runner时，开发者需要填写runner的tags—— 这是一个用逗号分隔的字符串数组，用于表明一个runner可以有多个标签。项目所有可用的runner包含在项目的runner菜单中，每个runner至少有一个标签。
+
+如图4-2所示，该项目有两个可用runner，右侧的是共享runner，该runner有两个标签，分别是dockercicd和share-runner。左侧的是项目私有的runner，有一个标签docker-runner。
+
+<img src="image/image-20240521161259863.png" alt="image-20240521161259863" style="zoom:80%;" />
+
+如果开发者想要流水线使用左侧的runner来执行，那么可以在作业中像清单4-10这样配置tags。
+
+```yaml
+tags_example:
+  tags:
+    - docker-runner
+  script: echo 'hello fizz'
+```
+
+在上述示例中，指定作业的tags为docker-runner，这样作业就能找到对应的runner来执行了。如果指定的tags能找到多个runner，那么作业会在多个runner之间进行调度。一般来讲，除非必要，建议使用同一个runner执行整条流水线，这样可以保持一致性和可靠性。
+
+## variables
+
+在开发流水线的过程中，开发者可以使用variables关键词来定义一些变量。这些变量默认会被当作环境变量，变量的引入让流水线的编写更具灵活性、更具扩展性，可满足各种复杂业务场景的需要。GitLab CI/CD中的变量的定义与使用方式也是非常丰富的。
+
+### 在.gitlab-ci.yml文件中定义变量
+
+在.gitlab-ci.yml文件中，开发者可以使用variables关键词定义变量，如清单4-11所示。
+
+```yaml
+variables:
+  USER_NAME: "fizz"
+print_var:
+  script: echo $USER_NAME
+```
+
+变量名的推荐写法是使用大写字母，使用下画线_来分隔多个单词。在使用时，可以直接使用变量名，也可以使用$变量名，或使用${变量名}。为了与正常字符串区分开来，我们推荐使用后一种方式。如果将变量定义在全局范围，则该变量对于任何一个作业都可用；如果将变量定义在某个作业，那么该变量只能在当前作业可用；如果局部变量与全局变量同名，则局部变量会覆盖全局变量。
+
+我们来看清单4-12中的示例。在作业test中，全局变量USER_NAME的值fizz会被局部变量USER_NAME的值ZK所覆盖，因此最终输出的结果是hello ZK。
+
+```yaml
+variables:
+  USER_NAME: 'fizz'
+test:
+  variables:
+    USER_NAME: 'ZK'
+  script: echo 'hello' $USER_NAME
+```
+
+注意：如果在某一个作业的script中修改了一个全局变量的值，那么新值只在当前的脚本中有效。对于其他作业，全局变量依然是当初定义的值。
+
+### 在CI/CD设置中定义变量
+
+除了在.gitlab-ci.yml中显式地定义变量，开发者还可以在项目的CI/CD中设置一些自定义变量，如图4-3所示。
+
+![image-20240521180059284](image/image-20240521180059284.png)
+
+在这里，开发者可以定义一些比较私密的变量，例如登录DockerHub的账号、密码，或者登录服务器的账号、密码或私钥。
+
+![image-20240521180158259](image/image-20240521180158259.png)
+
+将隐秘的信息变量定义在这里，然后勾选Mask variable复选框，这样在流水线的日志中，该变量将不会被显式地输出（但对变量值有一定格式要求）。这可以使流水线更安全，不会直接在代码中暴露隐秘信息。开发者还可以将一些变量设置为只能在保护分支使用。
+
+如果有些变量需要在一个群组的项目中使用，可以设置群组CI/CD变量。群组CI/CD变量设置入口如图4-5所示。
+
+注意，开发者也可以在群组的范围下注册runner。注册的runner对于在群组中的每一个项目都可使用。
+
+![image-20240521180437139](image/image-20240521180437139.png)
+
+除了预设一些自定义变量，开发者还可以在手动执行流水线时，定义流水线需要的变量，这样做有可能会覆盖定义的其他变量。
+
+如果想查看当前流水线所有的变量，可以在script中执行export指令。
+
+### 预设变量
+
+除了用户自定义变量，在GitLab CI/CD中也有很多预设变量，用于描述当前操作人、当前分支、项目名称、当前触发流水线的方式等。使用这些预设变量可以大幅度降低开发流水线的难度，将业务场景分割得更加精确。一些常见的预设变量如下所示。
+
+- CI_COMMIT_BRANCH ：提交分支的名称。
+- GITLAB_USER_NAME：触发当前作业的GitLab用户名。
+- CI_COMMIT_REF_NAME：正在构建项目的分支或tag名。
+- CI_COMMIT_SHA：提交的修订号。
+- CI_COMMIT_SHORT_SHA：提交的8位数修订号。
+- CI_COMMIT_TAG：提交的tag名称，只在tag流水线中可见。
+- CI_JOB_NAME：作业的名称。
+- CI_PROJECT_NAME：项目的名称。
+
+## when
+
+when关键词提供了一种监听作业状态的功能，只能定义在具体作业上。如果作业失败或者成功，则可以去执行一些额外的逻辑。例如当流水线失败时，发送邮件通知运维人员。
+
+when的选项如下所示。
+
+- on_success：此为默认值，如果一个作业使用`when: on_success`，那么在此之前的阶段的其他作业都成功执行后，才会触发当前的作业。
+- on_failure：如果一个作业使用`when: on_failure`，当在此之前的阶段中有作业失败或者流水线被标记为失败后，才会触发该作业。
+- always：不管之前的作业的状态如何，都会执行该作业。
+- manual：当用`when: manual`修饰一个作业时，该作业只能被手动执行。
+- delayed：当某个作业设置了`when: delayed`时，当前作业将被延迟执行，而延迟多久可以用`start_in`来定义，如定义为5 seconds、30 minutes、1 day、1 week等。
+- never：流水线不被执行或者使用rule关键词限定的不被执行的作业。
+
+清单4-13显示了一个需要手动执行的作业。
+
+```yaml
+manual_job:
+  script: echo 'I think therefore I am'
+  when: manual
+```
+
+如果开发者想要监听当前流水线的失败状态，并在流水线失败时执行作业，可以将清单4-14所示的这个作业放到最后的阶段来执行。
+
+```yaml
+fail_job:
+  script: echo 'Everything is going to be alright,Maybe not today but eventually'
+  when: on_failure
+```
+
+注意：该作业必须放到最后一个阶段来执行，只有这样，才能监听到之前所有阶段的作业失败状态。如果之前的作业没有失败，该作业将不会被执行；如果之前的作业有一个失败，该作业就会被执行。
+
+
+
+
+
+## 综合实例
+
+综合实例:
+
+```
+before_script:
+  - echo "before-script!!"
+
+variables:
+  DOMAIN: example.com
+  
+stages:
+  - build
+  - test
+  - codescan
+  - deploy
+
+build:
+  before_script:
+    - echo "before-script in job"
+  stage: build
+  script:
+    - echo "mvn clean "
+    - echo "mvn install"
+    - echo "$DOMAIN"
+  after_script:
+    - echo "after script in buildjob"
+
+unittest:
+  stage: test
+  script:
+    - echo "run test"
+
+deploy:
+  stage: deploy
+  script:
+    - echo "hello deploy"
+    - sleep 2;
+  
+codescan:
+  stage: codescan
+  script:
+    - echo "codescan"
+    - sleep 5;
+ 
+after_script:
+  - echo "after-script"
+  - ech
+```
+
+
+
+实验效果
+
+![images](image/17.png)
+
+
+
+可能遇到的问题： pipeline卡主,为降低复杂性目前没有学习tags，所以流水线是在共享的runner中运行的。需要设置共享的runner运行没有tag的作业。
+
+![images](image/18.png)
+
+
 
 
 

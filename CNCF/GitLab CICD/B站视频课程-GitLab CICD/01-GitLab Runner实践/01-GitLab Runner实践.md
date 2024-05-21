@@ -184,7 +184,19 @@ Git branch:   12-6-stable
 GO version:   go1.13.4
 Built:        2019-12-22T11:55:34+0000
 OS/Arch:      linux/amd64
+
+docker run -d --name gitlab-runner --restart always \
+  -v ~/data/gitlab-runner/config:/etc/gitlab-runner \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  gitlab/gitlab-runner:v14.1.0
+  
 ```
+
+`-v /var/run/docker.sock:/var/run/docker.sock` 这个挂载的目的是为了让 GitLab Runner 容器能够与宿主机的 Docker 守护进程进行通信，实现在容器内部执行 Docker 相关的操作。这个挂载的实际作用是将宿主机上的 Docker 守护进程的 UNIX 套接字（socket）挂载到 GitLab Runner 容器内的相同路径上，从而使容器内的进程可以与宿主机的 Docker 守护进程进行通信。
+
+通过这种方式，GitLab Runner 容器内的作业可以使用宿主机的 Docker 守护进程来创建、运行和管理其他 Docker 容器，实现了容器内部对外部 Docker 环境的访问和操作，比如构建和部署 Docker 镜像等操作。这种通信机制在实现 CI/CD 流水线中的 Docker 集成时非常常见。
+
+总结一下，挂载 `/var/run/docker.sock` 到 GitLab Runner 容器的 `/var/run/docker.sock` 目的是在容器中使用宿主机的 Docker 守护进程，以便在容器内执行 Docker 相关操作，如构建、运行 Docker 容器等。
 
 
 
@@ -667,13 +679,14 @@ deploy:
 
 ```yaml
 stages:
-  - install
   - build
+  - install2
   - deploy
+  - xxx # 定义的阶段没有被使用并不会报错
   
 install_job:
-  stage: install
-  script: echo 'hello install'
+  stage: install2
+  script: echo 'hello install2'
   
 build_job:
   stage: build
@@ -686,4 +699,4 @@ deploy_job:
 
 作业的执行顺序一般由阶段来定义。一个阶段是由一组作业组成的，同一个阶段的作业是并行运行的。也就是说，运行完一个阶段的所有作业再去运行下一阶段的作业。当然，也有例外，例如使用关键词need来实现作业之间的依赖。
 
-![image-20240521112903470](image/image-20240521112903470.png)
+![image-20240521133521984](image/image-20240521133521984.png)
