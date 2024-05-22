@@ -2,7 +2,72 @@
 
 在14.1.0版本中，共有35个关键词（其中variables既是全局关键词，也是作业关键词），包括31个作业关键词（定义在作业上的，只对当前作业起作用，分别是after_script、allow_failure、artifacts、before_script、cache、coverage、dependencies、dast_configuration、environment、except、extends、image、inherit、interruptible、needs、only、pages、parallel、release、resource_group、retry、rules、script、secrets、services、stage、tags、timeout、trigger、variables和when，以及5个全局关键词（定义在流水线全局的，对整个流水线起作用，分别是stages、workflow、include、default和variables）。使用这些关键词，开发者可以很方便地编写流水线。
 
-# Pipeline基础语法(一)
+# 初阶关键词
+
+## stages
+
+stages是一个全局的关键词，它的值是一个数组，用于说明当前流水线包含哪些阶段，一般在.gitlab-ci.yml文件的顶部定义。stages有5个默认值，如下所示。
+
+- .pre
+- build
+- test
+- deploy
+- .post
+
+注意，.pre与.post不能单独在作业中使用，必须要有其他阶段的作业才能使用。如果官方提供的stages不满足业务需要，开发者可以自定义stages的值，如清单4-1所示。
+
+```yaml
+stages:
+  - pre-compliance
+  - build
+  - test
+  - pre-deploy-compliance
+  - deploy
+  - post-compliance
+```
+
+在清单4-1中，我们定义了6个阶段(stages)。如前所述，通常，作业的执行顺序是根据定义阶段顺序来确定的。在上述示例中，流水线会先执行pre-compliance阶段的作业，直到该阶段的所有作业顺利完成后，才会执行build阶段的作业，以此类推。
+
+## stage
+
+stage关键词是定义在具体作业上的，定义了当前作业的阶段，其配置值必须取自全局关键词stages。注意，全局关键词是stages，定义作业的阶段是stage。如果流水线中没有定义stages的值，那么作业的stage有以下几个默认值可供使用。
+
+- .pre
+- build
+- test
+- deploy
+- .post
+
+开发者可以在不定义全局stages的情况下直接定义作业的stage，例如，清单4-2中的示例就使用了默认的stage。
+
+```yaml
+ready_job:
+  stage: build  
+  script: echo '1'
+test_code:
+  stage: test  
+  script: echo '1'
+test_business:
+  stage: test  
+  script: echo '1'
+deploy_job:
+  stage: deploy  
+  script: echo '1'
+```
+
+<img src="image/image-20240521135303868.png" alt="image-20240521135303868" style="zoom:67%;" />
+
+**作业的stage属性默认值是test。如果一条流水线既没有定义stages，其中的作业也没有指定stage，那么该流水线的所有作业都属于test阶段。**
+
+**注意：如果定义了stages，就必须把作业使用的stage值都定义出来，即使使用的默认值，不然流水线会报错**。
+
+可能遇到的问题： 阶段并没有并行运行。在这里我把这两个阶段在同一个runner运行了，所以需要修改runner每次运行的作业数量。默认是1，改为10。
+
+vim /etc/gitlab-runner/config.toml 更改后自动加载无需重启。
+
+```
+concurrent = 10
+```
 
 ## script
 
@@ -15,7 +80,7 @@ npm_inst:
 
 这里定义了一个`npm_inst`的作业，`script`关键词定义了一行内容`npm install`，这是一个`npm`命令，用于安装Node.js依赖包。
 
-需要说明的是，在每个作业开始时，runner会进行一系列的初始化，这些初始化包括将当前的项目代码下载到执行器的工作目录，并进入项目的根目录，同时清空一些不需要的文件。在不同的执行器上，会有一些差异，详见2.4节。
+需要说明的是，在每个作业开始时，runner会进行一系列的初始化，这些初始化包括将当前的项目代码下载到执行器的工作目录（working-directory），并进入项目的根目录，同时清空一些不需要的文件。在不同的执行器上，会有一些差异，详见2.4节。
 
 在执行`npm install`时，其实就是在项目的根目录下执行。如果GitLab Runner是直接在宿主机上安装的，而不是使用Docker，那么在执行`npm install`之前，你需要在宿主机上安装`Node.js`。但如果开发者的执行器是Docker，就需要在这个作业上指定node镜像，这样`script`的内容才可以正常执行。
 
@@ -29,7 +94,7 @@ npm_inst:
     - npm build
 ```
 
-多行脚本内容使用YAML文件中的数组来表示，使用-开头来表示每一行脚本。如果script中的内容有引号，则需要用单引号将整段内容包裹起来，如清单4-5所示。
+多行脚本内容使用YAML文件中的数组来表示，使用`-`开头来表示每一行脚本。如果script中的内容有引号，则需要用单引号将整段内容包裹起来，如清单4-5所示。
 
 ```yaml
 use_curl_job:
@@ -206,7 +271,7 @@ gitlab-runner register \
 
 
 
-## cache=
+## cache
 
 为什么会用到缓存呢？这是因为流水线中的每个作业都是独立运行的，如果没有缓存，运行上一个作业时安装的项目依赖包，运行下一个作业还需要安装一次。如果将上一个作业安装的依赖包缓存起来，在下一个作业运行时将其恢复到工作目录中，就可以大大减少资源的浪费。
 
@@ -226,7 +291,7 @@ npm_init:
       - .config
 ```
 
-可以看到，npm_init作业执行npm install，安装了项目所需要的依赖包。在这个作业结束后，执行器会将工作目录中的node_modules目录、binaries目录下所有以.apk为扩展名的文件以及当前目录下的.config文件压缩成一个压缩包，缓存起来。
+可以看到，`npm_init`作业执行npm install，安装了项目所需要的依赖包。在这个作业结束后，执行器会将工作目录中的node_modules目录、binaries目录下所有以.apk为扩展名的文件以及当前目录下的.config文件压缩成一个压缩包，缓存起来。
 
 如果项目有多个分支，想要设置多个缓存，这时可以使用全局配置cache的key来设置，如清单4-7所示。
 
@@ -240,14 +305,16 @@ default:
 
 key的值可以使用字符串，也可以使用变量，其默认值是default。在清单4-7中，key的值就是CI中的变量、当前的分支或tag。在执行流水线的过程中，对于使用相同key缓存的作业，执行器会先尝试恢复之前的缓存。
 
-在一个作业中最多可以定义4个key。清单4-8所示的示例，配置了2个key。
+更加专业的缓存使用：
 
 ```yaml
 test-job:
   stage: build
   cache:
     - key:
-        files:
+        files: # files属性用于指定生成缓存键时需要考虑的文件列表
+        # 这样做的目的是确保生成的缓存键是基于特定文件内容的，以便在文件内容发生变化时正确地更新或重新生成缓存。
+        # 在该例中，如果 Gemfile.lock 文件内容被修改，会导致缓存失效，根据新的Gemfile.lock文件内容重新生成缓存。
           - Gemfile.lock
       paths:
         - vendor/ruby
@@ -260,135 +327,6 @@ test-job:
     - bundle install --path=vendor
     - yarn install --cache-folder .yarn-cache
     - echo 'install done'
-```
-
-
-
-## before_script
-
-before_script关键词与script关键词类似，都用于定义作业需要执行的脚本、命令行。不同之处在于before_script必须是一个数组。更重要的是，before_script内容执行的时机是执行script内容之前、artifacts被恢复之后。开发者也可以在default关键中定义全局的before_script，定义后其将在每个作业中执行。
-
-## after_script
-
-after_script关键词用于定义一组在作业执行结束后执行的脚本，这必须是一个数组。与before_script的不同之处在于它的执行时机以及执行环境——after_script是在单独的Shell环境中执行的，对于在before_script或者script中定义或修改的变量，它是无权访问的。after_script还有一些其他特殊之处：如果当前作业失败，它也会被执行；如果作业被取消或者超时，它将不会被执行。
-
-可以在全局定义，也可以在job中定义。在job中定义会覆盖全局。
-
-```yaml
-before_script:
-  - echo "before-script!!"
-
-variables:
-  DOMAIN: example.com
-
-stages:
-  - build
-  - test
-
-go_build:
-  before_script:
-    - pwd
-    - ls -la
-    - echo "before-script in job"
-  stage: build
-  image: golang
-  script: 
-    - go build -o helloxx
-  artifacts:
-    paths:
-      - helloxx
-    expire_in: 1 week
-    name: "$CI_JOB_NAME"
-
-go_test:
-  variables:
-    ONE_YEAR: "peace for world"
-  before_script:
-    - ls -la
-    - echo "before-script in job"
-    - ONE_YEAR="111 year"
-    - echo $ONE_YEAR
-  stage: test
-  after_script:
-    - pwd
-    - ls -la
-    - echo $ONE_YEAR
-    - echo "after script in job"
-  image: golang
-  script:
-    - pwd
-    - ls -la
-```
-
-
-
-## stages
-
-stages是一个全局的关键词，它的值是一个数组，用于说明当前流水线包含哪些阶段，一般在.gitlab-ci.yml文件的顶部定义。stages有5个默认值，如下所示。
-
-- .pre
-- build
-- test
-- deploy
-- .post
-
-注意，.pre与.post不能单独在作业中使用，必须要有其他阶段的作业才能使用。如果官方提供的stages不满足业务需要，开发者可以自定义stages的值，如清单4-1所示。
-
-```yaml
-stages:
-  - pre-compliance
-  - build
-  - test
-  - pre-deploy-compliance
-  - deploy
-  - post-compliance
-```
-
-在清单4-1中，我们定义了6个阶段(stages)。如前所述，通常，作业的执行顺序是根据定义阶段顺序来确定的。在上述示例中，流水线会先执行pre-compliance阶段的作业，直到该阶段的所有作业顺利完成后，才会执行build阶段的作业，以此类推。
-
-## .pre & .post=
-
-.pre始终是整个管道的第一个运行阶段，.post始终是整个管道的最后一个运行阶段。 用户定义的阶段都在两者之间运行。`.pre`和`.post`的顺序无法更改。如果管道仅包含`.pre`或`.post`阶段的作业，则不会创建管道。
-
-## stage
-
-stage关键词是定义在具体作业上的，定义了当前作业的阶段，其配置值必须取自全局关键词stages。注意，全局关键词是stages，定义作业的阶段是stage。如果流水线中没有定义stages的值，那么作业的stage有以下几个默认值可供使用。
-
-- .pre
-- build
-- test
-- deploy
-- .post
-
-开发者可以在不定义全局stages的情况下直接定义作业的stage，例如，清单4-2中的示例就使用了默认的stage。
-
-```yaml
-ready_job:
-  stage: build  
-  script: echo '1'
-test_code:
-  stage: test  
-  script: echo '1'
-test_business:
-  stage: test  
-  script: echo '1'
-deploy_job:
-  stage: deploy  
-  script: echo '1'
-```
-
-<img src="image/image-20240521135303868.png" alt="image-20240521135303868" style="zoom:67%;" />
-
-作业的stage属性默认值是test。如果一条流水线既没有定义stages，其中的作业也没有指定stage，那么该流水线的所有作业都属于test阶段。
-
-注意：如果定义了stages，就必须把作业使用的stage值都定义出来，即使使用的默认值，不然流水线会报错。
-
-可能遇到的问题： 阶段并没有并行运行。在这里我把这两个阶段在同一个runner运行了，所以需要修改runner每次运行的作业数量。默认是1，改为10。
-
-vim /etc/gitlab-runner/config.toml 更改后自动加载无需重启。
-
-```
-concurrent = 10
 ```
 
 ## image
@@ -479,6 +417,14 @@ tags_example:
 
 在上述示例中，指定作业的tags为docker-runner，这样作业就能找到对应的runner来执行了。如果指定的tags能找到多个runner，那么作业会在多个runner之间进行调度。一般来讲，除非必要，建议使用同一个runner执行整条流水线，这样可以保持一致性和可靠性。
 
+
+
+## .pre & .post=
+
+.pre始终是整个管道的第一个运行阶段，.post始终是整个管道的最后一个运行阶段。 用户定义的阶段都在两者之间运行。`.pre`和`.post`的顺序无法更改。如果管道仅包含`.pre`或`.post`阶段的作业，则不会创建管道。
+
+
+
 ## variables
 
 在开发流水线的过程中，开发者可以使用variables关键词来定义一些变量。这些变量默认会被当作环境变量，变量的引入让流水线的编写更具灵活性、更具扩展性，可满足各种复杂业务场景的需要。GitLab CI/CD中的变量的定义与使用方式也是非常丰富的。
@@ -527,8 +473,6 @@ test:
 
 ![image-20240521180437139](image/image-20240521180437139.png)
 
-除了预设一些自定义变量，开发者还可以在手动执行流水线时，定义流水线需要的变量，这样做有可能会覆盖定义的其他变量。
-
 如果想查看当前流水线所有的变量，可以在script中执行export指令。
 
 ### 预设变量
@@ -550,20 +494,12 @@ when关键词提供了一种监听作业状态的功能，只能定义在具体�
 
 when的选项如下所示。
 
-- on_success：此为默认值，如果一个作业使用`when: on_success`，那么在此之前的阶段的其他作业都成功执行后，才会触发当前的作业。
-- on_failure：如果一个作业使用`when: on_failure`，当在此之前的阶段中有作业失败后，才会触发该作业。
+- on_success：此为默认值，如果一个作业使用`when: on_success`，那么在此之前阶段的所有作业都成功执行后，才会触发当前的作业。
+- on_failure：如果一个作业使用`when: on_failure`，当在此之前阶段中所有作业失败后，才会触发该作业。
 - always：不管之前的作业的状态如何，都会执行该作业。
 - manual：当用`when: manual`修饰一个作业时，该作业只能被手动执行。
 - delayed：当某个作业设置了`when: delayed`时，当前作业将被延迟执行，而延迟多久可以用`start_in`来定义，如定义为5 seconds、30 minutes、1 day、1 week等。
 - never：流水线不被执行或者使用rule关键词限定的不被执行的作业。
-
-清单4-13显示了一个需要手动执行的作业。
-
-```yaml
-manual_job:
-  script: echo 'I think therefore I am'
-  when: manual
-```
 
 如果开发者想要监听当前流水线的失败状态，并在流水线失败时执行作业，可以将清单4-14所示的这个作业放到最后的阶段来执行。
 
@@ -607,6 +543,50 @@ upload:
 ```
 
 在上述示例中，我们定义了一个upload作业，在作业完成后，它会将/dist和当前目录下所有以.jar为扩展名的文件存储起来，并将binaries目录下的所有以.o为扩展名的文件排除掉。文件的有效期是1周，artifacts名称使用当前的作业名称来命名。
+
+## before_script
+
+before_script关键词与script关键词类似，都用于定义作业需要执行的脚本、命令行。不同之处在于before_script必须是一个数组。更重要的是，before_script内容执行的时机是执行script内容之前、artifacts被恢复之后。开发者也可以在default关键中定义全局的before_script，定义后其将在每个作业中执行。
+
+## after_script
+
+after_script关键词用于定义一组在作业执行结束后执行的脚本，这必须是一个数组。与before_script的不同之处在于它的执行时机以及执行环境——after_script是在单独的Shell环境中执行的，对于在before_script或者script中定义或修改的变量，它是无权访问的。after_script还有一些其他特殊之处：如果当前作业失败，它也会被执行；如果作业被取消或者超时，它将不会被执行。
+
+可以在全局定义，也可以在job中定义。在job中定义会覆盖全局。
+
+```yaml
+before_script:
+  - echo "before-script!!"
+
+variables:
+  DOMAIN: example.com
+
+stages:
+  - build
+  - test
+
+go_test:
+  variables:
+    ONE_YEAR: "peace for world"
+  before_script:
+    - ls -la
+    - echo "before-script in job"
+    - ONE_YEAR="111 year"
+    - echo $ONE_YEAR
+  stage: test
+  after_script:
+    - pwd
+    - ls -la
+    - echo $ONE_YEAR
+    - echo "after script in job"
+  image: golang
+  script:
+    - pwd
+    - ls -la
+    - echo $ONE_YEAR
+```
+
+
 
 ## only与except
 
@@ -728,79 +708,53 @@ test_all: # test_all 作业将在除了 fe 目录和 Dockerfile 改变之外的�
 
 **Tag 流水线**是在创建 Git 标签（tag）时触发的流水线，这种流水线在标签被推送到仓库时自动执行。标签通常用于标记项目中的重要版本或里程碑，例如发布版本或版本升级。
 
+对于 Tag 流水线中作业的执行规则：
+
+1. 默认情况下，所有作业会运行：在 Tag 流水线中，一般情况下，所有作业都会执行，不受 `only: tags` 的限制。
+2. 如果设置了 `only: tags` 条件，那么该作业将只在标签被推送时触发。
+
 假设你有一个标签 `v1.0`，当你推送这个标签到 Git 仓库时，将触发 Tag 流水线。
 
-`.gitlab-ci.yml` 示例：
+![image-20240522112949110](image/image-20240522112949110.png)
 
-```yaml
-stages:
-  - build
-  - test
-  - deploy
 
-build:
-  stage: build
-  script:
-    - echo "Building the project"
-  only:
-    - tags
-
-test:
-  stage: test
-  script:
-    - echo "Running tests"
-  only:
-    - tags
-
-deploy:
-  stage: deploy
-  script:
-    - echo "Deploying the project"
-  only:
-    - tags
-```
-
-在上述配置中，所有三个作业 (`build`, `test`, `deploy`) 仅在标签被推送时执行。
 
 #### 定时触发流水线
 
 **定时触发流水线**（Scheduled Pipeline）是在预设的时间间隔或特定时间点自动触发的流水线。使用定时触发流水线，你可以安排 CI 任务在固定的时间间隔内自动运行，例如每日构建、每周自动测试等。
 
-你可以在 GitLab 的 "CI/CD Settings" 中配置一个定时触发任务。以下是如何在 `.gitlab-ci.yml` 中配置一个定时触发流水线示例。
+定时触发流水线中作业的执行规则：
+
+1. **默认情况下，所有作业会运行：** 在定时触发的流水线中，除非明确指定了其他条件来限制作业的运行，否则所有作业将会执行。
+2. **使用 `only` 来限制作业的触发条件：** 如果想要某个作业只在定时触发时执行，可以使用 `only: schedules` 来指定。这样，该作业将仅在定时触发时执行，而在其他触发条件下不执行。
+
+举个例子，假设在 `.gitlab-ci.yml` 中有如下作业配置：
 
 ```yaml
-stages:
-  - build
-  - test
-  - deploy
-
-build:
-  stage: build
-  script:
-    - echo "Building the project"
-  only:
-    - schedules
-
 test:
   stage: test
   script:
     - echo "Running tests"
   only:
     - schedules
-
-deploy:
-  stage: deploy
-  script:
-    - echo "Deploying the project"
-  only:
-    - schedules
 ```
 
-在 GitLab 界面中，配置一个定时任务：
+在这种情况下，只有当定时任务触发流水线时，`test` 作业才会运行。如果没有设置 `only: schedules`，那么无论什么触发方式，该作业都会运行。
 
-1. 进入你的项目。
-2. 选择 "CI / CD" > "Schedules"。
-3. 点击 "New Schedule" 按钮，然后配置你的定时任务，例如每天凌晨 3 点运行。
+对于定时触发流水线的总结：
+
+- 默认情况下，所有作业会在定时触发时运行。
+- 如果希望作业只在定时触发时运行，可以使用 `only: schedules`。
+
+你可以在项目中的 "CI/CD  /  Schedules " 中配置一个定时触发任务。
+
+<img src="image/image-20240522105903479.png" alt="image-20240522105903479" style="zoom:67%;" />
+
+看看执行的结果，发现确实被定时调度了
+
+![image-20240522111712185](image/image-20240522111712185.png)
+
+
 
 **`only: changes` 与 `except: changes` 在 Tag 和定时触发流水线中的行为**
 
@@ -809,15 +763,25 @@ deploy:
 - 对于标签推送，标签本身不代表具体文件的变化。
 - 对于定时触发，定时任务的重点在于按时执行，而非监控特定文件的变化。
 
-因此，如果你在 `.gitlab-ci.yml` 中使用了类似的配置：
+# 中阶关键词
+
+在GitLab CI/CD中，开发者可以使用关键词coverage配置一个正则表达式来提取作业日志中输出的代码覆盖率，提取后可以将之展示到代码分支上，如清单5-1所示。
 
 ```yaml
 test:
-  script: deploy test
-  only:
-    changes:
-      - Dockerfile
-      - fe/**/*
+  script: npm test
+  coverage: '/Code coverage: \d+\.\d+/'
 ```
 
-但同时创建一个标签或定时触发任务，那么 `test` 作业将会直接执行，而不会检查 `Dockerfile` 或 `fe` 目录的变化。
+在上述示例中，我们在作业test中将coverage配置为 '/Code coverage: \d+.\d+/'。注意，coverage的值必须以/开头和结尾。如果该作业输出了Code coverage: 67.89这种格式的日志，会被GitLab CI/CD记录起来。如果有多个日志符合规则，取最后一个记录。
+
+
+
+# 高阶关键词
+
+
+
+
+
+
+
