@@ -264,19 +264,17 @@ test-job:
 
 
 
-## before_script=
+## before_script
 
-用于定义一个命令，该命令在每个作业之前运行。必须是一个数组。指定的[`script`](http://s0docs0gitlab0com.icopy.site/12.9/ee/ci/yaml/README.html#script)与主脚本中指定的任何脚本串联在一起，并在单个shell中一起执行。
+before_script关键词与script关键词类似，都用于定义作业需要执行的脚本、命令行。不同之处在于before_script必须是一个数组。更重要的是，before_script内容执行的时机是执行script内容之前、artifacts被恢复之后。开发者也可以在default关键中定义全局的before_script，定义后其将在每个作业中执行。
 
+## after_script
 
-
-## after_script=
-
-用于定义将在每个作业（包括失败的作业）之后运行的命令。这必须是一个数组。指定的脚本在新的shell中执行，与任何`before_script`或`script`脚本分开。
+after_script关键词用于定义一组在作业执行结束后执行的脚本，这必须是一个数组。与before_script的不同之处在于它的执行时机以及执行环境——after_script是在单独的Shell环境中执行的，对于在before_script或者script中定义或修改的变量，它是无权访问的。after_script还有一些其他特殊之处：如果当前作业失败，它也会被执行；如果作业被取消或者超时，它将不会被执行。
 
 可以在全局定义，也可以在job中定义。在job中定义会覆盖全局。
 
-```
+```yaml
 before_script:
   - echo "before-script!!"
 
@@ -285,38 +283,42 @@ variables:
 
 stages:
   - build
-  - deploy
- 
+  - test
 
-build:
+go_build:
   before_script:
+    - pwd
+    - ls -la
     - echo "before-script in job"
   stage: build
-  script:
-    - echo "mvn clean "
-    - echo "mvn install"
+  image: golang
+  script: 
+    - go build -o helloxx
+  artifacts:
+    paths:
+      - helloxx
+    expire_in: 1 week
+    name: "$CI_JOB_NAME"
+
+go_test:
+  variables:
+    ONE_YEAR: "peace for world"
+  before_script:
+    - ls -la
+    - echo "before-script in job"
+    - ONE_YEAR="111 year"
+    - echo $ONE_YEAR
+  stage: test
   after_script:
+    - pwd
+    - ls -la
+    - echo $ONE_YEAR
     - echo "after script in job"
-
-
-deploy:
-  stage: deploy
+  image: golang
   script:
-    - echo "hello deploy"
-    
-after_script:
-  - echo "after-script"
+    - pwd
+    - ls -la
 ```
-
-
-
-after_script失败不会影响作业失败。
-
-![images](image/02.png)
-
-before_script失败导致整个作业失败，其他作业将不再执行。作业失败不会影响after_script运行。
-
-![images](image/03.png)
 
 
 
@@ -549,7 +551,7 @@ when关键词提供了一种监听作业状态的功能，只能定义在具体�
 when的选项如下所示。
 
 - on_success：此为默认值，如果一个作业使用`when: on_success`，那么在此之前的阶段的其他作业都成功执行后，才会触发当前的作业。
-- on_failure：如果一个作业使用`when: on_failure`，当在此之前的阶段中有作业失败或者流水线被标记为失败后，才会触发该作业。
+- on_failure：如果一个作业使用`when: on_failure`，当在此之前的阶段中有作业失败后，才会触发该作业。
 - always：不管之前的作业的状态如何，都会执行该作业。
 - manual：当用`when: manual`修饰一个作业时，该作业只能被手动执行。
 - delayed：当某个作业设置了`when: delayed`时，当前作业将被延迟执行，而延迟多久可以用`start_in`来定义，如定义为5 seconds、30 minutes、1 day、1 week等。
@@ -573,75 +575,249 @@ fail_job:
 
 注意：该作业必须放到最后一个阶段来执行，只有这样，才能监听到之前所有阶段的作业失败状态。如果之前的作业没有失败，该作业将不会被执行；如果之前的作业有一个失败，该作业就会被执行。
 
+## artifacts
 
+在执行流水线的过程，开发者可能需要将一些构建出的文件保存起来，比如一些JAR包、测试报告，这时就可以使用artifacts关键词来实现。**开发者可以使用artifacts关键词配置多个目录或文件列表，作业一旦完成，这些文件或文件夹会被上传到GitLab—— 这些文件会在下一个阶段的作业中被自动恢复到工作目录，以便复用。**通过这种方式，开发者可以很好地持久化测试报告和其他文件，也可以在GitLab上自由查看和下载这些文件。
 
+通过artifacts的配置项，开发者可以很容易地设置其大小和有效期，也可以使用通配符来选择特定格式的文件。清单4-15给出了一个将文件目录保存到artifacts下的简单示例。
 
-
-## 综合实例
-
-综合实例:
-
+```yaml
+artifacts_test_job:
+  script: npm run build
+  artifacts:
+    paths:
+      - /dist
 ```
-before_script:
-  - echo "before-script!!"
 
-variables:
-  DOMAIN: example.com
-  
+上面的作业，会在执行完npm run build后，将/dist目录作为artifacts上传到GitLab上。在14.x的版本中，开发者可以直接在GitLab在线查看artifacts的内容而不用下载。
+
+清单4-16给出了一个artifacts的复杂配置示例。
+
+```yaml
+upload:
+  script: npm run build
+  artifacts:
+    paths:
+      - /dist
+      - *.jar
+    exclude:
+      - binaries/**/*.o
+    expire_in: 1 week
+    name: "$CI_JOB_NAME"
+```
+
+在上述示例中，我们定义了一个upload作业，在作业完成后，它会将/dist和当前目录下所有以.jar为扩展名的文件存储起来，并将binaries目录下的所有以.o为扩展名的文件排除掉。文件的有效期是1周，artifacts名称使用当前的作业名称来命名。
+
+## only与except
+
+only与except这两个关键词用于控制当前作业是否被执行，或当前作业的执行时机。only是只有当条件满足时才会执行该作业；except是排除定义的条件，在其他情况下该作业都会被执行。如果一个作业没有被only、except或者rules修饰，那么该作业将默认被only修饰，值为tags或branchs（则默认适用于所有分支和标签）。最常用的语法就是，控制某个作业只有在修改某个分支时才被执行。如清单4-17所示，只有修改了test分支的代码，该作业才会被执行。
+
+```yaml
+only_example:
+  script: deploy test
+  only:
+    - test
+```
+
+only与except可以配置4种值，如下所示。
+
+- refs
+- variables
+- changes
+- Kubernetes
+
+### only:refs/except:refs
+
+如果only/except关键词配置的是refs，表明作业只有在某个分支或某个流水线类型下才会被添加到流水线中或被排除。清单4-18给出了only:refs的使用示例。
+
+```yaml
+test:
+  script: deploy test
+  only:
+    - test
+build:
+  script: deploy test
+  only:
+    refs:
+      - test
+deploy:
+  script: deploy test
+  only:
+    refs:
+      - tags
+      - schedules
+```
+
+在上述示例中，虽然test作业与build作业下only的定义方式不一样，但是作用都是一样的，即只有修改了test分支的代码后，作业才会被执行。deploy作业下的only是使用refs来定义的—— 使用tags与schedules。这意味着只有项目创建了tags或者当前是定时部署该作业才会被执行。像tags与schedules这样的refs修饰词还有很多，如下所示。
+
+- api：使用pipeline API触发的流水线。
+- branches：当分支的代码被改变时触发的流水线。
+- chat：使用GitLab ChatOps命令触发的流水线
+- merge_requests：流水线由创建或更新merge_request触发。
+- web：使用GitLab Web上的Run pipeline触发的流水线。
+
+此外，refs的值也可以配置成正则表达式，如/^issue-.*$/。
+
+### only:variables/except:variables
+
+only:variables与except:variables可以根据CI/CD中的变量来动态地将作业添加到流水线中。清单4-19所示的示例就是使用变量来控制作业的执行。
+
+```yaml
+test:
+  script: deploy test
+  only:
+    variables:
+      - $USER_NAME === "fizz"
+```
+
+在上述示例中，只有定义的变量USER_NAME等于fizz时，该作业才会被执行。开发者可以配置多个only:variables的条件判断，只要有一个条件符合，作业就会被执行。
+
+### only:changes/except:changes
+
+使用changes来修饰关键词only适用于某些文件改变后触发作业的情景，例如，只有项目中Dockerfile文件改变后，才执行构建Docker镜像的作业。可以用于控制作业是否在特定文件或目录变化时执行。这提供了一种更加精细化的控制方式，尤其在大型项目中可以有效减少不必要的作业执行，从而提高效率。这些针对文件改变执行或不执行的作业都可以使用only:changes或except:changes来定义。
+
+```yaml
+假设你有一个项目，包含以下目录结构：
+.
+├── Dockerfile
+├── fe/
+│   ├── src/
+│   │   ├── main.js
+│   │   └── utils.js
+│   └── index.html
+├── be/
+│   ├── main.py
+│   └── requirements.txt
+└── .gitlab-ci.yml
+你想要设置一个 CI 作业，仅在 Dockerfile 或 fe 目录下的文件发生改变时执行。
+
+# 在 .gitlab-ci.yml 文件中，你可以像这样定义：
 stages:
   - build
   - test
-  - codescan
+
+build_docker: # build_docker 作业将在 Dockerfile 改变时触发。
+  stage: build
+  script:
+    - echo "Building Docker image"
+  only:
+    changes:
+      - Dockerfile
+
+test_fe: # test_fe 作业将在 fe 目录下的任何文件发生改变时触发。
+  stage: test
+  script:
+    - echo "Running frontend tests"
+  only:
+    changes:
+      - fe/**/* # 通配符 **/* 表示匹配目录及其子目录下的所有文件。
+
+test_all: # test_all 作业将在除了 fe 目录和 Dockerfile 改变之外的任何改变时触发。
+  stage: test
+  script:
+    - echo "Running all tests"
+  except:
+    changes:
+      - fe/**/*
+      - Dockerfile
+```
+
+在 Tag 流水线或定时触发的流水线中，作业不会检查 `changes` 条件，而是直接执行。
+
+#### Tag流水线
+
+**Tag 流水线**是在创建 Git 标签（tag）时触发的流水线，这种流水线在标签被推送到仓库时自动执行。标签通常用于标记项目中的重要版本或里程碑，例如发布版本或版本升级。
+
+假设你有一个标签 `v1.0`，当你推送这个标签到 Git 仓库时，将触发 Tag 流水线。
+
+`.gitlab-ci.yml` 示例：
+
+```yaml
+stages:
+  - build
+  - test
   - deploy
 
 build:
-  before_script:
-    - echo "before-script in job"
   stage: build
   script:
-    - echo "mvn clean "
-    - echo "mvn install"
-    - echo "$DOMAIN"
-  after_script:
-    - echo "after script in buildjob"
+    - echo "Building the project"
+  only:
+    - tags
 
-unittest:
+test:
   stage: test
   script:
-    - echo "run test"
+    - echo "Running tests"
+  only:
+    - tags
 
 deploy:
   stage: deploy
   script:
-    - echo "hello deploy"
-    - sleep 2;
-  
-codescan:
-  stage: codescan
-  script:
-    - echo "codescan"
-    - sleep 5;
- 
-after_script:
-  - echo "after-script"
-  - ech
+    - echo "Deploying the project"
+  only:
+    - tags
 ```
 
+在上述配置中，所有三个作业 (`build`, `test`, `deploy`) 仅在标签被推送时执行。
 
+#### 定时触发流水线
 
-实验效果
+**定时触发流水线**（Scheduled Pipeline）是在预设的时间间隔或特定时间点自动触发的流水线。使用定时触发流水线，你可以安排 CI 任务在固定的时间间隔内自动运行，例如每日构建、每周自动测试等。
 
-![images](image/17.png)
+你可以在 GitLab 的 "CI/CD Settings" 中配置一个定时触发任务。以下是如何在 `.gitlab-ci.yml` 中配置一个定时触发流水线示例。
 
+```yaml
+stages:
+  - build
+  - test
+  - deploy
 
+build:
+  stage: build
+  script:
+    - echo "Building the project"
+  only:
+    - schedules
 
-可能遇到的问题： pipeline卡主,为降低复杂性目前没有学习tags，所以流水线是在共享的runner中运行的。需要设置共享的runner运行没有tag的作业。
+test:
+  stage: test
+  script:
+    - echo "Running tests"
+  only:
+    - schedules
 
-![images](image/18.png)
+deploy:
+  stage: deploy
+  script:
+    - echo "Deploying the project"
+  only:
+    - schedules
+```
 
+在 GitLab 界面中，配置一个定时任务：
 
+1. 进入你的项目。
+2. 选择 "CI / CD" > "Schedules"。
+3. 点击 "New Schedule" 按钮，然后配置你的定时任务，例如每天凌晨 3 点运行。
 
+**`only: changes` 与 `except: changes` 在 Tag 和定时触发流水线中的行为**
 
+在 Tag 流水线和定时触发的流水线中，`only: changes` 和 `except: changes` 的规则通常会被忽略。换句话说，这些作业会直接触发，而不检查具体文件的变化。这是因为：
 
+- 对于标签推送，标签本身不代表具体文件的变化。
+- 对于定时触发，定时任务的重点在于按时执行，而非监控特定文件的变化。
 
+因此，如果你在 `.gitlab-ci.yml` 中使用了类似的配置：
 
+```yaml
+test:
+  script: deploy test
+  only:
+    changes:
+      - Dockerfile
+      - fe/**/*
+```
+
+但同时创建一个标签或定时触发任务，那么 `test` 作业将会直接执行，而不会检查 `Dockerfile` 或 `fe` 目录的变化。
