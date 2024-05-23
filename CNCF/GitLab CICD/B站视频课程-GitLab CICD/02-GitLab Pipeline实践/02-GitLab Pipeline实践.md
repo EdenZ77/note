@@ -616,6 +616,32 @@ upload:
 
 在上述示例中，我们定义了一个upload作业，在作业完成后，它会将/dist和当前目录下所有以.jar为扩展名的文件存储起来，并将binaries目录下的所有以.o为扩展名的文件排除掉。文件的有效期是1周，artifacts名称使用当前的作业名称来命名。
 
+使用 `name` 指令来定义创建的产物存档的名称。您可以为每个存档指定唯一的名称。`artifacts:name` 变量可以使用任何[预定义变量](https://docs.gitlab.cn/jh/ci/variables/index.html)。 默认名称是 `artifacts`，下载后会变成 `artifacts.zip`。
+
+要使用当前分支或标记的名称创建档案，仅包括binaries目录：
+
+```yaml
+job:
+  artifacts:
+    name: "$CI_COMMIT_REF_NAME"
+    paths:
+      - binaries/
+```
+
+如果您的分支名称包含正斜杠（例如`feature/my-feature`），建议使用 `$CI_COMMIT_REF_SLUG` 而不是 `$CI_COMMIT_REF_NAME` 来正确命名产物。
+
+要使用当前作业的名称和当前的分支或标记创建仅包含binaries目录的存档：
+
+```yaml
+job:
+  artifacts:
+    name: "$CI_JOB_NAME-$CI_COMMIT_REF_NAME"
+    paths:
+      - binaries/
+```
+
+
+
 ## before_script
 
 before_script关键词与script关键词类似，都用于定义作业需要执行的脚本、命令行。不同之处在于before_script必须是一个数组。更重要的是，before_script内容执行的时机是执行script内容之前、artifacts被恢复之后。开发者也可以在default关键中定义全局的before_script，定义后其将在每个作业中执行。
@@ -908,7 +934,9 @@ test:
 
 ## dependencies
 
-dependencies关键词可以定义当前作业下载哪些前置作业的artifacts，或者不下载之前的artifacts。dependencies的值只能取自之前阶段的作业名称，可以是一个数组，如果是空数组，则表明不下载任何artifacts。在GitLab CI/CD中，所有artifacts会在之后的作业被默认下载的，如果artifacts非常大或者一条流水线有很多artifacts，则默认下载全部artifacts就会很低效。正确的做法是使用dependencies来控制，仅下载必要的artifacts。清单5-2给出了一个dependencies的示例。
+dependencies关键词可以定义当前作业下载哪些前置作业的artifacts，或者不下载之前的artifacts。dependencies的值只能取自之前阶段的作业名称，可以是一个数组，如果是空数组，则表明不下载任何artifacts。
+
+在GitLab CI/CD中，所有artifacts会在之后的作业被默认下载的，如果artifacts非常大或者一条流水线有很多artifacts，则默认下载全部artifacts就会很低效。正确的做法是使用dependencies来控制，仅下载必要的artifacts。清单5-2给出了一个dependencies的示例。
 
 ```yaml
 stages:
@@ -951,7 +979,7 @@ release_job:
 - `dependencies` 指定的作业必须存在且产生了 `artifacts`，否则会导致作业失败。
 - 同一个阶段的多个作业（jobs）之间无法直接共享彼此的产物（artifacts）
 
-理由：
+为什么无法共享的理由：
 
 - **阶段隔离**：GitLab CI/CD设计阶段（stages）的初衷是为了将编译、测试、部署等过程分离开来。每个阶段中的作业是并行执行的，因此同一个阶段中的多个作业之间不能直接共享产物。
 - **提高并行效率**：在一个阶段内部同一时间允许多个作业并行执行，不同作业之间可能相互依赖会导致数据同步等问题，影响CI/CD流程的效率。
@@ -960,7 +988,9 @@ release_job:
 
 ## allow_failure
 
-allow_failure关键词用于设置当前作业失败时流水线是否继续运行，也就是说，是否允许当前作业失败。在一般场景下，allow_failure的默认值为false，即不允许作业错误，作业错误流水线就会停止往下运行。但如果一个作业是手动触发的，则该作业的allow_failure默认为true。如果一个作业配置了allow_failure为true，并且在运行时出现了错误，那么在该作业的名称后会有一个黄色的感叹号，并且流水线会继续往下运行。一般将allow_failure设置为true的作业都是非硬性要求的作业。比如在一个临时分支做的代码检查作业，允许代码检查作业失败。清单5-3给出了一个allow_failure的示例。
+allow_failure关键词用于设置当前作业失败时流水线是否继续运行，也就是说，是否允许当前作业失败。在一般场景下，allow_failure的默认值为false，即不允许作业错误，作业错误流水线就会停止往下运行。但如果一个作业是手动触发的，则该作业的allow_failure默认为true。
+
+如果一个作业配置了allow_failure为true，并且在运行时出现了错误，那么在该作业的名称后会有一个黄色的感叹号，并且流水线会继续往下运行。一般将allow_failure设置为true的作业都是非硬性要求的作业。比如在一个临时分支做的代码检查作业，允许代码检查作业失败。清单5-3给出了一个allow_failure的示例。
 
 ```yaml
 test1:
@@ -998,7 +1028,7 @@ test_job:
 
 在上述的示例中，有两个作业，一个是.test，另一个是test_job。可以看到，在test_job中配置了extends: .test。
 
-在GitLab CI/CD中，如果一个作业的名称以“.”开头，则说明该作业是一个隐藏作业，任何时候都不会执行。这也是注释作业的一种方法，上文说的配置模板就是指这类被注释的作业。test_job继承了作业.test的配置项，两个作业的配置项会进行一次合并。test_job中没有而.test作业中有的，会被追加到test_job中。test_job中已经有的不会被覆盖。
+**在GitLab CI/CD中，如果一个作业的名称以`.`开头，则说明该作业是一个隐藏作业，任何时候都不会执行。这也是注释作业的一种方法，上文说的配置模板就是指这类被注释的作业。**test_job继承了作业.test的配置项，两个作业的配置项会进行一次合并。test_job中没有而.test作业中有的，会被追加到test_job中。test_job中已经有的不会被覆盖。
 
 最后，test_job的作业内容如清单5-5所示。
 
@@ -1006,7 +1036,7 @@ test_job:
 test_job:
   stage: test
   script: npm test
-  only:
+  only: # 要触发此作业，除了分支的条件外，必须确保 USER_NAME 环境变量被设置
      refs:
        - branches
      variables:
@@ -1115,13 +1145,13 @@ deploy:
       - AGE
 ```
 
-在上述的例子中，我们定义了3个全局变量，并在test作业中设置inherit为variables:false，这样设置后，全局变量不会被引入test作业中；在deploy作业中，将inherit设置为variables:-NAME-AGE，这样设置后，全局变量NAME和AGE将被引入deploy作业中。
+在上述的例子中，我们定义了3个全局变量，并在test作业中设置inherit为variables:false，这样设置后，全局变量不会被引入test作业中；在deploy作业中，将inherit设置为variables: - NAME - AGE，这样设置后，全局变量NAME和AGE将被引入deploy作业中。
 
 ## interruptible
 
+interruptible关键词用于配置旧的流水线能否被新的流水线取消，主要应用于“同一分支有新的流水线已经开始运行时，旧的流水线将被取消”的场景。该关键词既可以定义在具体作业中，也可以定义在全局关键词default中。interruptible关键词的默认值为false，即旧的流水线不会被取消。
 
-
-
+。。。。。。
 
 ## needs
 
@@ -1157,9 +1187,42 @@ job_deploy:
   script: echo 'start deploy'
 ```
 
-在上面的例子中，我们定义了3个阶段，即install、build和deploy。按照常规的运行顺序，install阶段的作业会优先运行；等到install阶段所有的作业都完成后，build阶段的作业才会运行；最后deploy阶段的作业得以运行。但由于该项目是一个前、后端不分离的项目，即包含了Java后端应用和Vue前端应用—— 这两个应用的安装依赖和构建是相互独立的，因此我们在build_java和build_vue两个作业中设置了各自的依赖作业，即build_java作业依赖install_java作业，build_vue作业依赖install_vue作业。这样设置后，只要install_java作业运行完毕，build_java就会开始运行。build_vue与此同理。我们在作业build_html中设置了needs:[]，这样设置后，虽然它属于第二队列build阶段，该作业将会放到第一队列运行，当流水线触发时它就会运行。待作业build_vue与build_java运行完毕后，deploy阶段的job_deploy作业才会运行。
+在上面的例子中，我们定义了3个阶段，即install、build和deploy。按照常规的运行顺序，install阶段的作业会优先运行；等到install阶段所有的作业都完成后，build阶段的作业才会运行；最后deploy阶段的作业得以运行。
+
+但由于该项目是一个前、后端不分离的项目，即包含了Java后端应用和Vue前端应用—— 这两个应用的安装依赖和构建是相互独立的，因此我们在build_java和build_vue两个作业中设置了各自的依赖作业，即build_java作业依赖install_java作业，build_vue作业依赖install_vue作业。这样设置后，只要install_java作业运行完毕，build_java就会开始运行。build_vue与此同理。
+
+我们在作业build_html中设置了needs:[]，这样设置后，虽然它属于第二队列build阶段，该作业将会放到第一队列运行，当流水线触发时它就会运行（一个空数组 (`[]`)，用于将作业设置为在创建流水线后立即启动）。待作业build_vue与build_java运行完毕后，deploy阶段的job_deploy作业才会运行。
 
 我们在GitLab上可以看到作业的依赖关系，如图5-2所示。
+
+<img src="image/image-20240523223722821.png" alt="image-20240523223722821" style="zoom: 67%;" />
+
+needs还可以设置跨流水线的依赖关系。清单5-12和清单5-13分别给出了父流水线和子流水线的示例。
+
+```yaml
+create-artifact:
+  stage: build
+  script: echo "sample artifact" > artifact.txt
+  artifacts:
+    paths: [artifact.txt]
+child-pipeline:
+  stage: test
+  trigger:
+    include: child.yml
+    strategy: depend
+  variables:
+    PARENT_PIPELINE_ID: $CI_PIPELINE_ID
+```
+
+子流水线：
+
+```yaml
+use-artifact:
+  script: cat artifact.txt
+  needs:
+    - pipeline: $PARENT_PIPELINE_ID
+      job: create-artifact
+```
 
 
 
@@ -1183,19 +1246,100 @@ pages:
 
 在上述的例子中，我们定义了一个名为pages的作业，然后将网站的静态资源都复制到public目录中—— 为避免复制死循环，可以先创建一个临时目录，最后配置artifacts的路径为public。这样作业运行后，就会将artifacts发布到GitLab Pages上。如果GitLab是私有化部署，需要管理员开启GitLab Pages功能。
 
+。。。。。。
+
 ## parallel
 
 parallel关键词用于设置一个作业同时运行多少次，取值范围为2～50，这对于非常耗时且消耗资源的作业来说是非常合适的。要在同一时间多次运行同一个任务，开发者需要有多个可用的runner，或者单个runner允许同时运行多个作业。
 
-清单5-15展示了parallel的简单用法。
+要实现单个GitLab Runner同时运行多个作业，可以通过以下方式进行配置：
+
+1. 修改Runner的配置：在GitLab Runner的配置文件中进行相应设置。
+   - 打开GitLab Runner的配置文件（通常位于 `/etc/gitlab-runner/config.toml` ）。
+   - 在配置文件中找到 `concurrent` 参数，并设置为允许的最大并发作业数量。该参数指定了Runner可同时运行的作业数量。
+2. 设置并发作业数量：将 `concurrent` 参数设置为你希望该Runner能够同时运行的作业数量。
+   - 例如，设置 `concurrent = 4` 表示该Runner可以同时运行最多4个作业实例。
+3. 重新启动Runner服务：在修改了配置文件后，需要重新启动GitLab Runner服务，以使新的配置生效。
+   - 在终端中运行适当的命令，如 `sudo gitlab-runner restart`。
+
+### 使用场景
+
+假设一个团队正在开发一个大型的软件项目，他们使用GitLab CI/CD来自动构建、测试和部署他们的应用程序。在这个情景下，一个生产实际的例子是项目的测试阶段，特别是针对自动化测试的并行执行。
+
+1. **自动化测试套件：** 项目具有庞大的自动化测试套件，包括单元测试、集成测试和端到端测试，这些测试可能需要较长时间来执行。
+2. **并行执行测试：** 为了提高测试执行的速度，团队可以配置 `parallel` 关键字，允许 `run_tests` 作业同时运行多个实例，每个实例执行其中一部分测试用例。
+3. **资源利用率：** 通过同时运行多个测试实例，可以充分利用可用的计算资源，加快测试的完成速度，特别有助于减少整体测试时间。
+4. **高效并行化：** 每个测试实例独立运行，避免了互相干扰，提高了并行执行的效率，有助于尽快发现代码问题并加快反馈周期。
+
+配置示例：
 
 ```yaml
-test:
-   script: echo 'hello WangYi'
-   parallel: 5
+run_tests:
+  stage: test
+  script:
+    - run_unit_tests
+    - run_integration_tests
+    - run_end_to_end_tests
+  parallel: 3
 ```
 
-在上述例子中，我们定义了一个test作业，并设置该作业的parallel为5，这样该作业将会并行运行5次。作业名称以test 1/5、test 2/5、test 3/5这样命名，以此类推，如图5-3所示。
+在这个配置中，`run_tests` 作业设置了 `parallel: 3`，表示允许同时运行三个测试实例。每个实例可以执行不同类型的测试，如单元测试、集成测试和端到端测试，以加速整个测试流程。
+
+虽然可以通过设置 `parallel` 关键字来允许作业同时运行多个实例，但是让每个实例执行不同类型的测试通常需要结合使用特定的技术或工具来实现。常用的方式是：让每个并行测试实例设置不同的环境变量或参数，以区分它们应该运行的测试类型。
+
+示例配置：
+
+```yaml
+run_tests:
+  stage: test
+  script:
+    - if [[ $CI_NODE_INDEX == 0 ]]; then run_unit_tests; fi
+    - if [[ $CI_NODE_INDEX == 1 ]]; then run_integration_tests; fi
+    - if [[ $CI_NODE_INDEX == 2 ]]; then run_end_to_end_tests; fi
+  parallel: 3
+```
+
+在上面的示例中：
+
+- 通过 `$CI_NODE_INDEX` 变量可以获取当前运行实例的索引。
+- 每个测试实例根据 `$CI_NODE_INDEX` 的值选择要运行的测试类型。
+
+### matrix
+
+parallel关键词除了可以配置数字，还可以配置matrix。使用matrix可以为同时运行的作业注入不用的变量值，如清单5-16所示。
+
+```yaml
+deploystacks:
+  stage: deploy
+  script:
+    - bin/deploy
+  parallel:
+    matrix:
+      - PROVIDER: aws
+        STACK:
+          - monitoring
+          - app1
+          - app2
+      - PROVIDER: ovh
+        STACK: [monitoring, backup, app]
+      - PROVIDER: [gcp, vultr]
+        STACK: [data, processing]
+```
+
+在上述例子中，我们可以生成10个作业，每个作业都有两个变量，即PROVIDER与STACK，并且这两个变量的值都不一样。这10个作业的变量值分别如下。
+
+- deploystacks: [aws, monitoring]
+- deploystacks: [aws, app1]
+- deploystacks: [aws, app2]
+- deploystacks: [ovh, monitoring]
+- deploystacks: [ovh, backup]
+- deploystacks: [ovh, app]
+- deploystacks: [gcp, data]
+- deploystacks: [gcp, processing]
+- deploystacks: [vultr, data]
+- deploystacks: [vultr, processing]
+
+
 
 ## retry
 
@@ -1221,71 +1365,289 @@ build:
     when: runner_system_failure
 ```
 
-在上述例子中，如果错误类型是runner_system_failure则进行重试，如果为其他错误类型则不会进行重试。类似的错误类型还有如下几种。● always：任务错误都会重试。● unknown_failure：未知失败时重试。● script_failure：当执行脚本失败时重试。● api_failure：当错误类型是API失败时重试。
+在上述例子中，如果错误类型是runner_system_failure则进行重试，如果为其他错误类型则不会进行重试。类似的错误类型还有如下几种。
+
+- `always`：任何失败重试（默认）。
+- `unknown_failure`：当失败原因未知时重试。
+- `script_failure`：脚本失败时重试。对于 `docker`、`docker+machine`、`kubernetes` [执行器](https://docs.gitlab.cn/runner/executors/)，runner 拉取 Docker 镜像失败时重试。
+- `api_failure`：在 API 失败时重试。
+- `stuck_or_timeout_failure`：当作业卡住或超时时重试。
+- `runner_system_failure`：如果 runner 系统出现故障（例如，作业设置失败），请重试。
+- `runner_unsupported`：如果 runner 不受支持，请重试。
+- `stale_schedule`：如果无法执行延迟的作业，请重试。
+- `job_execution_timeout`：如果脚本超过为作业设置的最大执行时间，请重试。
+- `archived_failure`：如果作业已存档且无法运行，请重试。
+- `unmet_prerequisites`：如果作业未能完成先决任务，请重试。
+- `scheduler_failure`：如果 scheduler 未能将作业分配给 runner，请重试。
+- `data_integrity_failure`：如果检测到结构完整性问题，请重试。
+
+
 
 ## timeout
 
+timeout关键词用于设置一个作业的超时时间，超过该时间，流水线就会被标记为运行失败。timeout关键词的取值为特定的时间格式，如3600 seconds、60minutes、one hour、3h 30m等。清单5-19展示了timeout的用法。
 
+```yaml
+build:
+  script: npm build
+  timeout: 1h
+```
+
+在上面的例子中，我们定义了一个build作业，并设置timeout的值为1h。除了将timeout定义在具体作业上，开发者还可以将之定义在default下为流水线中的每一个作业设置超时时间。注意，超时时间不能长于runner的失效期。
 
 ## release
 
+release关键词用于创建发布。如果流水线使用的是Shell执行器，要创建发布，必须安装官方提供的release-cli，这是一个创建发布的命令行工具。如果是Docker执行器的话，可以直接使用官方提供的镜像`registry.gitlab.com/gitlab-org/release-cli:latest`。
 
+release关键词下有很多配置项，有些是必填的，有些是选填的，如下所示。
 
+- tag_name：必填，项目中的Git标签。
+- name：选填，release的名称，如果不填，则使用tag_name的值。
+- description：必填，release的描述，可以指向项目中的一个文件。
+- ref：选填，release的分支或者tag。如果不填，则使用tag_name。
+- milestones：选填，与release关联的里程碑。
+- released_at：选填，release创建的日期和时间，如'2021-03-15T08:00:00Z'。
+- assets:links：选填，资产关联，可以配置多个资源链接。
 
+清单5-20显示了release的用法。
 
-
-
-
-
-
-
-
+```yaml
+release_job:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  rules:
+    - if: $CI_COMMIT_TAG                  
+  script:
+    - echo "Running the release job."
+  release:
+    name: 'Release $CI_COMMIT_TAG'
+    description: 'Release created using the release-cli.'
+```
 
 # 高阶关键词
 
 ## rules
 
+由于项目的流水线内容都是定义在.gitlab-ci.yml文件中的，为了应对各种业务场景、各种分支的特殊作业，开发者需要编写复杂的条件来实现在特定场景下运行特定的作业，这个时候可以使用关键词rules。
 
+关键词rules是一个定义在作业上的关键词。它不仅可以使用自定义变量、预设变量来限定作业是否运行，还可以通过判断项目中某些文件是否改变以及是否存在某些文件来决定作业是否运行。开发者可以设置多条判断语句，当定义了多个条件判断规则（通过`rules`关键字）时，GitLab会按照规则的顺序逐个检查这些条件，直到找到第一个匹配的条件为止。一旦找到匹配的条件，GitLab将根据该条件指定的执行行为（如`when`和`allow_failure`）来决定作业的执行方式。如果没有条件匹配，则作业将使用默认的执行行为。
+
+关键词rules是关键词only/except的“加强版”，在相同的场景下官方推荐使用rules，官方对关键词only/except将不再开发新的特性。rules下有6个配置项，分别是if、changes、exists、allow_failure和variables。
 
 ### rules:if
 
-rules:if用于条件判断，可以配置多个表达式，当表达式的结果为true时，该作业将被运行。清单6-1显示了rules:if的用法。
+rules:if 用于条件判断，可以配置多个表达式，当表达式的结果为true时，该作业将被运行。清单6-1显示了rules:if的用法。
 
+```yaml
+test_job:
+  script: echo "Hello, ZY!"
+  rules:
+    - if: '$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME =~ /^feature/ && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME != $CI_DEFAULT_BRANCH'
+      when: never # 如果满足条件，则作业将永远不会执行。
+    - if: '$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME =~ /^feature/'
+      when: manual # 如果满足条件，则作业将等待手动触发执行，且允许作业失败。
+      allow_failure: true
+    - if: '$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME' 
+    # 如果前两个条件都不匹配，但第三个条件匹配，例如：$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME 存在：
+    # 作业将根据GitLab CI/CD的默认行为执行。
+```
 
+在上述例子中，我们使用`rules:if`定义了3个表达式。注意，第一个表达式的含义是，当前的代码改动中，如果在当前的合并请求中源分支是以feature开头的，且目标分支不是项目的默认分支，则当前作业不会被添加到流水线中。注意，如果用`when:never`修饰一个`rules:if`，表明若命中该表达式不会运行。此外，在`rules:if`中使用的变量格式必须是$VARIABLE。
 
 ### rules:changes
 
+为了满足指定文件改变而运行特定作业的场景需求，GitLab CI/CD提供了rules:changes。开发者可以配置一个文件列表，只要列出的文件有一个改动，该作业就会运行。清单6-2展示了rules:changes的用法。
 
+```yaml
+docker_build:
+  script: docker build -t my-image:$CI_COMMIT_REF_SLUG .
+  rules:
+    - changes:
+        - Dockerfile
+```
+
+在上述例子中，我们将`rules:changes`指向Dockerfile文件，这意味着只要Dockerfile更改了，docker_build作业就会运行。这里需要注意：首先，配置的文件路径必须是项目根目录的相对路径；其次，当流水线类型是定时流水线或者tag流水线时，该作业也会运行。所以开发者应尽量在分支流水线或者合并流水线中使用它。
 
 ### rules:exists
 
+`rules:exists`可以用于实现根据某些文件是否存在而运行作业：如果配置的文件存在于项目中，则运行作业；如果不存在，则不运行作业。清单6-3展示了`rules:exists`的用法。
 
+```yaml
+docker_build:
+  script: docker build -t fizz-app:$CI_COMMIT_REF_SLUG .
+  rules:
+    - exists:
+        - Dockerfile
+```
 
-
+在上述例子中，如果项目中存在Dockerfile，则该作业会运行，否则不运行。
 
 ### rules:allow_failure
 
+`rules:allow_failure`可以配置当前作业运行失败后，使流水线不停止，而继续往下运行。其默认值为false，表示作业运行失败则流水线停止运行。清单6-4展示了`rules:allow_failure`的用法。
 
+```yaml
+test_job:
+  script: echo "Hello, Rules!"
+  rules:
+    - if: '$CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $CI_DEFAULT_BRANCH'
+      when: manual
+      allow_failure: true
+```
 
-
+在上面的例子中，如果作业运行失败，流水线不会停止运行。
 
 ### rules:variables
 
+`rules:variables`用于对变量进行操作，可以在满足条件时修改或创建变量。清单6-5展示了`rules:variables`的用法。
 
+```yaml
+rules_var:
+  variables:
+    DEPLOY_VARIABLE: "default-deploy"
+  rules:
+    - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
+      variables:                              
+        DEPLOY_VARIABLE: "deploy-production"  
+    - if: $CI_COMMIT_REF_NAME = 'feature'
+      variables:
+        IS_A_FEATURE: "true"                  
+  script:
+    - echo "Run script with $DEPLOY_VARIABLE as an argument"
+    - echo "Run another script if $IS_A_FEATURE exists"
+```
+
+在上述例子中，如果当前推送的分支是默认分支，则会将变量DEPLOY_VARIABLE修改为deploy-production；如果当前推送的分支是feature，则新建一个变量为IS_A_FEATURE，令其值为true。
 
 ## workflow
 
+workflow是一个全局关键词，可用于配置多个规则来限定流水线是否运行。workflow的配置项只有一个rules，6.1节介绍的rules下的所有配置项都可以在此处使用，如rules:if、rules:changes、rules:exists等。
 
+与作业中的rules不同，在workflow中定义的rules是直接作用于流水线的，如果命中了一条规则，流水线就会运行。还有，用rules:variables创建的变量会在整个流水线中可见，属于全局变量，所有的作业都可以使用它。清单6-6显示了workflow的用法。
+
+```yaml
+workflow:
+  rules:
+    - if: $CI_COMMIT_MESSAGE =~ /-draft$/
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      variables:
+        IS_A_MR: "true" 
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+```
+
+在上述例子中，我们用3条规则来配置workflow。第一条规则，如果提交的信息中包含`-draft`，流水线不会触发；第二条规则，如果当前的操作创建了一个合并请求，会声明一个值为true的变量IS_A_MR，该变量的值可以被作业中的变量覆盖；第三条规则，如果提交的分支是默认分支，则运行流水线。
+
+编写触发规则都离不开CI/CD中的预设变量，每个变量有其独特的用处，有些变量在特定场景下才会有值，开发者掌握了预设变量使用规则，一切就会变得很简单。
 
 ## trigger
 
+trigger关键词用于创建下游流水线，即在流水线中再触发新的流水线，尤其适用于构建部署复杂的项目或者多个微服务的项目结构。使用该关键词，开发者可以创建父子流水线（在一个项目中运行两条流水线），也可以创建跨项目流水线。下面来看一下它的使用规则。
 
+如果一个作业配置了trigger，那么该作业有些属性将不能被定义，如script、after_script和before_script。能够配置的属性只有以下几个：stage、allow_failure、rules、only、except、when、extends和needs。
+
+清单6-7显示了trigger的用法。
+
+```yaml
+trigger-other-project:
+  stage: deploy
+  trigger:
+    project: my/deployment
+    branch: stable-2022
+trigger-child-pipeline:
+  stage: deploy
+  trigger:
+    include: path/to/microservice_a.yml
+```
+
+在上述例子中，我们定义了两个作业，即trigger-other-project和trigger-child-pipeline。第一个作业trigger-other-project会触发my/deployment项目的stable-2022分支的流水线。如果不定义branch，则触发该项目的默认分支。第二个作业trigger-child-pipeline会触发一个下游流水线，该流水线的内容定义在该项目的`path/to/microservice_a.yml`文件中。
+
+默认情况下，一旦下游流水线得以创建，触发流水线的作业就会变为成功状态，并且上游的流水线会继续运行，并不会等待下游流水线运行完成。如果开发者需要上游流水线在下游流水线运行完成后再继续运行，可以在作业上配置strategy: depend。
+
+清单6-8展示了strategy的用法。
+
+```yaml
+trigger-microservice_a:
+  stage: deploy
+  variables:
+    ENVIRONMENT: staging
+  trigger:
+    include: path/to/microservice_a.yml
+    strategy: depend
+```
+
+在关键词trigger中配置strategy: depend，可以使当前流水线待下游流水线完成后再继续运行。在上述例子中，我们也定义了一个值为staging的变量ENVIRONMENT。该变量会直接注入下游流水线中，让下游流水线可以根据该变量做一些自定义的调整。
 
 ## include
 
+include关键词用于引入模板，即允许开发者在.gitlab-ci.yml文件中引入外部的YAML文件。引入的文件可以是本项目中的，也可以是一个可靠的公网YAML文件，还可以是官方的模板文件。我们可以将常用的一些配置模板定义在仓库外的一个公网YAML文件中，然后使用include引入，这样做之后，修改引入的文件将不会触发流水线，在下次运行流水线时生效。为了安全起见，开发者应该引入那些可靠的YAML文件。
 
+前文提到，开发者可以在.gitlab-ci.yml中定义一个配置模板作业，然后用extends关键词来继承它，以降低配置、提取公共代码。但对于跨项目或者多项目，共享配置是无法单独使用extends来实现的。对此GitLab CI/CD团队提供了关键词include，用于引入外部的YAML文件。
 
+每个关键词都有自己存在的理由和满足的需求，这就需要我们在学习时结合实际来思考。include是一个全局关键词，一般定义在.gitlab-ci.yml的头部，可以一次引入多个文件，但文件的扩展名必须是.yml或.yaml。
 
+include关键词下有4个配置项，分别是local、file、remote和template。每个配置项都可以引入不同类型的YAML文件，且都允许引入多个文件。local的值必须指向本项目的文件，file的值可以指向其他项目的文件，remote用于引入公网文件资源，template配置项只能用于引入GitLab官方编写的模板文件。这4个配置项可以单独使用，也可以组合使用。
+
+### include:local
+
+include:local用于引入本地文件，且只能引入当前项目的文件，需要以/开头，表示项目根目录。**引入的文件必须与当前的.gitlab-ci.yml文件位于同一分支**，无法使用Git submodules的路径。
+
+清单6-9展示了include:local的用法。
+
+```yaml
+include:
+  - local: '/templates/.fe-ci-template.yml'
+```
+
+在上述例子中，我们会引入项目目录/templates下的.fe-ci-template.yml文件，而该文件会被合并到.gitlab-ci.yml文件中。合并时，对于相同的key，我们将使用.gitlab-ci.yml的配置。注意，.fe-ci-template.yml文件要与.gitlab-ci.yml位于同一分支。因为只引入了一个文件，所以上述例子也可以简写成`include:'/templates/.fe-ci-template.yml'`。
+
+对于大型项目的流水线，引入的模板资源不止一个，如果一个一个引入，无疑会很麻烦。这时可以将模板文件存放在一个文件夹下，在.gitlab-ci.yml中用通配符来匹配该目录下的所有模板文件，进行批量引入。批量引入模板文件可以写成include: '/fe/*.yml'，这样将会引入fe目录下的所有以.yml结尾的文件，但不会引入fe的子目录下的YAML文件。如果要引入一个目录下所有的YAML文件，并引入该目录所有子级目录下的YAML文件，可以配置为include:'/fe/**.yml'。
+
+### include:file
+
+include:file用于引入其他项目文件，可以在.gitlab-ci.yml文件中引入另一个项目的文件。开发者需要指定项目的完整路径，如果有群组，那么需要加上群组路径。
+
+清单6-10展示了include:file的用法。
+
+```yaml
+include:
+  - project: 'fe-group/my-project'
+    ref: main
+    file: '/templates/.gitlab-ci-template.yml'
+  - project: 'test-group/my-project'
+    ref: v1.0.0
+    file: '/templates/.gitlab-ci-template.yml'
+  - project: 'be-group/my-project'
+    ref: 787123b47f14b552955ca2786bc9542ae66fee5b  # Git SHA
+    file: 
+      - '/templates/.gitlab-ci-template.yml'
+      - '/templates/.tests.yml'
+```
+
+在上述例子中，我们用include引入了3个项目的模板资源，即fe-group/my-project、test-group/my-project和be-group/my-project。每个项目都指定了分支、标签或者Git SHA。这里也展示了file是可以配置多个文件的。对于项目名称，开发者可以使用变量指定。
+
+### include:remote
+
+include:remote用于引入公网文件，即可以引入公网的资源。开发者需要指定文件资源的完整路径，由于文件资源必须是公开、不需要授权的，因此可以使用HTTP或HTTPS的GET请求获得。清单6-11展示了include:remote的用法。其中，文件路径为虚拟路径，仅用于演示。
+
+```
+include:
+  - remote: 'https://▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓.gitlab-ci.yml'
+```
+
+使用该方法可以在不增加版本记录的情况下，对流水线进行修改。开发者可以将流水线所有内容定义在一个外网的文件上，使用include引入。注意，这可能会存在安全隐患。使用include引入文件后，在流水线运行时，会将所有的引入文件做一次快照合并到.gitlab-ci.yml文件中。在流水线运行后再修改引用的文件，并不会触发流水线，也不会更改已经运行的流水线结果，所修改的内容会在流水线下一次运行时应用。如果重新运行旧的流水线，运行的依然是修改前的内容。
+
+### include:template
+
+include:template用于引入官方模板文件，也就是说，可以将官方的一些模板引入流水线中，如清单6-12所示。
+
+```yaml
+include:
+  - template: Android-Fastlane.gitlab-ci.yml
+  - template: Auto-DevOps.gitlab-ci.yml
+```
+
+在上述例子中，我们引入了两个官方的模板。引入这些模板时，不用填写完整路径，只需要保证文件名称正确。
 
 ## resource_group
 
