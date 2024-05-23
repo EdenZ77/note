@@ -590,7 +590,9 @@ go_test:
 
 ## only与except
 
-only与except这两个关键词用于控制当前作业是否被执行，或当前作业的执行时机。only是只有当条件满足时才会执行该作业；except是排除定义的条件，在其他情况下该作业都会被执行。如果一个作业没有被only、except或者rules修饰，那么该作业将默认被only修饰，值为tags或branchs（则默认适用于所有分支和标签）。最常用的语法就是，控制某个作业只有在修改某个分支时才被执行。如清单4-17所示，只有修改了test分支的代码，该作业才会被执行。
+only与except这两个关键词用于控制当前作业是否被执行，或当前作业的执行时机。only是只有当条件满足时才会执行该作业；except是排除定义的条件，在其他情况下该作业都会被执行。
+
+如果一个作业没有被only、except或者rules修饰，那么该作业将默认被 `only` 修饰，值为所有的分支和标签，即 `only: [ branches, tags ]`。（则默认适用于所有分支和标签）。最常用的语法就是，控制某个作业只有在修改某个分支时才被执行。如清单4-17所示，只有修改了test分支的代码，该作业才会被执行。
 
 ```yaml
 only_example:
@@ -614,12 +616,14 @@ only与except可以配置4种值，如下所示。
 test:
   script: deploy test
   only:
-    - test
+    - test # 表示只有在名为 test 的分支上提交代码时才会执行。
 build:
   script: deploy test
   only:
     refs:
-      - test
+    # 只要引用(可以是分支名、标签名)中包含名称为 test 的情况下，即使不是具体分支，作业也会执行。
+    # 你有一个分支命名为 feature-test，或者一个标签名为 release-test，那么这个作业就会针对这些分支或标签执行。
+      - test 
 deploy:
   script: deploy test
   only:
@@ -628,15 +632,15 @@ deploy:
       - schedules
 ```
 
-在上述示例中，虽然test作业与build作业下only的定义方式不一样，但是作用都是一样的，即只有修改了test分支的代码后，作业才会被执行。deploy作业下的only是使用refs来定义的—— 使用tags与schedules。这意味着只有项目创建了tags或者当前是定时部署该作业才会被执行。像tags与schedules这样的refs修饰词还有很多，如下所示。
+在上述示例中，虽然test作业与build作业下only的定义方式不一样，但是作用都是一样的，即只有修改了test分支的代码后，作业才会被执行。deploy作业下的only是使用refs来定义的—— 使用tags与schedules。这意味着只有项目创建了tags或者当前是定时部署该作业才会被执行。像tags与schedules这样的refs限定条件还有很多，如下所示。
 
 - api：使用pipeline API触发的流水线。
-- branches：当分支的代码被改变时触发的流水线。
+- branches：表示作业将在所有分支上触发执行
 - chat：使用GitLab ChatOps命令触发的流水线
 - merge_requests：流水线由创建或更新merge_request触发。
 - web：使用GitLab Web上的Run pipeline触发的流水线。
 
-此外，refs的值也可以配置成正则表达式，如/^issue-.*$/。
+此外，refs的值也可以配置成正则表达式，如`/^issue-.*$/`。
 
 ### only:variables/except:variables
 
@@ -765,19 +769,422 @@ test:
 
 # 中阶关键词
 
-在GitLab CI/CD中，开发者可以使用关键词coverage配置一个正则表达式来提取作业日志中输出的代码覆盖率，提取后可以将之展示到代码分支上，如清单5-1所示。
+## dependencies
+
+dependencies关键词可以定义当前作业下载哪些前置作业的artifacts，或者不下载之前的artifacts。dependencies的值只能取自之前阶段的作业名称，可以是一个数组，如果是空数组，则表明不下载任何artifacts。在GitLab CI/CD中，所有artifacts会在之后的作业被默认下载的，如果artifacts非常大或者一条流水线有很多artifacts，则默认下载全部artifacts就会很低效。正确的做法是使用dependencies来控制，仅下载必要的artifacts。清单5-2给出了一个dependencies的示例。
+
+```yaml
+stages:
+  - build  
+  - deploy
+build_windows:
+  stage: build   
+  script: 
+    - echo "start build on windows"
+  artifacts:
+    paths:
+      - binaries/
+build_mac:
+  stage: build
+  script: 
+    - echo "start build on mac"
+  artifacts:
+    paths:
+      - binaries/
+deploy_mac:
+  stage: deploy
+  script: echo 'deploy mac'
+  dependencies:
+    - build_mac
+deploy_windows:
+  stage: deploy
+  script: echo 'deploy windows'
+  dependencies:
+    - build_windows
+release_job:
+  stage: deploy
+  script: echo 'release version'
+  dependencies:[]
+```
+
+注意事项：
+
+- `dependencies` 可以有效地防止不必要的构建产物下载，减少CI资源的消耗。
+- 如果不显式地设置 `dependencies`，那么默认情况下，当前作业将下载所有前置阶段所有作业的产物。
+- `dependencies` 指定的作业必须存在且产生了 `artifacts`，否则会导致作业失败。
+- 同一个阶段的多个作业（jobs）之间无法直接共享彼此的产物（artifacts）
+
+理由：
+
+- **阶段隔离**：GitLab CI/CD设计阶段（stages）的初衷是为了将编译、测试、部署等过程分离开来。每个阶段中的作业是并行执行的，因此同一个阶段中的多个作业之间不能直接共享产物。
+- **提高并行效率**：在一个阶段内部同一时间允许多个作业并行执行，不同作业之间可能相互依赖会导致数据同步等问题，影响CI/CD流程的效率。
+
+
+
+## allow_failure
+
+allow_failure关键词用于设置当前作业失败时流水线是否继续运行，也就是说，是否允许当前作业失败。在一般场景下，allow_failure的默认值为false，即不允许作业错误，作业错误流水线就会停止往下运行。但如果一个作业是手动触发的，则该作业的allow_failure默认为true。如果一个作业配置了allow_failure为true，并且在运行时出现了错误，那么在该作业的名称后会有一个黄色的感叹号，并且流水线会继续往下运行。一般将allow_failure设置为true的作业都是非硬性要求的作业。比如在一个临时分支做的代码检查作业，允许代码检查作业失败。清单5-3给出了一个allow_failure的示例。
+
+```yaml
+test1:
+  stage:test
+  script: echo 'start test1'
+test2:
+  stage:test
+  script: echo 'Life is sometimes not to risk more dangerous than adventure'
+  allow_failure: true
+deploy:
+  stage: deploy
+  script: echo 'start deploy'
+```
+
+在上述示例中，test1与test2同属test阶段，会同时执行，并且test2中配置了allow_failure:true。如果test1执行失败，流水线就会停止运行，下一阶段中的deploy作业也将不会执行。如果只是test2执行失败，那么流水线会继续运行，作业deploy将会执行。
+
+## extends
+
+extends关键词可用于继承一些配置模板。利用这个关键词，开发者可以重复使用一些作业配置。extends关键词的值可以是流水线中的一个作业名称，也可以是一组作业名称。清单5-4给出了一个extends的示例。
+
+```yaml
+.test:
+  script: npm lint
+  stage: test
+  only:
+    refs:
+      - branches
+test_job:
+  extends: .test 
+  script: npm test
+  only:
+    variables:
+      - $USER_NAME
+```
+
+在上述的示例中，有两个作业，一个是.test，另一个是test_job。可以看到，在test_job中配置了extends: .test。
+
+在GitLab CI/CD中，如果一个作业的名称以“.”开头，则说明该作业是一个隐藏作业，任何时候都不会执行。这也是注释作业的一种方法，上文说的配置模板就是指这类被注释的作业。test_job继承了作业.test的配置项，两个作业的配置项会进行一次合并。test_job中没有而.test作业中有的，会被追加到test_job中。test_job中已经有的不会被覆盖。
+
+最后，test_job的作业内容如清单5-5所示。
+
+```yaml
+test_job:
+  stage: test
+  script: npm test
+  only:
+     refs:
+       - branches
+     variables:
+       - $USER_NAME
+```
+
+开发者可以将流水线中一组作业的公共部分提取出来，写到一个配置模板中，然后使用extends来继承。这样做可以大大降低代码的冗余，提升可读性，并方便后续统一修改。
+
+## default
+
+default是一个全局关键词，定义在.gitlab-ci.yml文件中，但不能定义在具体的作业中。default下面设置的所有值都将自动合并到流水线所有的作业中，这意味着使用default可以设置全局的属性。能够使用default设置的属性有after_script、artifacts、before_script、cache、image、interruptible、retry、services、tags和timeout。
+
+清单5-6所示的例子展示了default关键词的用法。
+
+```yaml
+default:
+  image: nginx
+  before_script:
+    - echo 'job start'
+  after_script:
+    - echo 'job end'
+  retry: 1
+build:
+  script: npm run
+test:
+  image: node
+  before_script:
+    - echo 'let us run job'
+  script: npm lint
+```
+
+可以看到，在default下定义了image、before_script、after_script和retry这4个属性。这些属性会被合并到所有作业里。如果一个作业没有定义image、before_script、after_script或retry，则使用default下定义的；如果定义了，则使用作业中定义的。default下定义的属性只有在作业没有定义时才会生效。根据default的合并规则，作业build和作业test合并后的代码如清单5-7所示。
+
+```yaml
+default:
+  image: nginx
+  before_script:
+    - echo 'job start'
+  after_script:
+    - echo 'job end'
+  retry: 1
+build:
+  image: nginx
+  before_script:
+    - echo 'job start'
+  after_script:
+    - echo 'job end'
+  retry: 1
+  script: npm run
+test:
+  after_script:
+    - echo 'job end'
+  retry: 1
+  image: node
+  before_script:
+    - echo 'let us run job'
+  script: npm lint
+```
+
+如果开发者想要实现在某些作业上不使用default定义的属性，但又不想设置一个新的值来覆盖，这时可以使用关键词inherit来实现。
+
+## inherit
+
+inherit关键词可以限制作业是否使用default或者variables定义的配置。inherit下有两个配置，即default与variables。我们先来看一下如何使用inherit:default。
+
+清单5-8所示的例子展示了如何在一个作业中使用inherit:default。
+
+```yaml
+default:
+  retry: 2
+  image: nginx
+  before_script:
+    - echo 'start run'
+  after_script:
+    - echo 'end run'
+test:
+  script: echo 'hello'
+  inherit:
+    default: false
+deploy:
+  script: echo 'I want you to be happy,but I want to be the reason'
+  inherit:
+    default: 
+      - retry
+      - image
+```
+
+在上述的例子中，我们定义了一个default，并设置了4个全局的配置，即retry、image、before_script和after_script。在test作业中，我们设置inherit为default: false，这表明该作业不会合并default的属性，也就意味着default的4个属性都不会设置到test作业中。在另一个作业deploy中，我们设置inherit的default的retry和image，这样设置后，作业deploy将会合并default的retry和image属性。也就是说，inherit: default下可以设置true或false，也可以设置一个数组，数组中的值取自default的属性。
+
+让我们再来看一下inherit:variables的用法。inherit:variables下可以设置true或者false，也可以设置一个数组，数组的值取自全局定义的variables。清单5-9展示了inherit:variables的用法。
+
+```yaml
+variables:
+  NAME: "This is variable 1"
+  AGE: "This is variable 2"
+  SEX: "This is variable 3"
+test:
+  script: echo "该作业不会继承全局变量"
+  inherit:
+    variables: false
+deploy:
+  script: echo "该作业将继承全局变量 NAME和AGE"
+  inherit:
+    variables:
+      - NAME
+      - AGE
+```
+
+在上述的例子中，我们定义了3个全局变量，并在test作业中设置inherit为variables:false，这样设置后，全局变量不会被引入test作业中；在deploy作业中，将inherit设置为variables:-NAME-AGE，这样设置后，全局变量NAME和AGE将被引入deploy作业中。
+
+## interruptible
+
+
+
+
+
+## needs
+
+needs关键词用于设置作业之间的依赖关系。跳出依据阶段的运行顺序，为作业之间设置依赖关系，可以提高作业的运行效率。通常，流水线中的作业都是按照阶段的顺序来运行的，前一个阶段的所有作业顺利运行完毕，下一阶段的作业才会运行。但如果一个作业使用needs设置依赖作业后，只要所依赖的作业运行完成，它就会运行。这样就会大大提高运行效率，减少总的运行时间。
+
+清单5-11展示了needs的用法。
+
+```yaml
+stages:
+  - install
+  - build
+  - deploy
+install_java:
+  stage: install
+  script: echo 'start install'
+install_vue:
+  stage: install
+  script: echo 'start install'
+build_java:
+  stage: build
+  needs: ["install_java"]
+  script: echo 'start build java'
+build_vue:
+  stage: build
+  needs: ["install_vue"]
+  script: echo 'start build vue'
+build_html:
+  stage: build
+  needs: []
+  script: echo 'start build html'
+job_deploy:
+  stage: deploy
+  script: echo 'start deploy'
+```
+
+在上面的例子中，我们定义了3个阶段，即install、build和deploy。按照常规的运行顺序，install阶段的作业会优先运行；等到install阶段所有的作业都完成后，build阶段的作业才会运行；最后deploy阶段的作业得以运行。但由于该项目是一个前、后端不分离的项目，即包含了Java后端应用和Vue前端应用—— 这两个应用的安装依赖和构建是相互独立的，因此我们在build_java和build_vue两个作业中设置了各自的依赖作业，即build_java作业依赖install_java作业，build_vue作业依赖install_vue作业。这样设置后，只要install_java作业运行完毕，build_java就会开始运行。build_vue与此同理。我们在作业build_html中设置了needs:[]，这样设置后，虽然它属于第二队列build阶段，该作业将会放到第一队列运行，当流水线触发时它就会运行。待作业build_vue与build_java运行完毕后，deploy阶段的job_deploy作业才会运行。
+
+我们在GitLab上可以看到作业的依赖关系，如图5-2所示。
+
+
+
+## pages
+
+pages关键词用于将作业artifacts发布到GitLab Pages，其中需要用到GitLab Pages服务—— 这是一个静态网站托管服务。注意，需要将网站资源放到artifacts根目录下的public目录中，且作业名必须是pages。
+
+清单5-14展示了pages的用法，即如何使用pages关键字将artifacts发布到GitLab Pages上。
+
+```yaml
+pages:
+  stage: deploy
+  script:
+    - mkdir .public
+    - cp -r * .public
+    - mv .public public
+  artifacts:
+    paths:
+      - public
+```
+
+在上述的例子中，我们定义了一个名为pages的作业，然后将网站的静态资源都复制到public目录中—— 为避免复制死循环，可以先创建一个临时目录，最后配置artifacts的路径为public。这样作业运行后，就会将artifacts发布到GitLab Pages上。如果GitLab是私有化部署，需要管理员开启GitLab Pages功能。
+
+## parallel
+
+parallel关键词用于设置一个作业同时运行多少次，取值范围为2～50，这对于非常耗时且消耗资源的作业来说是非常合适的。要在同一时间多次运行同一个任务，开发者需要有多个可用的runner，或者单个runner允许同时运行多个作业。
+
+清单5-15展示了parallel的简单用法。
 
 ```yaml
 test:
-  script: npm test
-  coverage: '/Code coverage: \d+\.\d+/'
+   script: echo 'hello WangYi'
+   parallel: 5
 ```
 
-在上述示例中，我们在作业test中将coverage配置为 '/Code coverage: \d+.\d+/'。注意，coverage的值必须以/开头和结尾。如果该作业输出了Code coverage: 67.89这种格式的日志，会被GitLab CI/CD记录起来。如果有多个日志符合规则，取最后一个记录。
+在上述例子中，我们定义了一个test作业，并设置该作业的parallel为5，这样该作业将会并行运行5次。作业名称以test 1/5、test 2/5、test 3/5这样命名，以此类推，如图5-3所示。
+
+## retry
+
+retry关键词用于设置作业在运行失败时的重试次数，取值为0、1或2，默认值为0。如果设置为2，则作业最多再运行2次。除了可以在作业上设置，retry关键词还可以在default关键词下设置，为每个作业设置统一的重试次数。
+
+清单5-17展示了retry的简单用法。
+
+```yaml
+build:
+  script: npm build
+  retry: 2
+```
+
+在上面的例子中，我们定义了一个build作业，如果该作业第一次运行失败，将会继续尝试运行，且最多再尝试运行2次。
+
+除了简单设置重试次数，retry还可以设置为当特定错误出现时进行重试，如清单5-18所示。
+
+```yaml
+build:
+  script: npm build
+  retry: 
+    max: 2
+    when: runner_system_failure
+```
+
+在上述例子中，如果错误类型是runner_system_failure则进行重试，如果为其他错误类型则不会进行重试。类似的错误类型还有如下几种。● always：任务错误都会重试。● unknown_failure：未知失败时重试。● script_failure：当执行脚本失败时重试。● api_failure：当错误类型是API失败时重试。
+
+## timeout
+
+
+
+## release
+
+
+
+
+
+
+
+
+
+
 
 
 
 # 高阶关键词
+
+## rules
+
+
+
+### rules:if
+
+rules:if用于条件判断，可以配置多个表达式，当表达式的结果为true时，该作业将被运行。清单6-1显示了rules:if的用法。
+
+
+
+### rules:changes
+
+
+
+### rules:exists
+
+
+
+
+
+### rules:allow_failure
+
+
+
+
+
+### rules:variables
+
+
+
+## workflow
+
+
+
+## trigger
+
+
+
+## include
+
+
+
+
+
+## resource_group
+
+
+
+
+
+
+
+## environment
+
+
+
+
+
+## services
+
+
+
+
+
+## secrets
+
+
+
+
+
+
+
+## dast_configuration
+
+
+
+
+
+
 
 
 
