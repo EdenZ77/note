@@ -114,10 +114,10 @@ gitlab-ctl stop
 
 ```shell
 mkdir -p ~/data/gitlab/config ~/data/gitlab/logs ~/data/gitlab/data
-docker pull gitlab/gitlab-ce:12.9.0-ce.0
+docker pull gitlab/gitlab-ce:16.10.0-ce.0
 
 # 启动
-docker run -d  -p 443:443 -p 80:80 -p 222:22 --name gitlab --restart always -v /root/data/gitlab/config:/etc/gitlab -v /root/data/gitlab/logs:/var/log/gitlab -v /root/data/gitlab/data:/var/opt/gitlab gitlab/gitlab-ce:12.9.0-ce.0
+docker run -d  -p 443:443 -p 80:80 -p 222:22 --name gitlab --restart always -v /root/data/gitlab/config:/etc/gitlab -v /root/data/gitlab/logs:/var/log/gitlab -v /root/data/gitlab/data:/var/opt/gitlab gitlab/gitlab-ce:16.10.0-ce.0
 
 # 编辑gitlab配置文件
  cd /root/data/gitlab/config       #进入配置文件所在目录下
@@ -158,8 +158,8 @@ irb(main):001:0>
 irb(main):002:0>  user = User.where(username:"root").first
 => #<User id:1 @root>
 # 修改密码
-irb(main):003:0> user.password = "12345678"
-=> "12345678"
+irb(main):003:0> user.password = "123456aa"
+=> "123456aa"
 # 保存
 irb(main):004:0> user.save!
 Enqueued ActionMailer::DeliveryJob (Job ID: 018fdb35-d12e-40d7-8fa7-9682a2cbd70f) to Sidekiq(mailers) with arguments: "DeviseMailer", "password_change", "deliver_now", #<GlobalID:0x00007f4bf2ea94e0 @uri=#<URI::GID gid://gitlab/User/1>>

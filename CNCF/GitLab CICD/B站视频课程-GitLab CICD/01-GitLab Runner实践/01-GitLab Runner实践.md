@@ -175,7 +175,7 @@ sudo gitlab-runner start
 # -d 表示以分离模式（detached mode）运行容器，使容器在后台运行。
 
 mkdir -p ~/data/gitlab-runner/config
-docker run --rm -t -id -v ~/data/gitlab-runner/config:/etc/gitlab-runner --name gitlab-runner  gitlab/gitlab-runner:v12.6.0
+docker run --rm -t -id -v ~/data/gitlab-runner/config:/etc/gitlab-runner --name gitlab-runner  gitlab/gitlab-runner:v16.10.0
 docker exec -it gitlab-runner   bash
 root@75ab6ebd177b:/# gitlab-runner -v
 Version:      12.6.0
@@ -188,7 +188,7 @@ OS/Arch:      linux/amd64
 docker run -d --name gitlab-runner --restart always \
   -v ~/data/gitlab-runner/config:/etc/gitlab-runner \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  gitlab/gitlab-runner:v14.1.0
+  gitlab/gitlab-runner:v16.10.0
   
 ```
 

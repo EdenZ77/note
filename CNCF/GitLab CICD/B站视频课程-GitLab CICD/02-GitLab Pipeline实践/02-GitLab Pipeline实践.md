@@ -1151,7 +1151,34 @@ deploy:
 
 interruptible关键词用于配置旧的流水线能否被新的流水线取消，主要应用于“同一分支有新的流水线已经开始运行时，旧的流水线将被取消”的场景。该关键词既可以定义在具体作业中，也可以定义在全局关键词default中。interruptible关键词的默认值为false，即旧的流水线不会被取消。
 
-。。。。。。
+要取消旧的流水线，还需要在GitLab上进行项目配置，即单击项目设置下的CI/CD子菜单，勾选Auto-cancel redundant pipelines选项，如图5-1所示。
+
+![image-20240524173042412](image/image-20240524173042412.png)
+
+清单5-10显示了interruptible的用法。
+
+```yaml
+stages:
+  - install
+  - build
+  - deploy
+install_job:
+  stage: install
+  script:
+    - echo "Can be canceled."
+  interruptible: true
+build_job:
+  stage: build
+  script:
+    - echo "Can not be canceled."
+deploy_job:
+  stage: deploy
+  script:
+    - echo "Because build_job can not be canceled, this step can never be canceled, even though it's set as interruptible."
+  interruptible: true
+```
+
+在上述例子中，作业install_job设置了interruptible:true。作业build_job没有设置interruptible。作业deploy_job设置了interruptible:true。当作业install_job正在运行或者准备阶段，如果此时在同一分支有新的流水线被触发，那么旧的流水线会被取消。但如果旧的流水线已经运行到了build_job，此时再有新的流水线被触发，则旧的流水线不会被取消。只要运行了一个不能被取消的作业，则该流水线就不会被取消，这就是取消的规则。所以，如果开发者想要达到无论旧的流水线运行到了哪个作业，只要有新流水线被触发，旧的流水线就要被取消这一目的，可以在default关键词下设置interruptible为true。
 
 ## needs
 
@@ -1651,17 +1678,111 @@ include:
 
 ## resource_group
 
+在一个频繁构建、频繁部署的应用中，可能同时存在多条运行的流水线，这种并发运行的情况会导致很多问题。比如，一个旧的流水线部署的环境要比新的流水线较晚完成，导致部署环境不是用最新的代码部署的。为了解决这一问题，GitLab CI/CD引入了“资源组”的概念。将resource_group关键词配置到一个作业上，在同一时间只会有一个作业正在运行，可确保运行顺序，使其他的作业在当前作业完成后再运行。清单6-13展示了resource_group的用法。
 
+```yaml
+deploy-production-job:
+  script: sleep 600
+  resource_group: prod
+```
 
+在上述例子中，我们定义了一个deploy-production-job作业，并配置resource_group为prod。如果现在有两条流水线同时运行，无论这两条流水线是否属于同一分支，作业deploy-production-job都只能按照先后顺序运行，一个作业运行完成后再运行下一个作业。运行效果如图6-1所示。
 
+![image-20240524174821812](image/image-20240524174821812.png)
+
+可以看到，第一个作业运行时，第二个作业会处于waiting的状态，即它在等待第一个作业运行完成。
+
+resource_group的值是开发者自己定义的，可以包含字母、数字、_ 、-、 /、 $、 {、}、.和空格等，但不能以 /开头或结尾。开发者可以在一条流水线中定义多个resource_group。
+
+resource_group关键词也可以用于设置在一个跨项目流水线或父子流水线的作业，这样可以保证在触发下游的流水线时不会有敏感作业在运行。使用resource_group的父级流水线如清单6-14所示。
 
 
 
 ## environment
 
+关键词environment可用于定义部署作业的环境名称。这里的“部署作业”是“泛指”，任何一个作业都可以被看作部署作业。清单6-16显示了environment的用法。
 
+```yaml
+deploy_test_job:
+  script: sleep 2
+  environment: test11
+```
 
+在上述例子中，我们定义了一个部署到test环境的作业，并指定了environment为test11。开发者可以自由指定environment的值，可以是纯文本，也可以是变量。
 
+当上述作业运行后，项目的Deployments菜单下的Environments列表中会出现一条记录，如图6-2所示。
+
+![image-20240524175745001](image/image-20240524175745001.png)
+
+在该页面是部署环境概览页，开发者可以自由查看部署到各个环境的作业，包括最新的更新时间、操作人和作业详情等，可非常方便地查看各个部署环境的最新动态。
+
+上面的例子只是一个很简单的例子，下面我们看一下environment有哪些配置参数。
+
+### environment:name
+
+environment:name用于配置部署环境的名称，可以是文本，也可以是CI/CD中的变量。常见的名称有qa、staging和production。自定义的环境名称只能包含字母、数字、空格以及-、 _、 /、 $、 {、 }等字符。
+
+清单6-17显示了environment:name的用法。
+
+```yaml
+deploy_test_env:
+  script:
+    - echo "Deploy test env"
+  environment:
+    name: test
+```
+
+在上述例子中，我们使用environment:name指定部署环境的名称。当作业运行后，name的值会显示到项目Environments列表中。
+
+### environment:url
+
+environment:url用于配置部署环境的访问地址。当一个部署环境配置了访问地址后，在项目Environments列表里，就可以直接单击访问按钮访问到该环境。清单6-18显示了environment:url的用法。
+
+```yaml
+deploy_test_env:
+  script:
+     - echo "Deploy test env"
+  environment:
+    name: test
+    url: https://▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
+```
+
+对于配置了environment:url的部署作业，会在Environments列表里显示访问按钮，如图6-3所示。
+
+![image-20240524180604064](image/image-20240524180604064.png)
+
+environment:url主要提供了一种快捷打开部署环境的方式，提升了用户体验。这对于部署代码review环境和多环境管理很有帮助。如果开发者在部署时还不确定访问地址，也可以在部署后使用变量重新写入environment:url。
+
+### environment:on_stop
+
+在开发软件的过程中，有时需要很多个部署环境。有些环境需要长期存在，有些环境只是用于验证某个功能，不需要长期存在。这时，开发者就可以移除某个部署环境，然后在移除环境时触发一个清空部署环境的作业，进而自动释放部署环境的资源。`environment:on_stop`与`environment:action`就是做这样的事的。清单6-19展示了environment:on_stop的用法。
+
+```yaml
+deploy_test_env:
+  script: echo 'deploy test env'
+  environment:
+    name: test
+    url: https://▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓
+    on_stop: clean_test_env
+clean_test_env:
+  script: echo 'stop deploy and clean test env'
+  when: manual
+  environment:
+    name: test
+    action: stop
+```
+
+在上述例子中，我们定义了一个部署到test环境的作业deploy_test_env，在该作业上配置了environment:on_stop为clean_test_env。**on_stop的值必须是当前流水线中的一个作业名，配置完成后，在单击移除test部署环境后，clean_test_env作业将会执行**。environment:on_stop相当于一个钩子，只要移除了该环境，就会触发该作业。Stop environment（停止环境）按钮如图6-5所示。
+
+![image-20240524181203321](image/image-20240524181203321.png)
+
+单击图6-5中的Stop environment按钮后，test部署环境会被移到Stopped选项卡下，并且触发配置的`environment:on_stop`作业。
+
+### environment:action
+
+我们再来看一下environment:action的配置。environment:action的值有3个，分别是start（默认值）、prepare和stop。如果没有配置environment:action，就会取默认值start。这样设置后，表明当前作业会部署一次新环境，如果没有则应予以创建。environment:action的值为prepare，表明当前作业正在准备部署环境，还未开始部署环境；environment:action的值为stop，表明当前作业会停止一个部署环境。我们再来看一下清单6-19所示的例子。
+
+作业clean_test_env配置了environment:action为stop，表明该作业可以配置到environment:on_stop上。when:manual表明当前作业必须手动触发。environment:name的值与deploy_test_env作业的一致，都是test。在配置environment:on_stop时必须保证两个作业的环境名称一致。设置为手动触发可以避免自动运行造成的不可预期的环境清空。
 
 ## services
 
