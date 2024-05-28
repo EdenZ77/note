@@ -597,7 +597,7 @@ command ：由最近的指令向前搜寻“指令串开头为 command”的那�
 3. 由 bash 内置的 （builtin） 指令来执行；内置命令是shell自带的，不需要调用外部程序。例如，`cd`（用来改变当前目录）就是一个内置命令。
 4. 通过 $PATH 这个变量的顺序搜寻到的第一个指令来执行。
 
-举例来说，你可以下达 /bin/ls 及单纯的 ls 看看，会发现使用 ls 有颜色但是 /bin/ls 则没有颜色。 因为 /bin/ls 是直接取用该指令来下达，而 ls 会因为“ alias ls='ls --color=auto' ”这个命令别名而先使用！ 如果想要了解指令搜寻的顺序，其实通过 `type -a ls` 也可以查询的到啦！
+举例来说，你可以下达 /bin/ls 及单纯的 ls 看看，会发现使用 `ls` 有颜色但是 `/bin/ls` 则没有颜色。 因为 /bin/ls 是直接取用该指令来下达，而 ls 会因为“ `alias ls='ls --color=auto`' ”这个命令别名而先使用！ 如果想要了解指令搜寻的顺序，其实通过 `type -a ls` 也可以查询的到啦！
 
 例题：设置 echo 的命令别名成为 echo -n ，然后再观察 echo 执行的顺序：
 
@@ -791,7 +791,7 @@ fi
 2. 当这个文件存在的时候，那么系统就会先将这个文件内容清空，然后再将数据写入！
 3. 也就是若以 > 输出到一个已存在的文件中，那个文件就会被覆盖掉啰！
 
-那如果我想要将数据累加而不想要将旧的数据删除，那该如何是好？利用两个大于的符号 （>>） 就好啦！以上面的范例来说，你应该要改成` ll / >> ~/rootfile `即可。 如此一来，当 （1） ~/rootfile 不存在时系统会主动创建这个文件；（2）若该文件已存在， 则数据会在该文件的最下方累加进去！
+那如果我想要将数据累加而不想要将旧的数据删除，那该如何是好？利用两个大于的符号 （>>） 就好啦！以上面的范例来说，你应该要改成` ll / >> ~/rootfile `即可。 如此一来，当 （1） `~/rootfile` 不存在时系统会主动创建这个文件；（2）若该文件已存在， 则数据会在该文件的最下方累加进去！
 
 上面谈到的是 standard output 的正确数据，那如果是 standard error output 的错误数据呢？那就通过 2> 及 2>> 啰！同样是覆盖 （2>） 与累加 （2>>） 的特性！我们在刚刚才谈到 stdout 代码是 1 而 stderr 代码是 2 ， 所以这个 2> 是很容易理解的，而如果仅存在 > 时，则代表默认的代码 1 啰！也就是说：
 
@@ -835,7 +835,7 @@ find: '/home/alex': Permission denied    <== Standard error output
 范例五：将指令的数据全部写入名为 list 的文件中
 [dmtsai@study ~]$ find /home -name .bashrc > list 2> list  <==错误
 [dmtsai@study ~]$ find /home -name .bashrc > list 2>&1     <==正确
-[dmtsai@study ~]$ find /home -name .bashrc &> list         <==正确
+[dmtsai@study ~]$ find /home -name .bashrc &> list         <==正确，非常常见的用法，将输出都写到/dev/null
 ```
 
 上述表格第一行错误的原因是，由于两股数据同时写入一个文件，又没有使用特殊的语法， 此时两股数据可能会交叉写入该文件内，造成次序的错乱。所以虽然最终 list 文件还是会产生，但是里面的数据排列就会怪怪的，而不是原本屏幕上的输出排序。 至于写入同一个文件的特殊语法如上表所示，你可以使用 `2>&1` 也可以使用 `&>` 。 一般来说，鸟哥比较习惯使用 `2>&1` 的语法啦。
@@ -1149,9 +1149,9 @@ sort 同样是很常用的指令呢！因为我们常常需要比较一些信息
 
 - wc
 
-如果我想要知道 /etc/man_db.conf 这个文件里面有多少字？多少行？多少字符的话， 可以怎么做呢？其实可以利用 wc 这个指令来达成喔！他可以帮我们计算输出的讯息的整体数据！
+如果我想要知道 `/etc/man_db.conf` 这个文件里面有多少字？多少行？多少字符的话， 可以怎么做呢？其实可以利用 wc 这个指令来达成喔！他可以帮我们计算输出的讯息的整体数据！
 
-```
+```shell
 [dmtsai@study ~]$ wc [-lwm]
 选项与参数：
 -l  ：仅列出行；
@@ -1159,19 +1159,19 @@ sort 同样是很常用的指令呢！因为我们常常需要比较一些信息
 -m  ：多少字符；
 
 范例一：那个 /etc/man_db.conf 里面到底有多少相关字、行、字符数？
-[dmtsai@study ~]$ cat /etc/man_db.conf &#124; wc 
+[dmtsai@study ~]$ cat /etc/man_db.conf | wc 
     131     723    5171
 # 输出的三个数字中，分别代表： “行、字数、字符数”
 
 范例二：我知道使用 last 可以输出登陆者，但是 last 最后两行并非帐号内容，那么请问，
         我该如何以一行指令串取得登陆系统的总人次？
-[dmtsai@study ~]$ last &#124; grep [a-zA-Z] &#124; grep -v 'wtmp' &#124; grep -v 'reboot' &#124; \
-&gt; grep -v 'unknown' &#124;wc -l 
+[dmtsai@study ~]$ last | grep [a-zA-Z] | grep -v 'wtmp' | grep -v 'reboot' | \
+grep -v 'unknown' | wc -l 
 # 由于 last 会输出空白行, wtmp, unknown, reboot 等无关帐号登陆的信息，因此，我利用
 # grep 取出非空白行，以及去除上述关键字那几行，再计算行数，就能够了解啰！
 ```
 
-wc 也可以当作指令？这可不是上洗手间的 WC 呢！这是相当有用的计算文件内容的一个工具组喔！举个例子来说， 当你要知道目前你的帐号文件中有多少个帐号时，就使用这个方法：“ cat /etc/passwd | wc -l ”啦！因为 /etc/passwd 里头一行代表一个使用者呀！ 所以知道行数就晓得有多少的帐号在里头了！而如果要计算一个文件里头有多少个字符时，就使用 wc -m 这个选项吧！
+wc 也可以当作指令？这可不是上洗手间的 WC 呢！这是相当有用的计算文件内容的一个工具组喔！举个例子来说， 当你要知道目前你的帐号文件中有多少个帐号时，就使用这个方法：“ `cat /etc/passwd | wc -l` ”啦！因为 `/etc/passwd` 里头一行代表一个使用者呀！ 所以知道行数就晓得有多少的帐号在里头了！而如果要计算一个文件里头有多少个字符时，就使用 wc -m 这个选项吧！
 
 ### 双向重导向： tee
 
@@ -1181,24 +1181,22 @@ wc 也可以当作指令？这可不是上洗手间的 WC 呢！这是相当有�
 
 tee 会同时将数据流分送到文件去与屏幕 （screen）；而输出到屏幕的，其实就是 stdout ，那就可以让下个指令继续处理喔！
 
-```
+```shell
 [dmtsai@study ~]$ tee [-a] file
 选项与参数：
 -a  ：以累加 （append） 的方式，将数据加入 file 当中！
 
-[dmtsai@study ~]$ last &#124; tee last.list &#124; cut -d " " -f1
+[dmtsai@study ~]$ last | tee last.list | cut -d " " -f1
 # 这个范例可以让我们将 last 的输出存一份到 last.list 文件中；
 
-[dmtsai@study ~]$ ls -l /home &#124; tee ~/homefile &#124; more
+[dmtsai@study ~]$ ls -l /home | tee ~/homefile | more
 # 这个范例则是将 ls 的数据存一份到 ~/homefile ，同时屏幕也有输出讯息！
 
-[dmtsai@study ~]$ ls -l / &#124; tee -a ~/homefile &#124; more
+[dmtsai@study ~]$ ls -l / | tee -a ~/homefile | more
 # 要注意！ tee 后接的文件会被覆盖，若加上 -a 这个选项则能将讯息累加。
 ```
 
-tee 可以让 standard output 转存一份到文件内并将同样的数据继续送到屏幕去处理！ 这样除了可以让我们同时分析一份数据并记录下来之外，还可以作为处理一份数据的中间暂存盘记录之用！ tee 这家伙在很多选择/填充的认证考试中很容易考呢！
-
-
+**tee 可以让 standard output 转存一份到文件内并将同样的数据继续送到屏幕去处理！** 这样除了可以让我们同时分析一份数据并记录下来之外，还可以作为处理一份数据的中间暂存盘记录之用！ tee 这家伙在很多选择/填充的认证考试中很容易考呢！
 
 ### 字符转换命令： tr, col, join, paste, expand
 
@@ -1208,25 +1206,25 @@ tee 可以让 standard output 转存一份到文件内并将同样的数据继�
 
 tr 可以用来删除一段讯息当中的文字，或者是进行文字讯息的替换！
 
-```
+```shell
 [dmtsai@study ~]$ tr [-ds] SET1 ...
 选项与参数：
 -d  ：删除讯息当中的 SET1 这个字串；
 -s  ：取代掉重复的字符！
 
 范例一：将 last 输出的讯息中，所有的小写变成大写字符：
-[dmtsai@study ~]$ last &#124; tr '[a-z]' '[A-Z]'
-# 事实上，没有加上单引号也是可以执行的，如：“ last &#124; tr [a-z] [A-Z] ”
+[dmtsai@study ~]$ last | tr '[a-z]' '[A-Z]'
+# 事实上，没有加上单引号也是可以执行的，如：“ last | tr [a-z] [A-Z] ”
 
 范例二：将 /etc/passwd 输出的讯息中，将冒号 （:） 删除
-[dmtsai@study ~]$ cat /etc/passwd &#124; tr -d ':'
+[dmtsai@study ~]$ cat /etc/passwd | tr -d ':'
 
 范例三：将 /etc/passwd 转存成 dos 断行到 /root/passwd 中，再将 ^M 符号删除
 [dmtsai@study ~]$ cp /etc/passwd ~/passwd && unix2dos ~/passwd
 [dmtsai@study ~]$ file /etc/passwd ~/passwd
 /etc/passwd:         ASCII text
-/home/dmtsai/passwd: ASCII text, with CRLF line terminators  &lt;==就是 DOS 断行
-[dmtsai@study ~]$ cat ~/passwd &#124; tr -d '\r' &gt; ~/passwd.linux
+/home/dmtsai/passwd: ASCII text, with CRLF line terminators  <==就是 DOS 断行
+[dmtsai@study ~]$ cat ~/passwd | tr -d '\r' > ~/passwd.linux
 # 那个 \r 指的是 DOS 的断行字符，关于更多的字符，请参考 man tr
 [dmtsai@study ~]$ ll /etc/passwd ~/passwd*
 -rw-r--r--. 1 root   root   2092 Jun 17 00:20 /etc/passwd
@@ -1235,28 +1233,30 @@ tr 可以用来删除一段讯息当中的文字，或者是进行文字讯息�
 # 处理过后，发现文件大小与原本的 /etc/passwd 就一致了！
 ```
 
-其实这个指令也可以写在“正则表达式”里头！因为他也是由正则表达式的方式来取代数据的！ 以上面的例子来说，使用 [] 可以设置一串字呢！也常常用来取代文件中的怪异符号！ 例如上面第三个例子当中，可以去除 DOS 文件留下来的 ^M 这个断行的符号！这东西相当的有用！相信处理 Linux & Windows 系统中的人们最麻烦的一件事就是这个事情啦！亦即是 DOS 下面会自动的在每行行尾加入 ^M 这个断行符号！这个时候除了以前讲过的 dos2unix 之外，我们也可以使用这个 tr 来将 ^M 去除！ ^M 可以使用 \r 来代替之！
+其实这个指令也可以写在“正则表达式”里头！因为他也是由正则表达式的方式来取代数据的！ 以上面的例子来说，使用 [] 可以设置一串字呢！也常常用来取代文件中的怪异符号！ 例如上面第三个例子当中，可以去除 DOS 文件留下来的 `^M` 这个断行的符号！这东西相当的有用！相信处理 Linux & Windows 系统中的人们最麻烦的一件事就是这个事情啦！亦即是 DOS 下面会自动的在每行行尾加入 `^M` 这个断行符号！这个时候除了以前讲过的 dos2unix 之外，我们也可以使用这个 `tr` 来将 `^M` 去除！ `^M` 可以使用 `\r` 来代替之！
 
 - col
 
-```
+```shell
 [dmtsai@study ~]$ col [-xb]
 选项与参数：
 -x  ：将 tab 键转换成对等的空白键
 
 范例一：利用 cat -A 显示出所有特殊按键，最后以 col 将 [tab] 转成空白
-[dmtsai@study ~]$ cat -A /etc/man_db.conf  &lt;==此时会看到很多 ^I 的符号，那就是 tab
-[dmtsai@study ~]$ cat /etc/man_db.conf &#124; col -x &#124; cat -A &#124; more
+[dmtsai@study ~]$ cat -A /etc/man_db.conf  <==此时会看到很多 ^I 的符号，那就是 tab
+[dmtsai@study ~]$ cat /etc/man_db.conf | col -x | cat -A | more
 # 嘿嘿！如此一来， [tab] 按键会被取代成为空白键，输出就美观多了！
 ```
 
-虽然 col 有他特殊的用途，不过，很多时候，他可以用来简单的处理将 [tab] 按键取代成为空白键！ 例如上面的例子当中，如果使用 cat -A 则 [tab] 会以 ^I 来表示。 但经过 col -x 的处理，则会将 [tab] 取代成为对等的空白键！
+虽然 col 有他特殊的用途，不过，很多时候，他可以用来简单的处理将 `[tab]` 按键取代成为空白键！ 例如上面的例子当中，如果使用 `cat -A` 则 `[tab]` 会以 `^I` 来表示。 但经过 `col -x` 的处理，则会将 `[tab]` 取代成为对等的空白键！
 
 - join
 
+。。。。。。
+
 join 看字面上的意义 （加入/参加） 就可以知道，他是在处理两个文件之间的数据， 而且，主要是在处理“两个文件当中，有 **"相同数据"** 的那一行，才将他加在一起”的意思。我们利用下面的简单例子来说明：
 
-```
+```shell
 [dmtsai@study ~]$ join [-ti12] file1 file2
 选项与参数：
 -t  ：join 默认以空白字符分隔数据，并且比对“第一个字段”的数据，
@@ -1267,12 +1267,12 @@ join 看字面上的意义 （加入/参加） 就可以知道，他是在处理
 
 范例一：用 root 的身份，将 /etc/passwd 与 /etc/shadow 相关数据整合成一栏
 [root@study ~]# head -n 3 /etc/passwd /etc/shadow
-==&gt; /etc/passwd &lt;==
+==> /etc/passwd <==
 root:x:0:0:root:/root:/bin/bash
 bin:x:1:1:bin:/bin:/sbin/nologin
 daemon:x:2:2:daemon:/sbin:/sbin/nologin
 
-==&gt; /etc/shadow &lt;==
+==> /etc/shadow <==
 root:$6$wtbCCce/PxMeE5wm$KE2IfSJr...:16559:0:99999:7:::
 bin:*:16372:0:99999:7:::
 daemon:*:16372:0:99999:7:::
@@ -1288,12 +1288,12 @@ daemon:x:2:2:daemon:/sbin:/sbin/nologin:*:16372:0:99999:7:::
 范例二：我们知道 /etc/passwd 第四个字段是 GID ，那个 GID 记录在 
         /etc/group 当中的第三个字段，请问如何将两个文件整合？
 [root@study ~]# head -n 3 /etc/passwd /etc/group
-==&gt; /etc/passwd &lt;==
+==> /etc/passwd <==
 root:x:0:0:root:/root:/bin/bash
 bin:x:1:1:bin:/bin:/sbin/nologin
 daemon:x:2:2:daemon:/sbin:/sbin/nologin
 
-==&gt; /etc/group &lt;==
+==> /etc/group <==
 root:x:0:
 bin:x:1:
 daemon:x:2:
@@ -1313,9 +1313,11 @@ daemon:x:2:
 
 - paste
 
+。。。。。。
+
 这个 paste 就要比 join 简单多了！相对于 join 必须要比对两个文件的数据相关性， paste 就直接“将两行贴在一起，且中间以 [tab] 键隔开”而已！简单的使用方法：
 
-```
+```shell
 [dmtsai@study ~]$ paste [-d] file1 file2
 选项与参数：
 -d  ：后面可以接分隔字符。默认是以 [tab] 来分隔的！
@@ -1335,9 +1337,11 @@ daemon:x:2:2:daemon:/sbin:/sbin/nologin daemon:*:16372:0:99999:7:::
 
 - expand
 
+。。。。。。
+
 这玩意儿就是在将 [tab] 按键转成空白键啦～可以这样玩：
 
-```
+```shell
 [dmtsai@study ~]$ expand [-t] file
 选项与参数：
 -t  ：后面可以接数字。一般来说，一个 tab 按键可以用 8 个空白键取代。
@@ -1376,7 +1380,7 @@ expand 也是挺好玩的～他会自动将 [tab] 转成空白键～所以，以
 
 如果你有文件太大，导致一些携带式设备无法复制的问题，嘿嘿！找 split 就对了！ 他可以帮你将一个大文件，依据文件大小或行数来分区，就可以将大文件分区成为小文件了！ 快速又有效啊！真不错～
 
-```
+```shell
 [dmtsai@study ~]$ split [-bl] file PREFIX
 选项与参数：
 -b  ：后面可接欲分区成的文件大小，可加单位，例如 b, k, m 等；
@@ -1393,11 +1397,11 @@ PREFIX ：代表前置字符的意思，可作为分区文件的前导文字。
 # xxxaa, xxxab, xxxac 等方式来创建小文件的！
 
 范例二：如何将上面的三个小文件合成一个文件，文件名为 servicesback
-[dmtsai@study tmp]$ cat services* &gt;&gt; servicesback
+[dmtsai@study tmp]$ cat services* >> servicesback
 # 很简单吧？就用数据流重导向就好啦！简单！
 
 范例三：使用 ls -al / 输出的信息中，每十行记录成一个文件
-[dmtsai@study tmp]$ ls -al / &#124; split -l 10 - lsroot
+[dmtsai@study tmp]$ ls -al / | split -l 10 - lsroot
 [dmtsai@study tmp]$ wc -l lsroot*
   10 lsrootaa
   10 lsrootab
@@ -1407,13 +1411,13 @@ PREFIX ：代表前置字符的意思，可作为分区文件的前导文字。
 # 有的只是 - 时，那么那个 - 就会被当成 stdin 或 stdout ～
 ```
 
-在 Windows 操作系统下，你要将文件分区需要如何作？伤脑筋吧！在 Linux 下面就简单的多了！你要将文件分区的话，那么就使用 -b size 来将一个分区的文件限制其大小，如果是行数的话，那么就使用 -l line 来分区！好用的很！如此一来，你就可以轻易的将你的文件分区成某些软件能够支持的最大容量 （例如 gmail 单一信件 25MB 之类的！），方便你 copy 啰！
+在 Windows 操作系统下，你要将文件分区需要如何作？伤脑筋吧！在 Linux 下面就简单的多了！你要将文件分区的话，那么就使用 `-b size` 来将一个分区的文件限制其大小，如果是行数的话，那么就使用 `-l line` 来分区！好用的很！如此一来，你就可以轻易的将你的文件分区成某些软件能够支持的最大容量 （例如 gmail 单一信件 25MB 之类的！），方便你 copy 啰！
 
 ### 参数代换： xargs
 
 xargs 是在做什么的呢？就以字面上的意义来看， x 是加减乘除的乘号，args 则是 arguments （参数） 的意思，所以说，这个玩意儿就是在产生某个指令的参数的意思！ xargs 可以读入 stdin 的数据，并且以空白字符或断行字符作为分辨，将 stdin 的数据分隔成为 arguments 。 因为是以空白字符作为分隔，所以，如果有一些文件名或者是其他意义的名词内含有空白字符的时候， xargs 可能就会误判了～他的用法其实也还满简单的！就来看一看先！
 
-```
+```shell
 [dmtsai@study ~]$ xargs [-0epn] command
 选项与参数：
 -0  ：如果输入的 stdin 含有特殊字符，例如 `, \, 空白键等等字符时，这个 -0 参数
@@ -1428,25 +1432,25 @@ xargs 是在做什么的呢？就以字面上的意义来看， x 是加减乘�
 [dmtsai@study ~]$ id root
 uid=0（root） gid=0（root） groups=0（root）   # 这个 id 指令可以查询使用者的 UID/GID 等信息
 
-[dmtsai@study ~]$ id $（cut -d ':' -f 1 /etc/passwd &#124; head -n 3）
+[dmtsai@study ~]$ id $(cut -d ':' -f 1 /etc/passwd | head -n 3)
 # 虽然使用 $（cmd） 可以预先取得参数，但可惜的是， id 这个指令“仅”能接受一个参数而已！
 # 所以上述的这个指令执行会出现错误！根本不会显示用户的 ID 啊！
 
-[dmtsai@study ~]$ cut -d ':' -f 1 /etc/passwd &#124; head -n 3 &#124; id
+[dmtsai@study ~]$ cut -d ':' -f 1 /etc/passwd | head -n 3 | id
 uid=1000（dmtsai） gid=1000（dmtsai） groups=1000（dmtsai）,10（wheel）   # 我不是要查自己啊！
 # 因为 id 并不是管线命令，因此在上面这个指令执行后，前面的东西通通不见！只会执行 id！
 
-[dmtsai@study ~]$ cut -d ':' -f 1 /etc/passwd &#124; head -n 3 &#124; xargs id
+[dmtsai@study ~]$ cut -d ':' -f 1 /etc/passwd | head -n 3 | xargs id
 # 依旧会出现错误！这是因为 xargs 一口气将全部的数据通通丢给 id 处理～但 id 就接受 1 个啊最多！
 
-[dmtsai@study ~]$ cut -d ':' -f 1 /etc/passwd &#124; head -n 3 &#124; xargs -n 1 id
+[dmtsai@study ~]$ cut -d ':' -f 1 /etc/passwd | head -n 3 | xargs -n 1 id
 uid=0（root） gid=0（root） groups=0（root）
 uid=1（bin） gid=1（bin） groups=1（bin）
 uid=2（daemon） gid=2（daemon） groups=2（daemon）
 # 通过 -n 来处理，一次给予一个参数，因此上述的结果就 OK 正常的显示啰！
 
 范例二：同上，但是每次执行 id 时，都要询问使用者是否动作？
-[dmtsai@study ~]$ cut -d ':' -f 1 /etc/passwd &#124; head -n 3 &#124; xargs -p -n 1 id
+[dmtsai@study ~]$ cut -d ':' -f 1 /etc/passwd | head -n 3 | xargs -p -n 1 id
 id root ?...y
 uid=0（root） gid=0（root） groups=0（root）
 id bin ?...y
@@ -1454,7 +1458,7 @@ id bin ?...y
 # 呵呵！这个 -p 的选项可以让使用者的使用过程中，被询问到每个指令是否执行！
 
 范例三：将所有的 /etc/passwd 内的帐号都以 id 查阅，但查到 sync 就结束指令串
-[dmtsai@study ~]$ cut -d ':' -f 1 /etc/passwd &#124; xargs -e'sync' -n 1 id
+[dmtsai@study ~]$ cut -d ':' -f 1 /etc/passwd | xargs -e'sync' -n 1 id
 # 仔细与上面的案例做比较。也同时注意，那个 -e'sync' 是连在一起的，中间没有空白键。
 # 上个例子当中，第六个参数是 sync 啊，那么我们下达 -e'sync' 后，则分析到 sync 这个字串时，
 # 后面的其他 stdin 的内容就会被 xargs 舍弃掉了！
@@ -1462,14 +1466,14 @@ id bin ?...y
 
 其实，在 man xargs 里面就有三四个小范例，您可以自行参考一下内容。 此外， xargs 真的是很好用的一个玩意儿！您真的需要好好的参详参详！会使用 xargs 的原因是， 很多指令其实并不支持管线命令，因此我们可以通过 xargs 来提供该指令引用 standard input 之用！举例来说，我们使用如下的范例来说明：
 
-```
+```shell
 范例四：找出 /usr/sbin 下面具有特殊权限的文件名，并使用 ls -l 列出详细属性
-[dmtsai@study ~]$ find /usr/sbin -perm /7000 &#124; xargs ls -l
+[dmtsai@study ~]$ find /usr/sbin -perm /7000 | xargs ls -l
 -rwx--s--x. 1 root lock      11208 Jun 10  2014 /usr/sbin/lockdev
 -rwsr-xr-x. 1 root root     113400 Mar  6 12:17 /usr/sbin/mount.nfs
 -rwxr-sr-x. 1 root root      11208 Mar  6 11:05 /usr/sbin/netreport
 .....（下面省略）.....
-# 聪明的读者应该会想到使用“ ls -l $（find /usr/sbin -perm /7000） ”来处理这个范例！
+# 聪明的读者应该会想到使用“ ls -l $(find /usr/sbin -perm /7000) ”来处理这个范例！
 # 都 OK！能解决问题的方法，就是好方法！
 ```
 
@@ -1477,10 +1481,10 @@ id bin ?...y
 
 管线命令在 bash 的连续的处理程序中是相当重要的！另外，在 log file 的分析当中也是相当重要的一环， 所以请特别留意！另外，在管线命令当中，常常会使用到前一个指令的 stdout 作为这次的 stdin ， 某些指令需要用到文件名称 （例如 tar） 来进行处理时，该 stdin 与 stdout 可以利用减号 "-" 来替代， 举例来说：
 
-```
+```shell
 [root@study ~]# mkdir /tmp/homeback
-[root@study ~]# tar -cvf - /home &#124; tar -xvf - -C /tmp/homeback
+[root@study ~]# tar -cvf - /home | tar -xvf - -C /tmp/homeback
 ```
 
-上面这个例子是说：“我将 /home 里面的文件给他打包，但打包的数据不是纪录到文件，而是传送到 stdout； 经过管线后，将 tar -cvf - /home 传送给后面的 tar -xvf - ”。后面的这个 - 则是取用前一个指令的 stdout， 因此，我们就不需要使用 filename 了！这是很常见的例子喔！注意注意！
+上面这个例子是说：“我将 /home 里面的文件给他打包，但打包的数据不是纪录到文件，而是传送到 stdout； 经过管线后，将 `tar -cvf - /home` 传送给后面的 `tar -xvf -` 。后面的这个 - 则是取用前一个指令的 stdout， 因此，我们就不需要使用 filename 了！这是很常见的例子喔！注意注意！
 
