@@ -20,7 +20,11 @@ default:
     - rm -rf tmp/
 ```
 
+参考文档：
 
+https://docs.gitlab.cn/jh/ci
+
+https://docs.gitlab.com/ee/ci/
 
 # 初阶关键词
 
@@ -92,7 +96,7 @@ npm_inst:
 
 这里定义了一个`npm_inst`的作业，`script`关键词定义了一行内容`npm install`，这是一个`npm`命令，用于安装Node.js依赖包。
 
-需要说明的是，在每个作业开始时，runner会进行一系列的初始化，这些初始化包括将当前的项目代码下载到执行器的工作目录（working-directory），并进入项目的根目录，同时清空一些不需要的文件。在不同的执行器上，会有一些差异，详见2.4节。
+需要说明的是，在每个作业开始时，runner会进行一系列的初始化，这些初始化包括将当前的项目代码下载到执行器的工作目录（working-directory），并进入项目的根目录，同时清空一些不需要的文件。在不同的执行器上，会有一些差异。
 
 在执行`npm install`时，其实就是在项目的根目录下执行。如果GitLab Runner是直接在宿主机上安装的，而不是使用Docker，那么在执行`npm install`之前，你需要在宿主机上安装`Node.js`。但如果开发者的执行器是Docker，就需要在这个作业上指定node镜像，这样`script`的内容才可以正常执行。
 
