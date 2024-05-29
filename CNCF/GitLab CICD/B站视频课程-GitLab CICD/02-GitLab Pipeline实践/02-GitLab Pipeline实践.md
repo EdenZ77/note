@@ -827,8 +827,8 @@ test_fe: # test_fe 作业将在 fe 目录下的任何文件发生改变时触发
     - echo "Running frontend tests"
   only:
     changes:
-      - fe/**/* # 通配符 **/* 表示匹配目录及其子目录下的所有文件。
-
+      - fe/**/* # 通配符 **/* 表示匹配目录及其直接子目录下的所有文件。但无法表达fe下的子目录的子目录里的文件
+# 使用 fe/**/**/* 来匹配 fe 目录下的文件以及任意层级的子目录里的文件
 test_all: # test_all 作业将在除了 fe 目录和 Dockerfile 改变之外的任何改变时触发。
   stage: test
   script:
@@ -878,11 +878,6 @@ test:
 
 在这种情况下，只有当定时任务触发流水线时，`test` 作业才会运行。如果没有设置 `only: schedules`，那么无论什么触发方式，该作业都会运行。
 
-对于定时触发流水线的总结：
-
-- 默认情况下，所有作业会在定时触发时运行。
-- 如果希望作业只在定时触发时运行，可以使用 `only: schedules`。
-
 你可以在项目中的 "CI/CD  /  Schedules " 中配置一个定时触发任务。
 
 <img src="image/image-20240522105903479.png" alt="image-20240522105903479" style="zoom:67%;" />
@@ -928,11 +923,7 @@ test:
 - [合并结果的流水线](https://docs.gitlab.cn/jh/ci/pipelines/merged_results_pipelines.html)：是来自源分支的更改已经合并到目标分支的合并请求流水线。
 - [合并队列](https://docs.gitlab.cn/jh/ci/pipelines/merge_trains.html)：使用合并结果流水线将合并一个接一个地排队
 
-
-
-
-
-
+。。。。。。
 
 # 中阶关键词
 
@@ -1564,7 +1555,7 @@ workflow:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       variables:
         IS_A_MR: "true" 
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH # 这个条件用于判断当前的提交是否在默认分支上，只有在默认分支上的提交才会执行流水线。
 ```
 
 在上述例子中，我们用3条规则来配置workflow。第一条规则，如果提交的信息中包含`-draft`，流水线不会触发；第二条规则，如果当前的操作创建了一个合并请求，会声明一个值为true的变量IS_A_MR，该变量的值可以被作业中的变量覆盖；第三条规则，如果提交的分支是默认分支，则运行流水线。
@@ -1632,7 +1623,7 @@ include:
 
 在上述例子中，我们会引入项目目录/templates下的.fe-ci-template.yml文件，而该文件会被合并到.gitlab-ci.yml文件中。合并时，对于相同的key，我们将使用.gitlab-ci.yml的配置。注意，.fe-ci-template.yml文件要与.gitlab-ci.yml位于同一分支。因为只引入了一个文件，所以上述例子也可以简写成`include:'/templates/.fe-ci-template.yml'`。
 
-对于大型项目的流水线，引入的模板资源不止一个，如果一个一个引入，无疑会很麻烦。这时可以将模板文件存放在一个文件夹下，在.gitlab-ci.yml中用通配符来匹配该目录下的所有模板文件，进行批量引入。批量引入模板文件可以写成include: '/fe/*.yml'，这样将会引入fe目录下的所有以.yml结尾的文件，但不会引入fe的子目录下的YAML文件。如果要引入一个目录下所有的YAML文件，并引入该目录所有子级目录下的YAML文件，可以配置为include:'/fe/**.yml'。
+对于大型项目的流水线，引入的模板资源不止一个，如果一个一个引入，无疑会很麻烦。这时可以将模板文件存放在一个文件夹下，在.gitlab-ci.yml中用通配符来匹配该目录下的所有模板文件，进行批量引入。批量引入模板文件可以写成`include: '/fe/*.yml'`，这样将会引入fe目录下的所有以.yml结尾的文件，但不会引入fe的子目录下的YAML文件。如果要引入一个目录下所有的YAML文件，并引入该目录所有层级子级目录下的YAML文件，可以配置为`include:'/fe/**/*.yml'`。
 
 ### include:file
 
