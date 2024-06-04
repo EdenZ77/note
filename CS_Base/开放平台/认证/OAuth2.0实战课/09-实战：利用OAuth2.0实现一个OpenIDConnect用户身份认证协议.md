@@ -69,7 +69,7 @@ EU、RP和OP这三个角色对于OIDC非常重要，我后面也会时常使用�
 
 生成ID令牌这部分的示例代码如下：
 
-```
+```java
 //GENATE ID TOKEN
 String id_token=genrateIdToken(appId,user);
 
@@ -104,7 +104,7 @@ private String genrateIdToken(String appId,String user){
 
 那么有了ID令牌后，第三方软件应该如何解析它呢？接下来，我们看一段解析ID令牌的具体代码，如下：
 
-```
+```java
 private Map<String,String> parseJwt(String jwt){
         String sharedTokenSecret="hellooauthhellooauthhellooauthhellooauth";//使用颁发者提供的公钥来验证签名的有效性
         Key key = new SecretKeySpec(sharedTokenSecret.getBytes(),
@@ -148,6 +148,10 @@ private Map<String,String> parseJwt(String jwt){
 另外，在验证JWT合法性的时候，因为ID令牌本身已经被身份认证服务（OP）的密钥签名过，所以关键的一点是合法性校验时需要做签名校验。具体的加密方法和校验方法，你可以回顾下 [第4讲](https://time.geekbang.org/column/article/257747)。
 
 这样当第三方软件（RP）拿到ID令牌之后，就已经获得了处理身份认证标识动作的信息，也就是拿到了那个能够唯一标识最终用户（EU）的ID值，比如3521。
+
+对于同一个身份提供者和同一个客户端应用，无论用户在多少次登录操作中，只要他们使用的是同一个用户账户，返回的ID令牌中的`sub`值应该保持不变。这就允许第三方软件在多次会话中识别和关联到同一个用户。
+
+举例来说，如果你通过微信登录一个第三方应用，微信作为身份提供者会返回一个ID令牌，其中的`sub`值将作为你的唯一标识。当你下一次再次通过微信登录同一个第三方应用时，假设你使用的是相同的微信账户，那么返回的ID令牌中的`sub`值应该还是跟上一次相同的。
 
 ### 用访问令牌获取ID令牌之外的信息
 

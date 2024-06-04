@@ -110,7 +110,7 @@ JJWT是目前Java开源的、比较方便的JWT工具，封装了Base64URL编码
 
 这个Demo的代码如下，使用JJWT可以很方便地生成一个经过签名的JWT令牌，以及解析一个JWT令牌。
 
-```
+```java
 String sharedTokenSecret="hellooauthhellooauthhellooauthhellooauth";//密钥
 Key key = new SecretKeySpec(sharedTokenSecret.getBytes(),
                 SignatureAlgorithm.HS256.getJcaName());

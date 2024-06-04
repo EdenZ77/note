@@ -87,7 +87,7 @@ if("password".equals(grantType)){
 
 步骤1：第三方软件小兔通过后端服务向授权服务发送请求， **这里grant\_type的值为client\_credentials**，告诉授权服务要使用第三方软件凭据的方式去请求访问。
 
-```
+```java
 Map<String, String> params = new HashMap<String, String>();
 params.put("grant_type","client_credentials");
 params.put("app_id","APPIDTEST");
@@ -99,7 +99,7 @@ String accessToken = HttpURLClient.doPost(oauthURl,HttpURLClient.mapToStr(params
 
 步骤2：在验证app\_id和app\_secret的合法性之后，生成access\_token的值并返回。
 
-```
+```java
 String grantType = request.getParameter("grant_type");
 String appId = request.getParameter("app_id");
 
@@ -141,7 +141,7 @@ if("client_credentials".equals(grantType)){
 
 步骤2：这个流程和授权码流程类似，只是需要特别注意一点， **response\_type的值变成了token**，是要告诉授权服务直接返回access\_token的值。随着我们后续的讲解，你会发现隐式许可流程是唯一在前端通信中要求返回access\_token的流程。对，就这么 “大胆”，但 “不安全”。
 
-```
+```java
 Map<String, String> params = new HashMap<String, String>();
 params.put("response_type","token");//告诉授权服务直接返回access_token
 params.put("redirect_uri","http://localhost:8080/AppServlet-ch02");
@@ -155,7 +155,7 @@ response.sendRedirect(toOauthUrl);
 
 步骤3：生成acccess\_token的值，通过前端通信返回给第三方软件小兔。
 
-```
+```java
 String responseType = request.getParameter("response_type");
 String redirectUri =request.getParameter("redirect_uri");
 String appId = request.getParameter("app_id");
