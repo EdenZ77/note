@@ -151,3 +151,173 @@ checking for chosen layout...Apache
 通过源码包方式安装的各个软件，其安装文件独自保存在 /usr/local/ 目录下的各子目录中。例如， apache 所有的安装文件都保存在/usr/local/apache2 目录下。这就为源码包的卸载提供了便利。  
 
 源码包的卸载，只需要找到软件的安装位置，直接删除所在目录即可，不会遗留任何垃圾文件。需要读者注意的是，在删除软件之前，应先将软件停止服务。  
+
+以删除 apache 为例，只需关闭 apache 服务后执行如下命令即可：  
+
+```shell
+[root@localhost ~]# rm -rf /usr/local/apache2/
+```
+
+## 源码包快速升级方法详解
+
+Linux 系统中更新用源码包安装的软件，除了卸载重装这种简单粗暴的方法外，还可以下载补丁文件更新源码包，用新的源码包重新编译安装软件。比较两种方式，后者更新软件的速度更快。  
+
+使用补丁文件更新源码包，省去了用 ./configured 生成新的 Makefile 文件，还省去了大量的编译工作，因此效率更高。学完本节后会有更深入的理解。  
+
+**Linux 补丁文件的生成和使用**
+
+Linux 系统中可以使用 diff 命令对比出新旧软件的不同，并生成补丁文件。
+
+diff 命令基本格式为：  
+
+```shell
+[root@localhost ~]# diff 选项 old new
+#比较 old 和 new 文件的不同
+```
+
+此命令中可使用如下几个选项：
+
+- -a：将任何文档当作文本文档处理；
+- -b：忽略空格造成的不同；
+- -B：忽略空白行造成的不同；
+- -I：忽略大小写造成的不同；
+- -N：当比较两个目录时，如果某个文件只在一个目录中，则在另一个目录中视作空文件；
+- -r：当比较目录时，递归比较子目录；
+- -u：使用同一输出格式；  
+
+从生成补丁文件，到使用其实现更新软件的目的，为了让读者清楚地了解整个过程的来龙去脉，下面我们自己创建两个文件（分别模拟旧软件和新软件），通过对比新旧文件生成补丁文件，最后利用补丁文件更新旧文件，具体步骤如下：  
+
+1、创建两个文件，执行如下命令：  
+
+```shell
+[root@localhost ~]# mkdir test
+#建立测试目录
+[root@localhost ~]# cd test
+#进入测试目录
+[root@localhost test]# vi old.txt
+our
+school
+is
+lampbrother
+#文件 old.txt，为了便于比较，将每行分开
+[root@localhost test]# vi new.txt
+our
+school
+is
+lampbrother
+in
+Beijing
+#文件 new.txt
+```
+
+2、利用 diff 命令，比较两个文件（ old.txt 和 new.txt）的不同，并生成补丁文件（ txt.patch），执行代码如下：  
+
+```shell
+[root@localhost test]# diff -Naur /root/test/old.txt /root/test/new.txt > txt. patch
+#比较两个文件的不同，同时生成 txt.patch 补丁文件
+[root@localhost test]#vi txt.patch
+#查看一下这个文件
+--- /root/test/old.txt 2012-11-23 05:51:14.347954373 +0800
+#前一个文件
++++ /root/test/new.txt 2012-11-23 05:50:05.772988210 +0800
+#后一个文件
+@@ -2,3 +2,5 @@
+ school
+ is
+ lampbrother
++in
++Beijing
+#后一个文件比前一个文件多两行（用+表示）
+```
+
+3、利用补丁文件 txt.patch 更新 old.txt 旧文件，实现此步操作需利用 patch 命令，该命令基本格式如下：  
+
+```shell
+[root@localhost test]# patch -pn < 补丁文件
+#按照补丁文件进行更新
+```
+
+-pn 选项中， n 为数字（例如 p1、 p2、 p3 等）， pn 表示按照补丁文件中的路径，指定更新文件的位置。
+
+这里对 -pn 选项的使用做一下额外说明。我们知道，补丁文件是要打入旧文件的，但是当前所在目录和补丁文件中记录的目录不一定是匹配的，需要 "-pn" 选项来同步两个目录。
+
+例如，当前位于 "/root/test/" 目录下（要打补丁的旧文件就在当前目录下），补丁文件中记录的文件目录为 "/root/test/old.txt"，如果写入 "-p1"（在补丁文件目录中取消一级目录），那么补丁文件会打入 "/root/test/root/test/old.txt" 文件中，这显然是不对的；如果写入的是 "-p2"（在补丁文件目录中取消二级目录），补丁文件会打入 "/root/test/test/old.txt" 文件中，这显然也不对。如果写入的是 "-p3"（在补丁文件目录中取消三级目录），补丁文件会打入 "/root/test/old.txt" 文件中， old.txt 文件就在这个目录下，所以应该用 "-p3" 选项。
+
+如果当前所在目录是 "/root/" 目录呢？因为补丁文件中记录的文件目录为 "/root/test/old.txt"，所以这里就应该用 "-p2" 选项（代表取消两级目录），补丁打在当前目录下的 "test/old.txt" 文件上。
+
+因此， -pn 选项可以这样理解，即想要在补丁文件中所记录的目录中取消几个 "/"， n 就是几。去掉目录的目的是和当前所在目录匹配。
+
+现在更新 "old.txt" 文件，命令如下：  
+
+```shell
+[root@localhost test]# patch -p3 < txt.patch
+patching file old.txt
+#给 old.txt 文件打补丁
+[root@localhost test]# cat old.txt
+#查看一下 old.txt 文件的内容
+our
+school
+is
+lampbrother
+in
+Beijing
+#多出了 in Beijing 两行
+```
+
+可以看到，通过使用补丁文件 txt.patch 对旧文件进行更新，使得旧文件和新文件完全相同。  
+
+通过这个例子，大家要明白以下两点：
+
+1. 给旧文件打补丁依赖的不是新文件，而是补丁文件，所以即使新文件被删除也没有关系。
+2. 补丁文件中记录的目录和当前所在目录需要通过 "-pn" 选项实现同步，否则更新可能失败。 
+
+**给 apache 打入补丁**
+
+本节仍以 apache 为例，通过从官网上下载的补丁文件 "mod_proxy_ftp_CVE-2008-2939.diff"，更新 httpd-2.2.9 版本的 apache。
+
+1、从 apache 官网上下载补丁文件；
+2、复制补丁文件到 apache 源码包解压目录中，执行命令如下：  
+
+```shell
+[root@localhost ~]# cp mod_proxy_ftp_CVE-2008-2939.diff httpd-2.2.9
+```
+
+3、给旧 apache 打入补丁，具体执行命令如下：  
+
+```shell
+[root@localhost ~]# cd httpd-2.2.9
+#进入 apache 源码目录
+[root@localhost httpd-2.2.9]# vi mod_proxy_ftp_CVE-2008-2939.diff
+#查看补丁文件
+--- modules/proxy/mod_proxy_ftp.c (Revision 682869)
++++ modules/proxy/mod_proxy_ftp.c (Revision 682870)
+…省略部分输出…
+#查看一下补丁文件中记录的目录，以便一会儿和当前所在目录同步
+[root@localhost httpd-2.2.9]# patch -p0 < mod_proxy_ftp_CVE-2008-2939.diff
+#打入补丁
+```
+
+为什么是 "-p0" 呢？因为当前在 "/root/httpd-2.2.9" 目录中，但补丁文件中记录的目录是 "modules/proxy/mod_proxy_ftp.c"，就在当前所在目录中，因此一个 "/" 都不需要去掉，所以是 "-p0"。
+
+4、重新编译 apache 源码包，执行如下命令：
+
+```shell
+[root@localhost httpd-2.2.9]# make
+```
+
+5、安装 apache，执行如下命令：
+
+```shell
+[root@localhost httpd-2.2.9]# make install
+```
+
+通过对比《Linux 源码包安装和卸载》一节中安装源码包的过程，不难发现，打补丁更新软件的过程比安装软件少了 "./configure" 步骤，且编译时也只是编译变化的位置，编译速度更快。  
+
+patch 命令不仅可以给旧文件打入补丁，还可以执行反操作，即恢复用补丁文件修改过的源文件，例如：  
+
+```shell
+[root@localhost httpd-2.2.9]# patch -R < mod_proxy_ftp_CVE-2008-2939.diff
+```
+
+-R（大写）选项表示还原补丁。
+
