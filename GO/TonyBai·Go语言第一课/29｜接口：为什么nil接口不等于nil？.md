@@ -81,7 +81,7 @@ func main() {
 
 这里我们直接来看一段改编自 [GO FAQ中的例子](https://go.dev/doc/faq#nil_error) 的代码：
 
-```plain
+```go
 type MyError struct {
     error
 }
@@ -110,7 +110,6 @@ func main() {
     }
     fmt.Println("ok")
 }
-
 ```
 
 在这个例子中，我们的关注点集中在returnsError这个函数上面。这个函数定义了一个 `*MyError` 类型的变量p，初值为nil。如果函数bad返回false，returnsError函数就会直接将p（此时p = nil）作为返回值返回给调用者，之后调用者会将returnsError函数的返回值（error接口类型）与nil进行比较，并根据比较结果做出最终处理。
@@ -132,7 +131,7 @@ error occur: <nil>
 
 接口类型“动静兼备”的特性也决定了它的变量的内部表示绝不像一个静态类型变量（如int、float64）那样简单，我们可以在 `$GOROOT/src/runtime/runtime2.go` 中找到接口类型变量在运行时的表示：
 
-```plain
+```go
 // $GOROOT/src/runtime/runtime2.go
 type iface struct {
     tab  *itab
@@ -155,7 +154,7 @@ type eface struct {
 
 那它们的不同点在哪呢？就在于eface表示的空接口类型并没有方法列表，因此它的第一个指针字段指向一个 `_type` 类型结构，这个结构为该接口类型变量的动态类型的信息，它的定义是这样的：
 
-```plain
+```go
 // $GOROOT/src/runtime/type.go
 
 type _type struct {
@@ -181,7 +180,7 @@ type _type struct {
 
 而iface除了要存储动态类型信息之外，还要存储接口本身的信息（接口的类型信息、方法列表信息等）以及动态类型所实现的方法的信息，因此iface的第一个字段指向一个 `itab` 类型结构。itab结构的定义如下：
 
-```plain
+```go
 // $GOROOT/src/runtime/runtime2.go
 type itab struct {
     inter *interfacetype
@@ -195,21 +194,20 @@ type itab struct {
 
 这里我们也可以看到，itab结构中的第一个字段 `inter` 指向的interfacetype结构，存储着这个接口类型自身的信息。你看一下下面这段代码表示的interfacetype类型定义， 这个interfacetype结构由类型信息（typ）、包路径名（pkgpath）和接口方法集合切片（mhdr）组成。
 
-```plain
+```go
 // $GOROOT/src/runtime/type.go
 type interfacetype struct {
     typ     _type
     pkgpath name
     mhdr    []imethod
 }
-
 ```
 
 itab结构中的字段 `_type` 则存储着这个接口类型变量的动态类型的信息，字段 `fun` 则是动态类型已实现的接口方法的调用地址数组。
 
 下面我们再结合例子用图片来直观展现eface和iface的结构。首先我们看一个用eface表示的空接口类型变量的例子：
 
-```plain
+```go
 type T struct {
     n int
     s string
@@ -223,7 +221,6 @@ func main() {
 
     var ei interface{} = t // Go运行时使用eface结构表示ei
 }
-
 ```
 
 这个例子中的空接口类型变量ei在Go运行时的表示是这样的：
@@ -234,7 +231,7 @@ func main() {
 
 我们再来看一个更复杂的用iface表示非空接口类型变量的例子：
 
-```plain
+```go
 type T struct {
     n int
     s string
@@ -255,7 +252,6 @@ func main() {
     }
     var i NonEmptyInterface = t
 }
-
 ```
 
 和eface比起来，iface的表示稍微复杂些。我也画了一幅表示上面NonEmptyInterface接口类型变量在Go运行时表示的示意图：
@@ -271,6 +267,62 @@ func main() {
 也就是说，我们判断两个接口类型变量是否相等，只需判断\_type/tab以及data是否都相等即可。两个接口变量的\_type/tab不同时，即两个接口变量的动态类型不相同时，两个接口类型变量一定不等。
 
 当两个接口变量的\_type/tab相同时，对data的相等判断要有区分。当接口变量的动态类型为指针类型时(\*T)，Go不会再额外分配内存存储指针值，而会将动态类型的指针值直接存入data字段中，这样data值的相等性决定了两个接口类型变量是否相等；当接口变量的动态类型为非指针类型(T)时，我们判断的将不是data指针的值是否相等，而是判断data指针指向的内存空间所存储的数据值是否相等，若相等，则两个接口类型变量相等。
+
+示例：
+
+```go
+func main() {
+	printNonEmptyInterface1()
+}
+
+type T struct {
+	name string
+}
+
+func (t T) Error() string {
+	return t.name
+}
+func printNonEmptyInterface1() {
+	var err1 error     // 非空接口类型
+	var err1ptr error  // 非空接口类型
+	var err11ptr error // 非空接口类型
+	var err2 error     // 非空接口类型
+	var err2ptr error  // 非空接口类型
+	var err22ptr error // 非空接口类型
+
+	t0 := T{"111"}
+	t := &T{"xxx"}
+
+	//err1 = T{"eden"}
+	err1 = t0
+	err1ptr = &T{"eden"}
+
+	err11ptr = t
+
+	//err2 = T{"eden"}
+	err2 = t0
+	err2ptr = &T{"eden"}
+
+	t.name = "xxx2"
+	err22ptr = t
+
+	println("err1:", err1)
+	println("err2:", err2)
+	println("err1 = err2:", err1 == err2) // true
+	t0.name = "000"
+	fmt.Println(err1.Error()) // 111
+	fmt.Println(err2.Error()) // 111
+	println("err1ptr:", err1ptr)
+	println("err2ptr:", err2ptr)
+	println("err1ptr = err2ptr:", err1ptr == err2ptr) // false
+	println("err11ptr:", err11ptr)
+	println("err22ptr:", err22ptr)
+	println("err1ptr = err2ptr:", err11ptr == err22ptr) // true
+	t.name = "xxx3"
+	fmt.Println(err11ptr.Error()) // xxx3
+	fmt.Println(err22ptr.Error()) // xxx3
+}
+```
 
 不过，通过肉眼去辨别接口类型变量是否相等总是困难一些，我们可以引入一些 **helper函数**。借助这些函数，我们可以清晰地输出接口类型变量的内部表示，这样就可以一目了然地看出两个变量是否相等了。
 
@@ -296,7 +348,7 @@ func printiface(i iface) {
 
 我们前面提过，未赋初值的接口类型变量的值为nil，这类变量也就是nil接口变量，我们来看这类变量的内部表示输出的例子：
 
-```plain
+```go
 func printNilInterface() {
 	// nil接口变量
 	var i interface{} // 空接口类型
@@ -307,18 +359,16 @@ func printNilInterface() {
 	println("err = nil:", err == nil)
 	println("i = err:", i == err)
 }
-
 ```
 
 运行这个函数，输出结果是这样的：
 
-```plain
+```shell
 (0x0,0x0)
 (0x0,0x0)
 i = nil: true
 err = nil: true
 i = err: true
-
 ```
 
 我们看到，无论是空接口类型还是非空接口类型变量，一旦变量值为nil，那么它们内部表示均为 `(0x0,0x0)`，也就是类型信息、数据值信息均为空。因此上面的变量i和err等值判断为true。
@@ -327,7 +377,7 @@ i = err: true
 
 下面是空接口类型变量的内部表示输出的例子：
 
-```plain
+```go
   func printEmptyInterface() {
       var eif1 interface{} // 空接口类型
       var eif2 interface{} // 空接口类型
@@ -350,12 +400,11 @@ i = err: true
       println("eif2:", eif2)
       println("eif1 = eif2:", eif1 == eif2) // false
  }
-
 ```
 
 这个例子的运行输出结果是这样的：
 
-```plain
+```shell
 eif1: (0x10ac580,0xc00007ef48)
 eif2: (0x10ac580,0xc00007ef40)
 eif1 = eif2: false
@@ -365,7 +414,6 @@ eif1 = eif2: true
 eif1: (0x10ac580,0xc00007ef48)
 eif2: (0x10ac640,0x10eb3d8)
 eif1 = eif2: false
-
 ```
 
 我们按顺序分析一下这个输出结果。
@@ -382,7 +430,7 @@ eif1 = eif2: false
 
 这里，我们也直接来看一个非空接口类型变量的内部表示输出的例子：
 
-```plain
+```go
 type T int
 
 func (t T) Error() string {
@@ -407,7 +455,6 @@ func printNonEmptyInterface() {
     println("err2:", err2)
     println("err1 = err2:", err1 == err2)
 }
-
 ```
 
 这个例子的运行输出结果如下：
@@ -428,9 +475,8 @@ err1 = err2: false
 
 和空接口类型变量一样，只有tab和data指的数据内容一致的情况下，两个非空接口类型变量之间才能划等号。这里我们要注意err1下面的赋值情况：
 
-```plain
+```go
 err1 = (*T)(nil)
-
 ```
 
 针对这种赋值，println输出的err1是（0x10ed120, 0x0），也就是非空接口类型变量的类型信息并不为空，数据指针为空，因此它与nil（0x0,0x0）之间不能划等号。
@@ -441,7 +487,7 @@ err1 = (*T)(nil)
 
 下面是非空接口类型变量和空接口类型变量之间进行比较的例子：
 
-```plain
+```go
 func printEmptyInterfaceAndNonEmptyInterface() {
 	var eif interface{} = T(5)
 	var err error = T(5)
@@ -454,7 +500,6 @@ func printEmptyInterfaceAndNonEmptyInterface() {
 	println("err:", err)
 	println("eif = err:", eif == err)
 }
-
 ```
 
 这个示例的输出结果如下：
@@ -678,7 +723,7 @@ iface: {tab:0x10eb690 data:0x10e9b30}
 
 我们基于下面这个例子中的接口装箱操作来说明：
 
-```plain
+```go
 // interface_internal.go
 
   type T struct {
@@ -707,19 +752,17 @@ iface: {tab:0x10eb690 data:0x10e9b30}
       fmt.Println(ei)
       fmt.Println(i)
   }
-
 ```
 
 这个例子中，对ei和i两个接口类型变量的赋值都会触发装箱操作，要想知道Go在背后做了些什么，我们需要“下沉”一层，也就是要输出上面Go代码对应的汇编代码：
 
 ```plain
 $go tool compile -S interface_internal.go > interface_internal.s
-
 ```
 
 对应 `ei = t` 一行的汇编如下：
 
-```plain
+```assembly
     0x0026 00038 (interface_internal.go:24) MOVQ    $17, ""..autotmp_15+104(SP)
     0x002f 00047 (interface_internal.go:24) LEAQ    go.string."hello, interface"(SB), CX
     0x0036 00054 (interface_internal.go:24) MOVQ    CX, ""..autotmp_15+112(SP)
@@ -728,12 +771,11 @@ $go tool compile -S interface_internal.go > interface_internal.s
     0x004b 00075 (interface_internal.go:24) LEAQ    ""..autotmp_15+104(SP), BX
     0x0050 00080 (interface_internal.go:24) PCDATA  $1, $0
     0x0050 00080 (interface_internal.go:24) CALL    runtime.convT2E(SB)
-
 ```
 
 对应i = t一行的汇编如下：
 
-```plain
+```assembly
     0x005f 00095 (interface_internal.go:27) MOVQ    $17, ""..autotmp_15+104(SP)
     0x0068 00104 (interface_internal.go:27) LEAQ    go.string."hello, interface"(SB), CX
     0x006f 00111 (interface_internal.go:27) MOVQ    CX, ""..autotmp_15+112(SP)
@@ -742,12 +784,11 @@ $go tool compile -S interface_internal.go > interface_internal.s
     0x0084 00132 (interface_internal.go:27) LEAQ    ""..autotmp_15+104(SP), BX
     0x0089 00137 (interface_internal.go:27) PCDATA  $1, $1
     0x0089 00137 (interface_internal.go:27) CALL    runtime.convT2I(SB)
-
 ```
 
 在将动态类型变量赋值给接口类型变量语句对应的汇编代码中，我们看到了 `convT2E` 和 `convT2I` 两个runtime包的函数。这两个函数的实现位于 `$GOROOT/src/runtime/iface.go` 中：
 
-```plain
+```go
 // $GOROOT/src/runtime/iface.go
 
 func convT2E(t *_type, elem unsafe.Pointer) (e eface) {
@@ -778,21 +819,20 @@ func convT2I(tab *itab, elem unsafe.Pointer) (i iface) {
     i.data = x
     return
 }
-
 ```
 
 convT2E用于将任意类型转换为一个eface，convT2I用于将任意类型转换为一个iface。两个函数的实现逻辑相似，主要思路就是根据传入的类型信息（convT2E的\_type和convT2I的tab.\_type）分配一块内存空间，并将elem指向的数据拷贝到这块内存空间中，最后传入的类型信息作为返回值结构中的类型信息，返回值结构中的数据指针（data）指向新分配的那块内存空间。
 
 由此我们也可以看出，经过装箱后，箱内的数据，也就是存放在新分配的内存空间中的数据与原变量便无瓜葛了，比如下面这个例子：
 
-```plain
+```go
 func main() {
 	var n int = 61
 	var ei interface{} = n
 	n = 62  // n的值已经改变
 	fmt.Println("data in box:", ei) // 输出仍是61
 }
-
+// 这里描述的不完全准确，对于*T和T类型不同，具体可以看上面接口类型变量的内部的示例。
 ```
 
 那么convT2E和convT2I函数的类型信息是从何而来的呢？
