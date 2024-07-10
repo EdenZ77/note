@@ -19,7 +19,7 @@
 
 我们首先会更新源码，就像下面代码中这样：
 
-```plain
+```go
 package main
 
 import (
@@ -31,7 +31,6 @@ func main() {
 	logrus.Println("hello, go module mode")
 	logrus.Println(uuid.NewString())
 }
-
 ```
 
 新源码中，我们通过import语句导入了github.com/google/uuid，并在main函数中调用了uuid包的函数NewString。此时，如果我们直接构建这个module，我们会得到一个错误提示：
@@ -49,7 +48,6 @@ Go编译器提示我们，go.mod里的require段中，没有哪个module提供�
 $go get github.com/google/uuid
 go: downloading github.com/google/uuid v1.3.0
 go get: added github.com/google/uuid v1.3.0
-
 ```
 
 你会发现，go get命令将我们新增的依赖包下载到了本地module缓存里，并在go.mod文件的require段中新增了一行内容：
@@ -59,7 +57,6 @@ require (
 	github.com/google/uuid v1.3.0 //新增的依赖
 	github.com/sirupsen/logrus v1.8.1
 )
-
 ```
 
 这新增的一行表明，我们当前项目依赖的是uuid的v1.3.0版本。我们也可以使用go mod tidy命令，在执行构建前自动分析源码中的依赖变化，识别新增依赖项并下载它们：
@@ -148,7 +145,6 @@ import github.com/user/repo/v1 等价于 import github.com/user/repo
 
 ```plain
 import github.com/user/repo/v2/xxx
-
 ```
 
 也就是说，如果我们要为Go项目添加主版本号大于1的依赖，我们就需要使用“语义导入版本”机制， **在声明它的导入路径的基础上，加上版本号信息**。我们以“向module-mode项目添加github.com/go-redis/redis依赖包的v7版本”为例，看看添加步骤。

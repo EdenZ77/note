@@ -20,7 +20,6 @@
 module github.com/bigwhite/srsm
 
 go 1.17
-
 ```
 
 然后我们对仓库打tag，这个tag也会成为Go Module的版本号，这样，对仓库的版本管理其实就是对Go Module的版本管理。

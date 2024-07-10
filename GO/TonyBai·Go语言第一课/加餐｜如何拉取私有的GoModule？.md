@@ -40,7 +40,6 @@ github.com/user/a imports
 
 ```plain
 require github.com/user/b v1.0.0
-
 ```
 
 注意了，这里的v1.0.0版本号是一个“假版本号”，目的是满足go.mod中require块的语法要求。
@@ -49,7 +48,6 @@ require github.com/user/b v1.0.0
 
 ```plain
 replace github.com/user/b v1.0.0 => module b的本地源码路径
-
 ```
 
 这样修改之后，go命令就会让module a依赖你本地正在开发、尚未发布到代码托管网站的module b的源码了。
@@ -236,7 +234,6 @@ $./goproxy -listen=0.0.0.0:8081 -cacheDir=/root/.bin/goproxy/goproxy/bin/cache -
 
 ```plain
 127.0.0.1 mycompany.com
-
 ```
 
 这样做了后，goproxy发出的到mycompany.com的请求实际上是发向了本机。而上面这图中显示，监听本机80端口的正是nginx，nginx关于mycompany.com这一主机的配置如下：
@@ -327,6 +324,126 @@ export GONOSUMDB=mycompany.com/go
 在讲解上面的方案的时候我们也提到过，goproxy所在节点需要具备访问所有私有Go Module所在vcs repo的权限，但又无法对go开发者端做出有差别授权，这样，只要是goproxy能拉取到的私有Go Module，go开发者都能拉取到。
 
 不过对于多数公司而言，内部所有源码原则上都是企业内部公开的，这个问题似乎也不大。如果觉得这是个问题，那么只能使用前面提到的第一个方案，也就是直连私有Go Module的源码服务器的方案了。
+
+# Golang项目中如何轻松实现私有仓库pkg包的引入
+
+参考资料：https://mp.weixin.qq.com/s/U8BPNrSAMwe2FTLayMGacQ
+
+## 1、公共模块规范
+
+下面是一个简单的步骤指南来创建这样一个公共模块项目。
+
+创建版本控制仓库：使用版本控制工具（如Git）创建一个新的代码仓库，用于管理该公共模块工程的代码。
+
+项目结构：定义好项目的结构，使其易于理解和使用。一个常见的Golang项目结构如下：
+
+```
+my-module/
+   |- README.md        # 项目文档和说明
+   |- go.mod           # Go模块定义文件
+   |- go.sum           # Go模块的依赖版本文件
+   |- cmd/             # 命令行应用程序目录（如果有的话）
+   |- pkg/             # 项目的库代码目录
+   |- internal/        # 内部库代码目录，不对外公开
+   |- examples/        # 示例代码目录
+   |- tests/           # 单元测试和集成测试目录
+```
+
+1. Go模块初始化：进入项目根目录，运行 `go mod init <module-name>` 来初始化 Go 模块。模块名称应该是该模块工程的唯一标识符。
+2. 编写代码：在 `pkg/` 目录下编写公共的Golang库代码。这些代码应该是可复用的，不与具体应用逻辑绑定。
+3. 文档和注释：对于公共模块，清晰的文档和注释是非常重要的。确保每个公共函数和类型都有良好的注释，方便其他开发人员理解和使用。
+4. 示例代码：在 `examples/` 目录下提供一些简单的示例代码，展示如何使用这个公共模块。
+5. 单元测试：编写完整的单元测试和集成测试，保证模块的正确性和稳定性。测试代码放在 `tests/` 目录下。
+6. 版本管理：在Go中，版本管理使用Go Modules。当你的模块准备发布新版本时，确保适当地更新go.mod文件，并通过 `go get <module-name>@<version>` 或 `go mod tidy` 来更新依赖关系。
+7. 持续集成：将公共模块纳入到企业的持续集成流程中，确保每次修改都通过了测试，并符合质量标准。
+8. 发布和文档：根据企业内部的发布流程，发布新的版本，并及时更新项目文档，方便其他开发人员使用。
+
+以上是一个基本的指南来创建企业内部的Golang公共模块工程，可根据实现项目灵活调整。记得在开发过程中关注代码质量和安全性，并积极倾听来自其他开发人员的反馈，不断改进和优化模块。
+
+## 2、如何引入公共模块
+
+在Go中引入私有Git仓库的包可以通过在 `go.mod` 文件中添加 `replace` 或 `require` 语句来实现，具体取决于你的使用场景。以下是引入私有Git仓库包的三种常见方法。
+
+### 2.1 私有项目的路径替换
+
+如果私有项目 A 依赖另一个私有项目 B，且通过 `go get` 无法获取，可以采用 `replace` 方式。
+
+在项目的 `go.mod` 文件中添加类似如下的 `replace` 语句，将私有Git仓库的路径替换为本地路径：
+
+```
+replace github.com/yourusername/yourprivatepkg => /path/to/local/repo
+```
+
+或者，可以使用相对路径：
+
+```
+replace github.com/yourusername/yourprivatepkg => ../path/to/local/repo
+```
+
+### 2.2 go mod 私有项目的访问
+
+在项目的 `go.mod` 文件中添加类似如下的 `require` 语句：
+
+```
+require gitcdteam.skyguardmis.com/bigdt/gokit v1.0.0
+```
+
+要实现上述方式需要额外的配置，确保能够正常 `go get` 私有Git仓库的工程。
+
+1. 设置 Go GOPRIVATE 变量
+
+   ```
+   # 配置多个私有项目地址
+   go env -w GOPRIVATE="gitcdteam.skyguardmis.com"
+   ```
+   
+   - 默认情况下，如果设置GOPRIVATE，会自动设置GONOPROXY和GONOSUMDB配置；
+   - 如果设置GONOPROXY和GONOSUMDB均为none，意味着所有module，不管是公共的还是私有的，都要经过proxy下载，经过sumdb验证。
+
+3. 私有仓库的请求认证
+
+   Git全局配置查看和删除:
+
+   ```shell
+   #查看git全局配置
+   $ git config --global -l
+user.name=zhuqiqi
+   user.email=zhuqiqi@skyguard.com.cn
+user.password=1qazXSW@
+   url.ssh://git@gitcdteam.skyguardmis.com/.insteadof=https://gitcdteam.skyguardmis.com/
+   
+   ```
+   
+   使用SSH替换HTTPS进行认证
+   
+```
+   git config --global url.ssh://git@gitcdteam.skyguardmis.com/.insteadof=https://gitcdteam.skyguardmis.com/
+```
+
+3. Golang私有项目的http访问
+
+   如果私有库不支持https协议，会报如下的错误。这是因为Go更新依赖时，会强制校验CA证书来确保依赖库的安全性。
+
+   ```
+   go: gitee.com/modules/project@v0.0.0-20200320063051-28c4ad7fe2ea: unrecognized import path "gitee.com/modules/project": https fetch: Get "https://gitee.com/modules/project?go-get=1": dial tcp 123.123.123:443: connect: connection refused
+   ```
+
+   如果私有库不支持https协议，还需要go配置参数或环境变量，使其使用http方式访问。
+
+方法一：go get -insecure
+
+使用 `go get -insecure`，这种方式不推荐，原因如下：添加 `-insecure` 参数，即表示更新依赖时可以不去校验CA证书，但是这会带来一个问题：所有与要更新依赖相关联的依赖，均不会去做校验，可能会意外更新到不安全的依赖。 
+
+`-insecure` 仅支持 go get 命令，不支持 go mod 命令，因此使用 go mod 命令时是无法更新不支持https协议的私有库的。
+
+方法二：GOINSECURE
+
+添加 `GOINSECURE` 参数，**推荐这种方式**。
+
+   - 在Go 1.14 中增加了新的环境变量，用于指定哪些域名下的仓库不去校验 CA 证书。
+   - 使用方式： `go env -w GOINSECURE=gitcdteam.skyguardmis.com`。
+
+
 
 ## 小结
 
