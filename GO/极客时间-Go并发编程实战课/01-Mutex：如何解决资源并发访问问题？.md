@@ -117,7 +117,6 @@ type Locker interface {
     MOVQ    "".count(SB), AX
     LEAQ    1(AX), CX
     MOVQ    CX, "".count(SB)
-
 ```
 
 这个问题，有经验的开发人员还是比较容易发现的，但是，很多时候，并发问题隐藏得非常深，即使是有经验的人，也不太容易发现或者Debug出来。
@@ -142,7 +141,7 @@ type Locker interface {
 
 而且，把开启了race的程序部署在线上，还是比较影响性能的。运行 go tool compile -race -S counter.go，可以查看计数器例子的代码，重点关注一下count++前后的编译后的代码：
 
-```
+```assembly
 0x002a 00042 (counter.go:13)    CALL    runtime.racefuncenter(SB)
        ......
         0x0061 00097 (counter.go:14)    JMP     173
@@ -165,7 +164,6 @@ type Locker interface {
         0x00bb 00187 (counter.go:18)    CALL    runtime.racefuncexit(SB)
         0x00c0 00192 (counter.go:18)    MOVQ    104(SP), BP
         0x00c5 00197 (counter.go:18)    ADDQ    $112, SP
-
 ```
 
 在编译的代码中，增加了runtime.racefuncenter、runtime.raceread、runtime.racewrite、runtime.racefuncexit等检测data race的方法。通过这些插入的指令，Go race detector工具就能够成功地检测出data race问题了。
@@ -178,7 +176,7 @@ type Locker interface {
 
 我们知道，这里的共享资源是count变量，临界区是count++，只要在临界区前面获取锁，在离开临界区的时候释放锁，就能完美地解决data race的问题了。
 
-```
+```go
 package main
 
     import (
@@ -211,7 +209,6 @@ package main
         wg.Wait()
         fmt.Println(count)
     }
-
 ```
 
 如果你再运行一下程序，就会发现，data race警告没有了，系统干脆地输出了1000000：
@@ -226,19 +223,18 @@ package main
 
 很多情况下， **Mutex会嵌入到其它struct中使用**，比如下面的方式：
 
-```
+```go
 type Counter struct {
     mu    sync.Mutex
     Count uint64
 }
-
 ```
 
 在初始化嵌入的struct时，也不必初始化这个Mutex字段，不会因为没有初始化出现空指针或者是无法获取到锁的情况。
 
 有时候，我们还可以 **采用嵌入字段的方式**。通过嵌入字段，你可以在这个struct上直接调用Lock/Unlock方法。
 
-```
+```go
 func main() {
     var counter Counter
     var wg sync.WaitGroup
@@ -261,14 +257,13 @@ type Counter struct {
     sync.Mutex
     Count uint64
 }
-
 ```
 
 **如果嵌入的struct有多个字段，我们一般会把Mutex放在要控制的字段上面，然后使用空格把字段分隔开来。** 即使你不这样做，代码也可以正常编译，只不过，用这种风格去写的话，逻辑会更清晰，也更易于维护。
 
 甚至，你还可以 **把获取锁、释放锁、计数加一的逻辑封装成一个方法**，对外不需要暴露锁等逻辑：
 
-```
+```go
 func main() {
     // 封装好的计数器
     var counter Counter
@@ -312,7 +307,15 @@ func (c *Counter) Count() uint64 {
     defer c.mu.Unlock()
     return c.count
 }
-
+/*
+为什么需要对读取操作也加锁呢？ 因为写操作并不是原子的，一条普通的赋值语句其实并不是一个原子操作。
+比如在 32位机器上，写 int64 类型的变量就会有中间状态，
+因为它会被拆成两次 MOV 操作 -- 写低 32 位 和高 32 位。 
+如果一个线程刚写完低 32 位，还没来得及写 高 32 位时，另一个线程读取了这个变量，
+那么就会得到一个毫无意义的中间变量，这可能使我们的程序出现诡异的 Bug。 
+所以 sync/atomic 提供了对基础类型的一些原子操作，比如 LoadX, StoreX, SwapX, AddX，CompareAndSwapX 等。
+这些操作在不同平台有不同的实现，比如 LoadInt64 在 amd64 下就是一条简单的加载，但是在 386 平台下就需要更复杂的实现。
+*/
 ```
 
 ## 总结
