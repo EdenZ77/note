@@ -45,13 +45,11 @@
 
 Locker的接口定义了锁同步原语的方法集：
 
-```
-
+```go
 type Locker interface {
     Lock()
     Unlock()
 }
-
 ```
 
 可以看到，Go定义的锁接口的方法集很简单，就是请求锁（Lock）和释放锁（Unlock）这两个方法，秉承了Go语言一贯的简洁风格。
@@ -67,7 +65,6 @@ type Locker interface {
 ```
   func(m *Mutex)Lock()
   func(m *Mutex)Unlock()
-
 ```
 
 **当一个goroutine通过调用Lock方法获得了这个锁的拥有权后， 其它请求锁的goroutine就会阻塞在Lock方法的调用上，直到锁被释放并且自己获取到了这个锁的拥有权。**
