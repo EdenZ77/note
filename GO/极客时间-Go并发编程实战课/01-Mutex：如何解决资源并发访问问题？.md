@@ -73,7 +73,7 @@ type Locker interface {
 
 在这个例子中，我们创建了10个goroutine，同时不断地对一个变量（count）进行加1操作，每个goroutine负责执行10万次的加1操作，我们期望的最后计数的结果是10 \* 100000 = 1000000 (一百万)。
 
-```
+```go
  import (
         "fmt"
         "sync"
@@ -97,7 +97,6 @@ type Locker interface {
         wg.Wait()
         fmt.Println(count)
     }
-
 ```
 
 在这段代码中，我们使用sync.WaitGroup来等待所有的goroutine执行完毕后，再输出最终的结果。sync.WaitGroup这个同步原语我会在后面的课程中具体介绍，现在你只需要知道，我们使用它来控制等待一组goroutine全部做完任务。
@@ -315,6 +314,8 @@ func (c *Counter) Count() uint64 {
 那么就会得到一个毫无意义的中间变量，这可能使我们的程序出现诡异的 Bug。 
 所以 sync/atomic 提供了对基础类型的一些原子操作，比如 LoadX, StoreX, SwapX, AddX，CompareAndSwapX 等。
 这些操作在不同平台有不同的实现，比如 LoadInt64 在 amd64 下就是一条简单的加载，但是在 386 平台下就需要更复杂的实现。
+
+在daydayup项目中有示例
 */
 ```
 
