@@ -23,7 +23,7 @@
 
 实际上，Russ Cox在2008年提交的第一版Mutex就是这样实现的。
 
-```
+```go
    // CAS操作，当时还没有抽象出atomic包
     func cas(val *int32, old, new int32) bool
     func semacquire(*int32)
@@ -59,7 +59,6 @@
         }
         semrelease(&m.sema) // 唤醒其它阻塞的goroutine
     }
-
 ```
 
 这里呢，我先简单补充介绍下刚刚提到的CAS。
@@ -99,7 +98,7 @@ Mutex的整体设计非常简洁，学习起来一点也没有障碍。但是，
 
 以前，我们经常会基于性能的考虑，及时释放掉锁，所以在一些if-else分支中加上释放锁的代码，代码看起来很臃肿。而且，在重构的时候，也很容易因为误删或者是漏掉而出现死锁的现象。
 
-```
+```go
 type Foo struct {
     mu    sync.Mutex
     count int
@@ -118,12 +117,11 @@ func (f *Foo) Bar() {
     f.mu.Unlock() // 此处释放锁
     return
 }
-
 ```
 
 从1.14版本起，Go对defer做了优化，采用更有效的内联方式，取代之前的生成defer对象到defer chain中，defer对耗时的影响微乎其微了，所以基本上修改成下面简洁的写法也没问题：
 
-```
+```go
 func (f *Foo) Bar() {
     f.mu.Lock()
     defer f.mu.Unlock()
@@ -136,7 +134,6 @@ func (f *Foo) Bar() {
     f.count++
     return
 }
-
 ```
 
 这样做的好处就是Lock/Unlock总是成对紧凑出现，不会遗漏或者多调用，代码更少。
