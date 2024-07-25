@@ -150,7 +150,7 @@ func (f *Foo) Bar() {
 
 Go开发者在2011年6月30日的commit中对Mutex做了一次大的调整，调整后的Mutex实现如下：
 
-```
+```go
    type Mutex struct {
         state int32
         sema  uint32
@@ -161,7 +161,6 @@ Go开发者在2011年6月30日的commit中对Mutex做了一次大的调整，调
         mutexWoken
         mutexWaiterShift = iota
     )
-
 ```
 
 虽然Mutex结构体还是包含两个字段，但是第一个字段已经改成了state，它的含义也不一样了。
@@ -172,7 +171,7 @@ state是一个复合型的字段，一个字段包含多个意义，这样可以
 
 请求锁的方法Lock也变得复杂了。复杂之处不仅仅在于对字段state的操作难以理解，而且代码逻辑也变得相当复杂。
 
-```
+```go
    func (m *Mutex) Lock() {
         // Fast path: 幸运case，能够直接获取到锁
         if atomic.CompareAndSwapInt32(&m.state, 0, mutexLocked) {
@@ -200,7 +199,6 @@ state是一个复合型的字段，一个字段包含多个意义，这样可以
             }
         }
     }
-
 ```
 
 首先是通过CAS检测state字段中的标志（第3行），如果没有goroutine持有锁，也没有等待持有锁的gorutine，那么，当前的goroutine就很幸运，可以直接获得锁，这也是注释中的Fast path的意思。
