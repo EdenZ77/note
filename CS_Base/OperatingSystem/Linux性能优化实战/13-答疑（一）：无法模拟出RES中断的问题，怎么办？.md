@@ -39,10 +39,9 @@
 
 你可以运行下面的命令，来模拟 iowait 的问题。
 
-```
+```shell
 # -i的含义还是调用sync，而—hdd则表示读写临时文件
 $ stress-ng -i 1 --hdd 1 --timeout 600
-
 ```
 
 ## 问题3：无法模拟出 RES 中断的问题
