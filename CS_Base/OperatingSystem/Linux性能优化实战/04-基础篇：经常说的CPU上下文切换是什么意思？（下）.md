@@ -15,13 +15,12 @@ vmstat 是一个常用的系统性能分析工具，主要用来分析系统的�
 
 比如，下面就是一个 vmstat 的使用示例：
 
-```
+```shell
 # 每隔5秒输出1组数据
 $ vmstat 5
 procs -----------memory---------- ---swap-- -----io---- -system-- ------cpu-----
  r  b   swpd   free   buff  cache   si   so    bi    bo   in   cs us sy id wa st
  0  0      0 7005360  91564 818900    0    0     0     0   25   33  0  0 100  0  0
-
 ```
 
 我们一起来看这个结果，你可以先试着自己解读每列的含义。在这里，我重点强调下，需要特别关注的四列内容：
@@ -41,7 +40,7 @@ vmstat 只给出了系统总体的上下文切换情况，要想查看每个进�
 
 比如说：
 
-```
+```shell
 # 每隔5秒输出1组数据
 $ pidstat -w 5
 Linux 4.15.0 (ubuntu)  09/23/18  _x86_64_  (2 CPU)
@@ -50,7 +49,6 @@ Linux 4.15.0 (ubuntu)  09/23/18  _x86_64_  (2 CPU)
 08:18:31        0         1      0.20      0.00  systemd
 08:18:31        0         8      5.40      0.00  rcu_sched
 ...
-
 ```
 
 这个结果中有两列内容是我们的重点关注对象。一个是 cswch ，表示每秒自愿上下文切换（voluntary context switches）的次数，另一个则是 nvcswch ，表示每秒非自愿上下文切换（non voluntary context switches）的次数。
@@ -85,13 +83,12 @@ sysbench 是一个多线程的基准测试工具，一般用来评估不同系�
 
 安装完成后，你可以先用 vmstat 看一下空闲系统的上下文切换次数：
 
-```
+```shell
 # 间隔1秒后输出1组数据
 $ vmstat 1 1
 procs -----------memory---------- ---swap-- -----io---- -system-- ------cpu-----
  r  b   swpd   free   buff  cache   si   so    bi    bo   in   cs us sy id wa st
  0  0      0 6984064  92668 830896    0    0     2    19   19   35  1  0 99  0  0
-
 ```
 
 这里你可以看到，现在的上下文切换次数 cs 是35，而中断次数 in 是19，r和b都是0。因为这会儿我并没有运行其他任务，所以它们就是空闲系统的上下文切换次数。
@@ -102,22 +99,20 @@ procs -----------memory---------- ---swap-- -----io---- -system-- ------cpu-----
 
 首先，在第一个终端里运行 sysbench ，模拟系统多线程调度的瓶颈：
 
-```
+```shell
 # 以10个线程运行5分钟的基准测试，模拟多线程切换的问题
 $ sysbench --threads=10 --max-time=300 threads run
-
 ```
 
 接着，在第二个终端运行 vmstat ，观察上下文切换情况：
 
-```
+```shell
 # 每隔1秒输出1组数据（需要Ctrl+C才结束）
 $ vmstat 1
 procs -----------memory---------- ---swap-- -----io---- -system-- ------cpu-----
  r  b   swpd   free   buff  cache   si   so    bi    bo   in   cs us sy id wa st
  6  0      0 6487428 118240 1292772    0    0     0     0 9019 1398830 16 84  0  0  0
  8  0      0 6487428 118240 1292772    0    0     0     0 10191 1392312 16 84  0  0  0
-
 ```
 
 你应该可以发现，cs 列的上下文切换次数从之前的 35 骤然上升到了 139 万。同时，注意观察其他几个指标：
@@ -135,7 +130,7 @@ procs -----------memory---------- ---swap-- -----io---- -system-- ------cpu-----
 
 我们继续分析，在第三个终端再用 pidstat 来看一下， CPU 和进程上下文切换的情况：
 
-```
+```shell
 # 每隔1秒输出1组数据（需要 Ctrl+C 才结束）
 # -w参数表示输出进程切换指标，而-u参数则表示输出CPU使用指标
 $ pidstat -w -u 1
@@ -166,7 +161,7 @@ $ pidstat -w -u 1
 
 所以，我们可以在第三个终端里， Ctrl+C 停止刚才的 pidstat 命令，再加上 -t 参数，重试一下看看：
 
-```
+```shell
 # 每隔1秒输出一组数据（需要 Ctrl+C 才结束）
 # -wt 参数表示输出线程的上下文切换指标
 $ pidstat -wt 1
@@ -193,14 +188,13 @@ $ pidstat -wt 1
 
 我们还是在第三个终端里， Ctrl+C 停止刚才的 pidstat 命令，然后运行下面的命令，观察中断的变化情况：
 
-```
+```shell
 # -d 参数表示高亮显示变化的区域
 $ watch -d cat /proc/interrupts
            CPU0       CPU1
 ...
 RES:    2450431    5279697   Rescheduling interrupts
 ...
-
 ```
 
 观察一段时间，你可以发现，变化速度最快的是 **重调度中断**（RES），这个中断类型表示，唤醒空闲状态的 CPU 来调度新的任务运行。这是多处理器系统（SMP）中，调度器用来分散任务到不同 CPU 的机制，通常也被称为 **处理器间中断**（Inter-Processor Interrupts，IPI）。
