@@ -58,7 +58,7 @@ $ stress-ng -i 1 --hdd 1 --timeout 600
 
 其实这个结论也可以从另一个角度获得。比如，你可以在 pidstat 的选项中，加入 -u 和 -t 参数，输出线程的 CPU 使用情况，你会看到下面的界面：
 
-```
+```shell
 $ pidstat -u -t 1
 
 14:24:03      UID      TGID       TID    %usr %system  %guest   %wait    %CPU   CPU  Command
@@ -68,7 +68,6 @@ $ pidstat -u -t 1
 14:24:04        0         -      2475    2.97    6.93    0.00   70.30    9.90     0  |__sysbench
 14:24:04        0         -      2476    2.97    6.93    0.00   68.32    9.90     0  |__sysbench
 ...
-
 ```
 
 从这个 pidstat 的输出界面，你可以发现，每个 stress 线程的 %wait 高达 70%，而 CPU 使用率只有不到 10%。换句话说， stress 线程大部分时间都消耗在了等待 CPU 上，这也表明，确实是过多的线程在争抢 CPU。
