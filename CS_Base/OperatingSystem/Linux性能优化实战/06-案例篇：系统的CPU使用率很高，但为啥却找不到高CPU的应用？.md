@@ -42,24 +42,22 @@
 
 首先，我们在第一个终端，执行下面的命令运行 Nginx 和 PHP 应用：
 
-```
+```shell
 $ docker run --name nginx -p 10000:80 -itd feisky/nginx:sp
 $ docker run --name phpfpm -itd --network container:nginx feisky/php-fpm:sp
-
 ```
 
 然后，在第二个终端，使用 curl 访问 http://\[VM1的IP\]:10000，确认 Nginx 已正常启动。你应该可以看到 It works! 的响应。
 
-```
+```shell
 # 192.168.0.10是第一台虚拟机的IP地址
 $ curl http://192.168.0.10:10000/
 It works!
-
 ```
 
 接着，我们来测试一下这个 Nginx 服务的性能。在第二个终端运行下面的 ab 命令。要注意，与上次操作不同的是，这次我们需要并发100个请求测试Nginx性能，总共测试1000个请求。
 
-```
+```shell
 # 并发100个请求测试Nginx性能，总共测试1000个请求
 $ ab -c 100 -n 1000 http://192.168.0.10:10000/
 This is ApacheBench, Version 2.3 <$Revision: 1706008 $>
@@ -68,7 +66,6 @@ Copyright 1996 Adam Twiss, Zeus Technology Ltd,
 Requests per second:    87.86 [#/sec] (mean)
 Time per request:       1138.229 [ms] (mean)
 ...
-
 ```
 
 从ab的输出结果我们可以看到，Nginx能承受的每秒平均请求数，只有 87 多一点，是不是感觉它的性能有点差呀。那么，到底是哪里出了问题呢？我们再用 top 和 pidstat 来观察一下。
@@ -77,14 +74,13 @@ Time per request:       1138.229 [ms] (mean)
 
 继续在第二个终端运行 ab 命令：
 
-```
+```shell
 $ ab -c 5 -t 600 http://192.168.0.10:10000/
-
 ```
 
 然后，我们在第一个终端运行 top 命令，观察系统的 CPU 使用情况：
 
-```
+```shell
 $ top
 ...
 %Cpu(s): 80.8 us, 15.1 sy,  0.0 ni,  2.8 id,  0.0 wa,  0.0 hi,  1.3 si,  0.0 st
@@ -101,7 +97,6 @@ $ top
 15006 root      20   0 1168608  66264  37536 S   1.0  0.8   9:39.51 dockerd
  4323 root      20   0       0      0      0 I   0.3  0.0   0:00.87 kworker/u4:1
 ...
-
 ```
 
 观察 top 输出的进程列表可以发现，CPU 使用率最高的进程也只不过才 2.7%，看起来并不高。
@@ -121,7 +116,7 @@ $ top
 
 接下来，我们还是在第一个终端，运行 pidstat 命令：
 
-```
+```shell
 # 间隔1秒输出一组数据（按Ctrl+C结束）
 $ pidstat 1
 ...
@@ -138,7 +133,6 @@ $ pidstat 1
 04:36:25        1     17084    1.00    0.00    0.00    2.00    1.00     0  stress
 04:36:25        0     31116    0.00    1.00    0.00    0.00    1.00     0  atopacctd
 ...
-
 ```
 
 观察一会儿，你是不是发现，所有进程的 CPU 使用率也都不高啊，最高的 Docker 和 Nginx 也只有 4% 和 3%，即使所有进程的 CPU 使用率都加起来，也不过是 21%，离 80% 还差得远呢！
@@ -149,7 +143,7 @@ $ pidstat 1
 
 现在，我们回到第一个终端，重新运行 top 命令，并观察一会儿：
 
-```
+```shell
 $ top
 top - 04:58:24 up 14 days, 15:47,  1 user,  load average: 3.39, 3.82, 2.74
 Tasks: 149 total,   6 running,  93 sleeping,   0 stopped,   0 zombie
@@ -172,7 +166,6 @@ KiB Swap:        0 total,        0 free,        0 used.  7363908 avail Mem
 24344 daemon    20   0    8188   1056    492 R   1.0  0.0   0:00.01 stress
 24347 daemon    20   0    8184   1356    540 R   1.0  0.0   0:00.01 stress
 ...
-
 ```
 
 这次从头开始看 top 的每行输出，咦？Tasks 这一行看起来有点奇怪，就绪队列中居然有 6 个 Running 状态的进程（6 running），是不是有点多呢？
@@ -183,25 +176,23 @@ KiB Swap:        0 total,        0 free,        0 used.  7363908 avail Mem
 
 我们还是使用 pidstat 来分析这几个进程，并且使用 -p 选项指定进程的 PID。首先，从上面 top 的结果中，找到这几个进程的 PID。比如，先随便找一个 24344，然后用 pidstat 命令看一下它的 CPU 使用情况：
 
-```
+```shell
 $ pidstat -p 24344
 
 16:14:55      UID       PID    %usr %system  %guest   %wait    %CPU   CPU  Command
-
 ```
 
 奇怪，居然没有任何输出。难道是pidstat 命令出问题了吗？之前我说过， **在怀疑性能工具出问题前，最好还是先用其他工具交叉确认一下**。那用什么工具呢？ ps 应该是最简单易用的。我们在终端里运行下面的命令，看看 24344 进程的状态：
 
-```
+```shell
 # 从所有进程中查找PID是24344的进程
 $ ps aux | grep 24344
 root      9628  0.0  0.0  14856  1096 pts/0    S+   16:15   0:00 grep --color=auto 24344
-
 ```
 
 还是没有输出。现在终于发现问题，原来这个进程已经不存在了，所以 pidstat 就没有任何输出。既然进程都没了，那性能问题应该也跟着没了吧。我们再用 top 命令确认一下：
 
-```
+```shell
 $ top
 ...
 %Cpu(s): 80.9 us, 14.9 sy,  0.0 ni,  2.8 id,  0.0 wa,  0.0 hi,  1.3 si,  0.0 st
@@ -213,7 +204,6 @@ $ top
  3865 daemon    20   0  336696  15056   7376 S   2.0  0.2   0:00.15 php-fpm
   6779 daemon    20   0    8184   1112    556 R   0.3  0.0   0:00.01 stress
 ...
-
 ```
 
 好像又错了。结果还跟原来一样，用户 CPU 使用率还是高达 80.9%，系统 CPU 接近 15%，而空闲 CPU 只有 2.8%，Running 状态的进程有 Nginx、stress等。
@@ -231,18 +221,17 @@ $ top
 
 要怎么查找一个进程的父进程呢？没错，用 pstree 就可以用树状形式显示所有进程之间的关系：
 
-```
+```shell
 $ pstree | grep stress
         |-docker-containe-+-php-fpm-+-php-fpm---sh---stress
         |         |-3*[php-fpm---sh---stress---stress]
-
 ```
 
 从这里可以看到，stress 是被 php-fpm 调用的子进程，并且进程数量不止一个（这里是3个）。找到父进程后，我们能进入 app 的内部分析了。
 
 首先，当然应该去看看它的源码。运行下面的命令，把案例应用的源码拷贝到 app 目录，然后再执行 grep 查找是不是有代码再调用 stress 命令：
 
-```
+```shell
 # 拷贝源码到本地
 $ docker cp phpfpm:/app .
 
@@ -250,14 +239,13 @@ $ docker cp phpfpm:/app .
 $ grep stress -r app
 app/index.php:// fake I/O with stress (via write()/unlink()).
 app/index.php:$result = exec("/usr/local/bin/stress -t 1 -d 1 2>&1", $output, $status);
-
 ```
 
 找到了，果然是 app/index.php 文件中直接调用了 stress 命令。
 
 再来看看 [app/index.php](https://github.com/feiskyer/linux-perf-examples/blob/master/nginx-short-process/app/index.php) 的源代码：
 
-```
+```shell
 $ cat app/index.php
 <?php
 // fake I/O with stress (via write()/unlink()).
@@ -269,7 +257,6 @@ if (isset($_GET["verbose"]) && $_GET["verbose"]==1 && $status != 0) {
   echo "It works!";
 }
 ?>
-
 ```
 
 可以看到，源码里对每个请求都会调用一个 stress 命令，模拟 I/O 压力。从注释上看，stress 会通过 write() 和 unlink() 对 I/O 进程进行压测，看来，这应该就是系统 CPU 使用率升高的根源了。
@@ -278,7 +265,7 @@ if (isset($_GET["verbose"]) && $_GET["verbose"]==1 && $status != 0) {
 
 我们还得继续往下走。从代码中可以看到，给请求加入 verbose=1 参数后，就可以查看 stress 的输出。你先试试看，在第二个终端运行：
 
-```
+```shell
 $ curl http://192.168.0.10:10000?verbose=1
 Server internal error: Array
 (
@@ -289,7 +276,6 @@ Server internal error: Array
     [4] => stress: FAIL: [19607] (400) kill error: No such process
     [5] => stress: FAIL: [19607] (451) failed run completed in 0s
 )
-
 ```
 
 看错误消息 mkstemp failed: Permission denied ，以及 failed run completed in 0s。原来 stress 命令并没有成功，它因为权限问题失败退出了。看来，我们发现了一个 PHP 调用外部 stress 命令的 bug：没有权限创建临时文件。
@@ -302,13 +288,12 @@ Server internal error: Array
 
 还记得上一期提到的 perf 吗？它可以用来分析 CPU 性能事件，用在这里就很合适。依旧在第一个终端中运行 perf record -g 命令 ，并等待一会儿（比如15秒）后按 Ctrl+C 退出。然后再运行 perf report 查看报告：
 
-```
+```shell
 # 记录性能事件，等待大约15秒后按 Ctrl+C 退出
 $ perf record -g
 
 # 查看报告
 $ perf report
-
 ```
 
 这样，你就可以看到下图这个性能报告：
@@ -323,9 +308,8 @@ $ perf report
 
 最后，在案例结束时，不要忘了清理环境，执行下面的 Docker 命令，停止案例中用到的 Nginx 进程：
 
-```
+```shell
 $ docker rm -f nginx phpfpm
-
 ```
 
 ## execsnoop
@@ -336,7 +320,7 @@ $ docker rm -f nginx phpfpm
 
 比如，用 execsnoop 监控上述案例，就可以直接得到 stress 进程的父进程 PID 以及它的命令行参数，并可以发现大量的 stress 进程在不停启动：
 
-```
+```shell
 # 按 Ctrl+C 结束
 $ execsnoop
 PCOMM            PID    PPID   RET ARGS
@@ -349,7 +333,6 @@ stress           30403  30402    0 /usr/local/bin/stress -t 1 -d 1
 sh               30405  30393    0
 stress           30407  30405    0 /usr/local/bin/stress -t 1 -d 1
 ...
-
 ```
 
 execsnoop 所用的 ftrace 是一种常用的动态追踪技术，一般用于分析 Linux 内核的运行时行为，后面课程我也会详细介绍并带你使用。
@@ -370,5 +353,3 @@ execsnoop 所用的 ftrace 是一种常用的动态追踪技术，一般用于�
 最后，我想邀请你一起来聊聊，你所碰到的 CPU 性能问题。有没有哪个印象深刻的经历可以跟我分享呢？或者，在今天的案例操作中，你遇到了什么问题，又解决了哪些呢？你可以结合我的讲述，总结自己的思路。
 
 欢迎在留言区和我讨论，也欢迎把这篇文章分享给你的同事、朋友。我们一起在实战中演练，在交流中进步。
-
-![](images/70822/565d66d658ad23b2f4997551db153852.jpg)
