@@ -318,6 +318,26 @@ $ docker rm -f nginx phpfpm
 
 [execsnoop](https://github.com/brendangregg/perf-tools/blob/master/execsnoop) 就是一个专为短时进程设计的工具。它通过 ftrace 实时监控进程的 exec() 行为，并输出短时进程的基本信息，包括进程 PID、父进程 PID、命令行参数以及执行的结果。
 
+`execsnoop` 通常是 `bcc`（BPF Compiler Collection）工具集的一部分。你需要先安装 `bcc` 才能使用 `execsnoop`。以下是安装步骤：
+
+```shell
+sudo apt-get update
+sudo apt-get install bpfcc-tools linux-headers-$(uname -r)
+# 安装完成之后，还无法直接执行execsnoop，我们先找一下被安装的位置
+root@eden:~# locate execsnoop
+/usr/sbin/execsnoop-bpfcc
+/usr/share/doc/bpfcc-tools/examples/doc/execsnoop_example.txt
+/usr/share/man/man8/execsnoop-bpfcc.8.gz
+# 系统中确实存在一个名为 execsnoop-bpfcc 的工具。这个工具是 execsnoop 的一个具体实现版本，你可以直接运行它。
+# 尝试运行 execsnoop-bpfcc 看是否能正常使用：
+sudo /usr/sbin/execsnoop-bpfcc
+# 如果这个命令成功运行，那么你实际上已经拥有了 execsnoop 的功能，只是名称稍有不同。
+
+# 创建符号链接，可以创建一个符号链接，使得 execsnoop 命令指向 execsnoop-bpfcc：
+sudo ln -s /usr/sbin/execsnoop-bpfcc /usr/local/bin/execsnoop
+
+```
+
 比如，用 execsnoop 监控上述案例，就可以直接得到 stress 进程的父进程 PID 以及它的命令行参数，并可以发现大量的 stress 进程在不停启动：
 
 ```shell
