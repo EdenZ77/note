@@ -31,6 +31,8 @@
 
 # 环境安装
 
+本次我没有使用视频的方式，而是用Ubuntu来搭建环境。
+
 ## wsl
 
 以管理员模式打开PowerShell
@@ -50,8 +52,6 @@ wsl --terminate Ubuntu
 wsl -d Ubuntu
 # 终止所有运行的WSL发行版
 wsl --shutdown
-
-
 
 ```
 
@@ -83,10 +83,9 @@ apt-get update
 apt-get install docker.io
 ```
 
+配置docker镜像
 
-
-```
-https://hub3.767778.xyz/
+```shell
 
 cat > /etc/docker/daemon.json <<EOF
 {
@@ -117,7 +116,7 @@ bash < <(curl -s -S -L https://raw.githubusercontent.com/moovweb/gvm/master/bins
 
 安装golang
 
-```
+```shell
 gvm install go1.4 -B
 
 gvm use go1.4
@@ -131,9 +130,29 @@ gvm use go1.19 --default
 
 
 
+在Ubuntu上面安装golang
+
+```shell
+wget https://mirrors.aliyun.com/golang/go1.20.linux-amd64.tar.gz
+sudo tar -C /usr/local -xzf go1.20.linux-amd64.tar.gz
+
+vim ~/.bashrc
+export PATH=$PATH:/usr/local/go/bin
+source ~/.bashrc
+go env -w GOPROXY=https://goproxy.cn,direct
+
+
+echo 'export PATH=$PATH:/root/go/bin' >> ~/.bashrc
+source ~/.bashrc
+
+```
+
+
+
 ## kubectl
 
 ```shell
+# 不需要代理
 vim ~/.bashrc
 export http_proxy=http://192.168.1.6:10809
 export https_proxy=https://192.168.1.6:10809
@@ -150,12 +169,12 @@ mv kubectl /usr/local/bin/
 ## 安装kind和k8s
 
 ```shell
-go install sigs.k8s.io/kind@v0.14.0
+go install sigs.k8s.io/kind@latest
 # go install 会将安装的二进制文件放在 $GOPATH/bin 目录中。根据你提供的 go env 输出，你的 GOPATH 是 /root/go，因此二进制文件应该在 /root/go/bin 目录中。
 echo 'export PATH=$PATH:/root/go/bin' >> ~/.bashrc
 source ~/.bashrc
 
-kind create cluster --image kindest/node:v1.24.3
+kind create cluster --image kindest/node:v1.28.9
 
 # 注意kind版本和kindest/node的版本对应关系
 ```
