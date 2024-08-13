@@ -129,3 +129,34 @@ gvm install go1.19
 gvm use go1.19 --default
 ```
 
+
+
+## kubectl
+
+```shell
+vim ~/.bashrc
+export http_proxy=http://192.168.1.6:10809
+export https_proxy=https://192.168.1.6:10809
+export no_proxy="localhost,127.0.0.1,localaddress,.localdomain.com"
+source
+
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+
+mv kubectl /usr/local/bin/
+```
+
+
+
+## 安装kind和k8s
+
+```shell
+go install sigs.k8s.io/kind@v0.14.0
+# go install 会将安装的二进制文件放在 $GOPATH/bin 目录中。根据你提供的 go env 输出，你的 GOPATH 是 /root/go，因此二进制文件应该在 /root/go/bin 目录中。
+echo 'export PATH=$PATH:/root/go/bin' >> ~/.bashrc
+source ~/.bashrc
+
+kind create cluster --image kindest/node:v1.24.3
+
+# 注意kind版本和kindest/node的版本对应关系
+```
+
