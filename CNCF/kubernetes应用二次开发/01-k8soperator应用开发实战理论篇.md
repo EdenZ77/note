@@ -43,6 +43,16 @@ wsl -l -v
 
 # 进入wsl
 wsl
+
+# 终止Ubuntu实例
+wsl --terminate Ubuntu
+# 重新启动Ubuntu实例
+wsl -d Ubuntu
+# 终止所有运行的WSL发行版
+wsl --shutdown
+
+
+
 ```
 
 
@@ -71,6 +81,24 @@ docker是C/S架构，我们这里安装的docker desktop其实是服务端，会
 # 先执行wsl，进入Ubuntu系统
 apt-get update
 apt-get install docker.io
+```
+
+
+
+```
+https://hub3.767778.xyz/
+
+cat > /etc/docker/daemon.json <<EOF
+{
+  "registry-mirrors": ["https://hub3.767778.xyz"],
+  "insecure-registries": ["hub3.767778.xyz"],
+  "exec-opts": ["native.cgroupdriver=systemd"]
+}
+EOF
+
+# 重启Docker服务
+systemctl daemon-reload && systemctl restart docker
+
 ```
 
 
