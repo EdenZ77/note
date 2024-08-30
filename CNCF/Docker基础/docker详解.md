@@ -887,13 +887,7 @@ docker run --entrypoint /bin/sh myimage -c "echo Goodbye"
 
 #### arg基本使用
 
-![image-20220328214502351](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220328214502351.png)
-
-![image-20220328214108108](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220328214108108.png)
-
-注意ARG不能在运行时生效，只能在构建时生效，可以看到下面启动容器之后并没有输出CMD中的arg参数
-
-![image-20220328213707147](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220328213707147.png)
+注意ARG不能在运行时生效，只能在构建时生效。
 
 我们在使用docker build构建镜像的时候可以通过--build-arg参数传递arg变量值。可以添加`--no-cache` 不使用缓存
 
@@ -943,11 +937,11 @@ CMD ["/bin/sh","-c","echo 1111;echo app_${app}"]
 例如，你可以在 `Dockerfile` 中这样使用 `ARG`：
 
 ```Dockerfile
-# 设置默认值
+# 设置默认值，当然可以不用设置默认值，但是docker build构建时必须通过--build-arg VERSION=3.20传入参数值
 ARG VERSION=latest
 
 # 使用ARG设置的变量来作为其他指令的参数
-FROM base:${VERSION}
+FROM alpine:${VERSION}
 
 # ARG可以在FROM之后重新定义，以在后续步骤中使用
 ARG VERSION
@@ -957,7 +951,12 @@ RUN echo $VERSION
 然后在构建时使用：
 
 ```bash
-docker build --build-arg VERSION=1.0.0 -t myimage .
+docker build --build-arg VERSION=3.20 -t test:v1 -f Dockerfile .
+# => [1/2] FROM docker.io/library/alpine:3.20
+# => [2/2] RUN echo 3.20  
+
+docker build --build-arg VERSION=3.20 --build-arg TEST=1.1 -t test:v1 -f Dockerfile .
+# 并没有警告信息，不影响构建
 ```
 
 ##### ENV
@@ -966,8 +965,9 @@ docker build --build-arg VERSION=1.0.0 -t myimage .
 下面是如何在 `Dockerfile` 中使用 `ENV`：
 
 ```Dockerfile
+FROM alpine:latest
 # 设置环境变量
-ENV APP_HOME /usr/src/app
+ENV APP_HOME /root/data
 
 # 使用ENV设置的环境变量
 WORKDIR $APP_HOME
@@ -985,46 +985,17 @@ COPY . $APP_HOME
 
 
 
-### -f和上下文
-
-创建的Dockerfile1文件所在位置如下：
-
-![image-20220826113132988](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220826113132988.png)
-
-我们现在想在另外的目录下build这个镜像，该怎么办呢？
-
-我们先看看在当前目录下怎么build
-
-![image-20220826113321984](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220826113321984.png)
-
-然后回到根目录，看看如何build
-
-![image-20220826113359224](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220826113359224.png)
-
-下面这种方式无法构建
-
-![image-20220826113520728](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220826113520728.png)
-
-使用下面的方式也无法构建
-
-![image-20231012095700597](C:\Users\zhuqiqi\AppData\Roaming\Typora\typora-user-images\image-20231012095700597.png)
-
 ### ADD和COPY
 
 ```dockerfile
 FROM alpine
 
-#把上下文Context指定的内容添加到镜像中，如果是压缩包，自动解压，
-# 把当前内容复制到这个 alpine小系统里面
+# 把上下文指定的内容添加到镜像中，如果是压缩包，自动解压，
 # 如果是远程文件，自动下载；
 # 如果是压缩包，自动解压；
 ADD https://download.redis.io/releases/redis-6.2.1.tar.gz  /dest/
 
-#本地linux系统的内容文件添加进去  【宿主机   镜像内】
-# docker build -t demo:test  -f Dockerfile 【.：上下文的文件路径】    ： .代表上下文环境；代表dockerfile中命令工作所在的当前目录
-
-#自动解压
-# 压缩包位置：/root/dockerfiles
+# 自动解压
 ADD *.tar.gz   /app/
 # RUN ls -l
 
@@ -1035,6 +1006,7 @@ COPY  *.tar.gz  /redis/
 # RUN cd /dest
 # 当前还是列举的根目录
 # RUN ls -l
+
 RUN cd /dest && ls -l
 RUN cd /app && ls -l
 RUN cd /redis && ls -l
@@ -1042,9 +1014,7 @@ RUN cd /redis && ls -l
 
 ![image-20220328223011938](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220328223011938.png)
 
-注意：修改上下文的文件路径
 
-![image-20220328223616571](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220328223616571.png)
 
 #### GPT介绍
 
@@ -1092,37 +1062,17 @@ ADD https://example.com/download/app.tar.gz /usr/local/bin
 - `ADD` 拥有更多功能，可以从 URL 下载文件，并且能够自动解压缩 tar 文件。
 - 如果你不需要 `ADD` 的额外功能，建议使用 `COPY`，因为它的语义更明确，行为也更可预测。
 
-#### 最佳实践
 通常，官方 Docker 文档建议只在需要 `ADD` 的额外功能时使用它，例如自动解压缩。在大多数情况下，使用 `COPY` 更为合适，因为它更简单且易于理解。
 
 
 
-### USER配合COPY进行权限控制
+### USER
 
-```dockerfile
-FROM alpine
 
-# 以后的所有命令会用 abc:abc 来执行。有可能没有执行权限
-# 容器中的ROOT虽然不是linux宿主机的真实root，但是可以改掉这个镜像的所有
 
-USER 1000:1000
 
-# 把复制来的文件给用户所有权
-COPY --chown=1000:1000   *.txt   /a.txt
 
-RUN ls -l /
 
-#不是root不能写
-RUN  echo 2222 >> a.txt
-```
-
-下面的构建结果就是没有增加`--chown=1000:1000`报的权限拒绝错误。
-
-![image-20220329103341025](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220329103341025.png)
-
-当我们增加`--chown=1000:1000`后看看效果：
-
-![image-20220329103642141](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220329103642141.png)
 
 ### WORKDIR和VOLUME
 
@@ -1171,7 +1121,6 @@ COPY . .
 # 运行命令时也是在 /app 目录下
 RUN npm install
 
-# 容器启动时的默认工作目录也是 /app
 CMD ["node", "server.js"]
 ```
 
@@ -1210,19 +1159,16 @@ RUN mkdir /hello && mkdir /app
 RUN echo 1111 > /hello/a.txt
 RUN echo 222 > /app/b.txt
 
+# 使用 VOLUME 和 -v 挂载出去的目录。
+# 1) 通过 docker commit 提交当前容器的所有变化为镜像的时候，就会丢弃。当删除容器时挂载到主机的内容仍保存未删除
+# 2）VOLUME [ "/hello","/app" ]  启动容器以后自动挂载，之后在Dockerfile中对VOLUME的所有修改都不生效
 
-# 使用 VOLUME 和 -v 挂载出去的目录（外面变，容器里面变）。虽然所有改变也生效了，1）、但是 docker commit 提交当前容器的所有变化为镜像的时候，就会丢弃。当删除容器时挂载到主机的内容仍保存未删除    *******切记*********
-# 2）、VOLUME [ "/hello","/app" ]   启动容器以后自动挂载，之后在Dockerfile中对VOLUME的所有修改都不生效
-# 3)、挂载只有一点就是方便在外面修改，或者把外面的东西直接拿过来
 # 所以这个指令一般都写在最后，应用场景一般都是把容器的log挂载出去，这样commit镜像时候不会将日志也保存到镜像中。
 
 
 VOLUME [ "/hello","/app" ]
 # VOLUME 指定的挂载目录
 
-# 这两句话没有生效
-RUN echo 6666 >> /hello/a.txt
-RUN echo 8888 >> /app/b.txt
 
 # 暴露 ，这个只是一个声明；主要给程序员看。
 # docker也能看到： docker -d -P（随机分配端口，）
@@ -1246,15 +1192,16 @@ VOLUME /data
 
 这条指令意味着每次使用这个镜像创建容器时，Docker 都会创建一个新的匿名卷，并将其挂载到容器的 `/data` 目录。由于卷是独立于容器的，因此在 `/data` 目录下创建的数据将在容器删除后仍然保留。
 
-##### 注意事项
+**注意事项**
+
 1. `VOLUME` 指令可以指定一个或多个卷的挂载路径。如果要指定多个卷，可以使用 JSON 数组格式：
+   
    ```Dockerfile
    VOLUME ["/data", "/backup"]
    ```
 2. `VOLUME` 指令创建的是匿名卷。这意味着卷的名称由 Docker 随机生成，而不是由用户指定。
-3. 在容器运行时，可以使用 `docker run` 命令的 `-v` 或 `--volume` 选项来覆盖 Dockerfile 中通过 `VOLUME` 指令定义的卷。这允许将宿主机上的目录或已命名卷挂载到容器中。
+3. 在容器运行时，可以使用 `docker run` 命令的 `-v` 或 `--volume` 选项来覆盖 Dockerfile 中通过 `VOLUME` 指令定义的卷。这允许将宿主机上的目录或已命名卷挂载到容器中。（你需要确保 `-v` 指定的容器目录与 `VOLUME` 定义的目录相同。）
 4. 一旦 `VOLUME` 指令在 Dockerfile 中定义，之后的任何写入到这个卷的操作（如 COPY 或 RUN 指令）都不会更改镜像的内容。这是因为卷的内容在容器运行时才会被初始化。
-6. Docker 不会在构建过程中删除卷，即使是使用了 `docker build --no-cache` 选项。需要手动清理不再使用的匿名卷。
 
 ##### 最佳实践
 
@@ -1262,7 +1209,7 @@ VOLUME /data
 
 假设我们有以下 `Dockerfile`：
 
-```
+```dockerfile
 FROM alpine
 VOLUME /app/data
 COPY big-data-file /app/data/
@@ -1272,8 +1219,6 @@ RUN echo "hello" > /app/data/greeting
 这里的 `COPY` 指令尝试在构建过程中向定义为卷的 `/app/data` 路径添加一个大文件（`big-data-file`）。然而，由于 `/app/data` 被定义为卷，所以在构建过程中对其的修改（如`COPY`、`RUN`指令添加的文件）实际上不会反映在最终的镜像中。这意味着 `big-data-file` 不会包含在镜像内，且这个操作只会增加镜像构建时的时间。
 
 当启动容器时，Docker 会在容器内部为 `/app/data` 目录创建一个匿名卷，但是并不会存在`/app/data/greeting` 文件，因为我们之前在 `Dockerfile` 中往卷中写入的内容不会被保留。实际上，如果我们进入到容器内部查看 `/app/data/greeting` 文件，将会发现它不存在。
-
-##### 意义
 
 那VOLUME指令的意义是什么，如何正确的使用它？
 
@@ -1289,13 +1234,13 @@ VOLUME /app/data
 
 然后，当你需要运行基于这个镜像的容器时，你有几个选择：
 
-1. **不指定挂载**：如果在运行容器时没有指定挂载点，Docker 会自动为卷创建一个匿名卷。匿名卷被挂载到 Docker 主机的某个目录，但不容易管理，因为它们没有具体的名称。
+1. **不指定挂载**：如果在运行容器时没有指定挂载点，Docker 会自动为卷创建一个匿名卷。匿名卷被挂载到 Docker 主机的某个目录，但不容易管理，因为它们没有具体的名称。这称之为“匿名卷”。
 
    ```
    docker run -d --name myapp myimage
    ```
 
-2. **挂载宿主机目录**：你可以指定一个宿主机目录作为卷的挂载点，这样容器中卷的数据就会存储在宿主机的这个目录中。
+2. **挂载宿主机目录**：你可以指定一个宿主机目录作为卷的挂载点，这样容器中卷的数据就会存储在宿主机的这个目录中。这称之为“绑定挂载”。
 
    ```
    docker run -d --name myapp -v /path/on/host:/app/data myimage
