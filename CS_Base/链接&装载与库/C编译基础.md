@@ -710,41 +710,78 @@ $ source /etc/profile       (. /etc/profile)
 
 方案2: 更新 `/etc/ld.so.cache` 文件
 
-- 找到动态库所在的绝对路径（不包括库的名字）比如：`/home/robin/Library/`
+1、找到动态库所在的绝对路径（不包括库的名字）比如：`/home/robin/Library/`
 
-- 使用 vim 修改 `/etc/ld.so.conf` 这个文件，将上边的路径添加到文件中(独自占一行)
+2、使用 vim 修改 `/etc/ld.so.conf` 这个文件，将上边的路径添加到文件中(独自占一行)
 
+```shell
+# 1. 打开文件
+$ sudo vim /etc/ld.so.conf
 
+# 2. 添加动态库路径, 并保存退出
+```
 
+3、更新 `/etc/ld.so.conf` 中的数据到 `/etc/ld.so.cache` 中
 
-
-
-方案3: 拷贝动态库文件到系统库目录 /lib/ 或者 /usr/lib 中 (或者将库的软链接文件放进去)
-
-
-
-
-
-
-
-
-
+```shell
+# 必须使用管理员权限执行这个命令
+$ sudo ldconfig   
+```
 
 
 
 
+方案3: 拷贝动态库文件到系统库目录 `/lib/` 或者 `/usr/lib` 中 (或者将库的软链接文件放进去)
 
+```shell
+# 库拷贝
+sudo cp /xxx/xxx/libxxx.so /usr/lib
+
+# 创建软连接
+sudo ln -s /xxx/xxx/libxxx.so /usr/lib/libxxx.so
+```
 
 ### 验证
 
+在启动可执行程序之前, 或者在设置了动态库路径之后, 我们可以通过一个命令检测程序能不能够通过动态链接器加载到对应的动态库, 这个命令叫做 ldd：
 
+```shell
+# 语法:
+$ ldd 可执行程序名
+
+# 举例:
+$ ldd app
+	linux-vdso.so.1 =>  (0x00007ffe8fbd6000)
+    libcalc.so => /home/robin/Linux/3Day/calc/test/libcalc.so (0x00007f5d85dd4000)
+    libc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007f5d85a0a000)
+    /lib64/ld-linux-x86-64.so.2 (0x00007f5d85fd6000)  ==> 动态链接器, 操作系统提供
+```
 
 # 优缺点
 
 ## 静态库
 
+- 优点：
+	- 静态库被打包到应用程序中加载速度快
+	- 发布程序无需提供静态库，移植方便
 
+- 缺点：
+	- 相同的库文件数据可能在内存中被加载多份，消耗系统资源，浪费内存
+	- 库文件更新需要重新编译项目文件，生成新的可执行程序，浪费时间。
+
+<img src="image/image-20240902064453364.png" alt="image-20240902064453364" style="zoom:67%;" />
 
 
 
 ## 动态库
+
+- 优点：
+	- 可实现不同进程间的资源共享
+	- 动态库升级简单，只需要替换库文件，无需重新编译应用程序
+	- 程序猿可以控制何时加载动态库，不调用库函数动态库不会被加载
+
+- 缺点：
+	- 加载速度比静态库慢，以现在计算机的性能可以忽略
+	- 发布程序需要提供依赖的动态库
+
+<img src="image/image-20240902064839228.png" alt="image-20240902064839228" style="zoom:67%;" />
