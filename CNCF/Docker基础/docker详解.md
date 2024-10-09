@@ -12,7 +12,7 @@
 
 ### 背景
 
-像Java、C++、JavaScript等语言编写的系统，编译过程以及最后打包生成的东西格式各不相同。 所以对于任何语言开发的项目我们希望通过类似`docker build` 的命令生成统一格式的包（很重要的一点是：我们要将这个项目运行起来可能需要很多其它环境(如mysql、redis等)和相应的参数，这个`docker build`能将这些环境和参数统一打包到镜像中，这样只要在其它物理机中安装了docker，我们就可以通过`docker run`将这个镜像运行起来，就不再单独安装项目依赖的环境），这个包我们称之为镜像。
+像Java、C++、JavaScript等语言编写的系统，编译过程以及最后打包生成的东西格式各不相同。 所以对于任何语言开发的项目我们希望通过类似`docker build` 的命令生成统一格式的包（很重要的一点是：要将这个项目运行起来可能需要很多其它环境(如mysql、redis等)和相应的参数，这个`docker build`能将这些环境和参数统一打包到镜像中，这样只要在其它物理机中安装了docker，就可以通过`docker run`将这个镜像运行起来，就不再单独安装项目依赖的环境），这个包称之为镜像。
 
 ### Docker架构
 
@@ -165,7 +165,7 @@ systemctl restart docker
 
 > 去[docker hub](http://hub.docker.com)，找到nginx镜像
 
-```
+```shell
 docker pull nginx  #下载最新版
 
 镜像名:版本名（标签）
@@ -188,7 +188,7 @@ docker rmi 镜像名:版本号/镜像id
 
 > 启动nginx应用容器，并映射88端口，测试的访问
 
-```
+```shell
 docker run [OPTIONS] IMAGE [COMMAND] [ARG...]
 
 【docker run  设置项   镜像名  】 镜像启动运行的命令（镜像里面默认会有的，一般不会写）
@@ -223,7 +223,7 @@ docker update 容器id/名字 --restart=always
 
 **1、进入容器内部修改**
 
-```
+```shell
 # 进入容器内部的系统，修改容器内容
 docker exec -it 容器id  /bin/bash
 
@@ -233,7 +233,7 @@ echo "<h1>Welcome to Eden</h1>" > index.html
 
 **2、挂载数据到外部修改**
 
-```
+```shell
 docker run --name=mynginx   \
 -d  --restart=always \
 -p  88:80 -v /data/html:/usr/share/nginx/html:ro  \
@@ -275,7 +275,7 @@ docker tag local-image:tagname new-repo:tagname
 docker push new-repo:tagname
 ```
 
-```
+```shell
 # 把旧镜像的名字，改成仓库要求的新版名字
 docker tag guignginx:v1.0 leifengyang/guignginx:v1.0
 
@@ -371,8 +371,6 @@ docker pull leifengyang/guignginx:v1.0
 - 作为容器的可写层（UpperDir）和只读镜像层（LowerDir）之间的一个中间层，有助于隔离容器的运行时更改。
 
 当我们在容器中修改/etc/hosts文件时，会发现宿主机中的`/var/lib/docker/containers/容器ID/`目录下的hosts文件内容也发生了同样的变化，其实，docker就是将宿主机中的`/var/lib/docker/containers/容器ID/hosts`文件挂载到了容器中的，既然这些状态应该属于容器，那么当我们基于容器创建镜像时，就不应该把容器中的这些信息带入到新创建的镜像中，当我们使用`docker commit`命令基于容器创建镜像时，会把容器的可读写层变成新创建出的镜像的最上层，所以，如果容器的可读写层中包含hosts文件，新镜像中就会带入容器的hosts信息，而容器因为init层和挂载操作的存在，避免了这些信息进入到容器的可读写层，所以可以保障我们基于容器创建镜像时，得到的镜像是“纯净”的。
-
-
 
 
 
@@ -524,162 +522,19 @@ commit 是正在运行中的容器提交成一个镜像
 
 ### 镜像如何存储
 
-镜像究竟存储在哪里呢？通过`docker inspect 镜像id`命令
+镜像究竟存储在哪里呢？
 
-![image-20211224141506096](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20211224141506096.png)
+这部分内容建议学习：https://www.zsythink.net/archives/4345
 
-```
-        "GraphDriver": {
-            "Data": {
-                "LowerDir": "/var/lib/docker/overlay2/b9dca95f4fd4245d4d8b23a8ae578363c942e0041eb8b0f4472e198d31f91d3c/diff:/var/lib/docker/overlay2/15d6f12489301dc034037bd0f8cdb3a770a194221eb1c900c759b0094b2591a2/diff:/var/lib/docker/overlay2/20b9284a2e7c74fbd36ee925425f2e5f0fa594f8e8b2031594b4accf5a1817f9/diff:/var/lib/docker/overlay2/51c5039404923a0f837d4cfe2067e8cae2d96c145a72c644bc02fd3aff3b2f5e/diff:/var/lib/docker/overlay2/cb05e182e6d6114af4dca364e42a4f85e0a97c92dddb24a3517920362bd13681/diff",
-                "MergedDir": "/var/lib/docker/overlay2/ea7bcdfb31ccce7b4151f930dfceb66838b25bd6c2ba415f2b262c1eaa6b4fb4/merged",
-                "UpperDir": "/var/lib/docker/overlay2/ea7bcdfb31ccce7b4151f930dfceb66838b25bd6c2ba415f2b262c1eaa6b4fb4/diff",
-                "WorkDir": "/var/lib/docker/overlay2/ea7bcdfb31ccce7b4151f930dfceb66838b25bd6c2ba415f2b262c1eaa6b4fb4/work"
-            },
-            "Name": "overlay2"
-        },
-```
-
-LowerDir：底层目录（倒着看）
-
-![image-20211224172623292](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20211224172623292.png)
-
-如何验证运行的nginx容器和nginx镜像使用的是相同Linux文件系统呢？可以通过`ls -i`命令可以看到核心文件都是一样的。
-
-![image-20211224154702704](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20211224154702704.png)
-
-MergedDir：合并目录
-
-UpperDir：上层目录
-
-WorkDir：工作目录
-
-#### 磁盘容量预估
-
-命令：docker ps -s
-
-![image-20220826100757290](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220826100757290.png)
-
-size：用于每个容器的可写层的数据量（在磁盘上）。
-virtual size：容器使用的用于只读图像数据的数据量加上容器的可写层大小。
-从同一镜像开始的两个容器共享100％的只读数据，而具有不同镜像的两个容器（具有相同的层）共享这些公共层。 
-
-#### 镜像如何挑选
-
-```
-busybox：是一个集成了一百多个最常用Linux命令和工具的软件。linux工具里的瑞士军刀
-alpine：Alpine操作系统是一个面向安全的轻型Linux发行版经典最小镜像，基于busybox，功能比busybox完善。
-slim：docker hub中有些镜像有slim标识，都是瘦身了的镜像。也要优先选择
-无论是制作镜像还是下载镜像，优先选择alpine类型.
-```
-
-### 容器如何存储
-
-容器究竟存储在哪里呢？通过`docker inspect 容器id`命令
-
-![image-20211224171357875](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20211224171357875.png)
-
-```
-        "GraphDriver": {
-            "Data": {
-                "LowerDir": "/var/lib/docker/overlay2/e121a66a44ec0de3eab0516068dcfd3cfec44e862ecd0301e362c6bb1a43d58d-init/diff:/var/lib/docker/overlay2/ea7bcdfb31ccce7b4151f930dfceb66838b25bd6c2ba415f2b262c1eaa6b4fb4/diff:/var/lib/docker/overlay2/b9dca95f4fd4245d4d8b23a8ae578363c942e0041eb8b0f4472e198d31f91d3c/diff:/var/lib/docker/overlay2/15d6f12489301dc034037bd0f8cdb3a770a194221eb1c900c759b0094b2591a2/diff:/var/lib/docker/overlay2/20b9284a2e7c74fbd36ee925425f2e5f0fa594f8e8b2031594b4accf5a1817f9/diff:/var/lib/docker/overlay2/51c5039404923a0f837d4cfe2067e8cae2d96c145a72c644bc02fd3aff3b2f5e/diff:/var/lib/docker/overlay2/cb05e182e6d6114af4dca364e42a4f85e0a97c92dddb24a3517920362bd13681/diff",
-                "MergedDir": "/var/lib/docker/overlay2/e121a66a44ec0de3eab0516068dcfd3cfec44e862ecd0301e362c6bb1a43d58d/merged",
-                "UpperDir": "/var/lib/docker/overlay2/e121a66a44ec0de3eab0516068dcfd3cfec44e862ecd0301e362c6bb1a43d58d/diff",
-                "WorkDir": "/var/lib/docker/overlay2/e121a66a44ec0de3eab0516068dcfd3cfec44e862ecd0301e362c6bb1a43d58d/work"
-            },
-            "Name": "overlay2"
-        },
-```
-
-![image-20211224173525837](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20211224173525837.png)
-
-现在我们进入到容器修改nginx的index.html（无论容器文件系统怎么修改，镜像文件系统始终不会改变），然后看看这个修改体现在哪个层级，发现在UpperDir上层目录中。
-
-![image-20220107170741401](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220107170741401.png)
-
-
-
-#### 容器如何挂载
+### 容器如何挂载
 
 > https://docs.docker.com/storage/volumes/
 
 ![image-20220107172353480](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220107172353480.png)
 
-每一个容器里面的内容，支持三种挂载方式： 
+这部分内容建议学习：https://www.zsythink.net/archives/4362
 
-1. Volumes(卷) 存储在主机系统的一部分中，该文件系统由Docker管理，docker自动在外部创建文件夹挂载容器内部指定的文件夹内容（在Linux上是"/var/lib/docker/volumes/"）。非Docker进程不应该修改文件系统的这一部分。卷是在Docker中持久存储数据的最佳方法。【Dockerfile VOLUME指令的作用】 。
-2. Bind mounts(绑定挂载) 可以存储在主机系统上的任何地方。
-3. tmpfs mounts(临时挂载) 仅存储在主机系统的内存中，并且永远不会写入主机系统的文件系统
-
-- 匿名卷使用
-
-```
-docker run -dP -v /etc/nginx nginx
-#docker将创建出匿名卷，并保存容器/etc/nginx下面的内容
-```
-
-- 具名卷使用
-
-```
-docker run -dP -v nginx:/etc/nginx nginx
-#docker将创建出名为nginx的卷，并保存容器/etc/nginx下面的内容
-# -v 宿主机:容器里的目录
-```
-
--v 宿主机绝对路径:Docker容器内部绝对路径：通过`docker inspect 容器` 命令可以看到类型为：bind；这个有空挂载问题 
-
--v 不以/开头的路径:Docker容器内部绝对路径：类型为：volume（docker会自动管理，docker不会把它当前目录，而把它当卷） 
-
-nginx测试html挂载几种不同情况： 
-
-- 1、不挂载 		                                          效果：访问默认欢迎页
--  2、-v /root/html:/usr/share/nginx/html        效果：访问forbidden 
-- 3、-v html:/usr/share/nginx/html:ro            效果：访问默认欢迎页 
-- 4、-v /usr/share/nginx/html                        效果：匿名卷 （什么都不写也不要加冒号，直接写容器内的目录） 
-
-第三种类型分析如下：
-
-```
-## 3、docker run -d -P -v html:/usr/share/nginx/html --name=nginx777 nginx
-# 我们inspect 容器，可以看到
-"Mounts": [
-    {
-        "Type": "volume", //这是个卷，当为宿主机绝对路径是此字段为bind
-        "Name": "html", //名字是html
-        "Source": "/var/lib/docker/volumes/html/_data", //宿主机的目录。容器里面的那两个文件都在
-        "Destination": "/usr/share/nginx/html", //容器内部
-        "Driver": "local",
-        "Mode": "z",
-        "RW": true, //读写模式
-        "Propagation": ""
-    }
-]
-
-#卷：就是为了保存数据
-docker volume 		#可以对docker自己管理的卷目录进行操作；
-/var/lib/docker/volumes(卷的根目录)
-
-# -v不以绝对路径方式；
-### 1、先在docker底层创建一个你指定名字的卷（具名卷） html
-### 2、把这个卷和容器内部目录绑定
-### 3、容器启动以后，目录里面的内容就在卷里面存着；
-
-# 手动创建卷，在run 容器的时候指定我们创建的卷即可： -v nginxhtml:/usr/share/nginx/html 也可以下操作
-## 1、 docker create volume nginxhtml 如果给卷里面内容修改，容器内部的也就改了。
-## 2、 docker volume inspect nginxhtml
-```
-
-对于上面演示的第三种具名卷，我们其实可以通过`docker volume ls`查看到，并且通过`docker volume inspect 卷名`查看详细信息。
-
-![image-20220328200816229](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220328200816229.png)
-
-以上用哪个比较好？
-
-- 如果自己开发测试，用 -v 绝对路径的方式 
-- 如果是生产环境建议用卷 
-- 除非特殊需要挂载主机路径的则使用绝对路径挂载
-
-#### docker cp
+### docker cp
 
 cp的细节
 
@@ -691,17 +546,13 @@ cp的细节
 
 # 3. 深入Dockerfile
 
-Dockerfile由一行行命令语句组成，并且支持以#开头的注释行。
-
 一般而言，Dockerfile可以分为四部分：基础镜像信息、维护者信息、镜像操作指令、启动时执行指令
-
-![image-20220328203548616](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220328203548616.png)
 
 ## 基本使用
 
 ![image-20220328204530471](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220328204530471.png)
 
-编写好上面的Dockerfile文件之后，我们执行下面的命令即可构建镜像，注意我们文件名叫Dockerfile1，上下文环境就是当前目录，说明当前目录下存在Dockerfile1这个可以构建的文件。
+编写好上面的Dockerfile文件之后，执行下面的命令即可构建镜像，注意我们文件名叫Dockerfile1，上下文环境就是当前目录，说明当前目录下存在Dockerfile1这个可以构建的文件。
 
 ![image-20220328204457804](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220328204457804.png)
 
@@ -736,8 +587,6 @@ docker build -f /data/test/MyDockerfile -t myimage:latest /data/test/
 
 ### FROM
 
-![image-20220328204930112](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220328204930112.png)
-
 在编写 Dockerfile 时使用 `FROM` 指令选择一个基础镜像（base image）是为了提供运行应用程序所需的用户空间环境，而不是提供操作系统内核。容器确实使用宿主机的内核，但是它们仍然需要一个用户空间来执行应用程序，这包括文件系统、系统库、工具和其他运行时组件。
 
 以下是从基础操作系统镜像开始构建容器镜像的几个原因：
@@ -752,7 +601,6 @@ docker build -f /data/test/MyDockerfile -t myimage:latest /data/test/
 
 6. **最小化和定制**：虽然基础 OS 镜像包含了一组标准组件，但是许多流行的基础镜像也提供了最小化版本，比如 Alpine Linux，它非常小巧，但仍然提供了必要的工具和库来运行很多应用程序。
 
-7. **跨平台支持**：即使容器使用宿主机的内核，基础 OS 镜像也可以使得跨不同操作系统平台的应用程序部署成为可能。比如，在 Linux 宿主机上运行基于 Debian 的容器环境。
 
 因此，即使容器不包括内核，基础 OS 镜像在创建容器时仍然扮演着关键的角色，它们为应用程序提供了运行所需的环境和依赖。这也是为什么 Dockerfile 中几乎总是从一个基础 OS 镜像开始的原因。
 
@@ -764,8 +612,6 @@ docker build -f /data/test/MyDockerfile -t myimage:latest /data/test/
 
 <img src="https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220328212611065.png" alt="image-20220328212611065" style="zoom:67%;" />
 
-<img src="https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220328212425031.png" alt="image-20220328212425031" style="zoom:67%;" />
-
 run和cmd之间什么区别呢？
 
 ![image-20220328213039912](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220328213039912.png)
@@ -773,10 +619,6 @@ run和cmd之间什么区别呢？
 ### CMD和ENTRYPOINT
 
 ENTRYPOINT或者CMD作为唯一入口，只能写一个，最后一个生效。即：多个CMD只有最后一次生效，多个ENTRYPOINT只有最后一次生效。
-
-带[]和不带的，两张命令的区别如下:
-
-![image-20220826172314791](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220826172314791.png)
 
 均可作为容器启动入口。cmd可以通过docker run 进行修改，而entryporint无法修改
 
@@ -873,11 +715,21 @@ docker run myimage World
 
 虽然通常不修改 `ENTRYPOINT`，但实际上可以在 `docker run` 时使用 `--entrypoint` 选项进行覆盖：
 
-```bash
-docker run --entrypoint /bin/sh myimage -c "echo Goodbye"
+假设你有一个 Docker 映像，`Dockerfile` 中定义了如下 `ENTRYPOINT`：
+
+```
+ENTRYPOINT ["echo", "World"]
 ```
 
-这将覆盖 `Dockerfile` 中的 `ENTRYPOINT` 并执行 `/bin/sh -c "echo Goodbye"`。
+如果你想覆盖这个 `ENTRYPOINT`，在运行时指定一个不同的命令，可以使用 `--entrypoint`：
+
+```bash
+docker run --entrypoint /bin/bash myimage -c "echo Hello, Goodbye"
+```
+
+- `--entrypoint /bin/bash`：指定新的 `ENTRYPOINT` 为 `/bin/bash`。
+- `myimage`：要运行的 Docker 镜像名称。
+- `-c "echo Hello, Goodbye"`：传递给新 `ENTRYPOINT` 的参数，这里是 `/bin/bash` 的参数，用于执行 `echo Hello, Goodbye`。
 
 总结：`CMD` 和 `ENTRYPOINT` 是定义容器启动行为的 `Dockerfile` 指令，它们可以单独使用或组合使用。`CMD` 可以被 `docker run` 的命令行参数直接覆盖，而 `ENTRYPOINT` 则不会被直接覆盖，但可以使用 `--entrypoint` 选项来修改。
 
