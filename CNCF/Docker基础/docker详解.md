@@ -642,7 +642,7 @@ ENTRYPOINT [ "ping","-c" ]
 
 您的描述基本正确，让我更详细地解释一下 `ENTRYPOINT` 和 `CMD` 的使用以及它们之间的关系。
 
-##### CMD
+**CMD**
 
 `CMD` 指令在 `Dockerfile` 中用于指定容器启动时默认执行的命令。如果定义了多个 `CMD` 指令，只有最后一个会生效。`CMD` 指令可以在运行容器时被 `docker run` 命令行提供的参数覆盖。
 
@@ -663,7 +663,7 @@ docker run myimage echo "Goodbye"
 
 这将覆盖 `Dockerfile` 中的 `CMD`，容器将执行 `echo "Goodbye"`。
 
-##### ENTRYPOINT
+**ENTRYPOINT**
 
 与 `CMD` 类似，`ENTRYPOINT` 用于指定容器启动时默认执行的命令。如果定义了多个 `ENTRYPOINT`，同样只有最后一个生效。不过，与 `CMD` 不同的是，`ENTRYPOINT` 指令不会被 `docker run` 提供的命令行参数直接覆盖，而是将这些参数作为 `ENTRYPOINT` 指定命令的参数。
 
@@ -684,7 +684,7 @@ docker run myimage Goodbye
 
 这将执行 `echo World Goodbye`，因为 `Goodbye` 被添加为了 `echo World` 命令的参数。
 
-##### 组合使用 CMD 和 ENTRYPOINT
+**组合使用 CMD 和 ENTRYPOINT**
 
 `CMD` 和 `ENTRYPOINT` 可以组合使用。当两者一起使用时，`CMD` 提供的参数会成为 `ENTRYPOINT` 指定命令的默认参数。如果在运行容器时提供了额外的命令行参数，那么它们将替换掉 `CMD` 中的默认参数。
 
@@ -711,7 +711,7 @@ docker run myimage World
 
 那么执行的命令将变成 `echo World`，参数 "World" 替换了 `CMD` 中的 "Hello"。
 
-##### 修改 ENTRYPOINT
+**修改 ENTRYPOINT**
 
 虽然通常不修改 `ENTRYPOINT`，但实际上可以在 `docker run` 时使用 `--entrypoint` 选项进行覆盖：
 
