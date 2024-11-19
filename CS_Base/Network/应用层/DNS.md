@@ -171,7 +171,7 @@ c.root-servers.net.	1830	IN	A	192.33.4.12
 
 什么是区？怎样划分区呢？
 
-区和域其实是不同的，区可以有多种不同的划分方法。以百度为例，我们假设有 `fanyi.baidu.com`、`ai.baidu.com`、`tieba.baidu.com` 这三个三级域名。我们可以这样分区，`fanyi.baidu.com` 和 `tieba.baidu.com` 放在 `baidu.com` 权限域名服务器，`ai.baidu.com` 放在 `ai.baidu.com` 权限域名服务器中，并且 baidu.com 权限域名服务器和 `ai.baidu.com` 权限域名服务器是同等地位的，而具体怎么分区是百度公司根据域名多少、访问多少等情况去自己规定的。
+区和域其实是不同的，区可以有多种不同的划分方法。以百度为例，我们假设有 `fanyi.baidu.com`、`ai.baidu.com`、`tieba.baidu.com` 这三个三级域名。我们可以这样分区，`fanyi.baidu.com` 和 `tieba.baidu.com` 放在 `baidu.com` 权限域名服务器，`ai.baidu.com` 放在 `ai.baidu.com` 权限域名服务器中，并且 baidu.com 权限域名服务器和 `ai.baidu.com` 权限域名服务器是同等地位的。
 
 画个图直观理解一下：
 
