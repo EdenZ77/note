@@ -171,14 +171,24 @@ c.root-servers.net.	1830	IN	A	192.33.4.12
 
 什么是区？怎样划分区呢？
 
-区和域其实是不同的，区可以有多种不同的划分方法。以百度为例，我们假设有 `fanyi.baidu.com`、`ai.baidu.com`、`tieba.baidu.com` 这三个三级域名。我们可以这样分区，`fanyi.baidu.com` 和 `tieba.baidu.com` 放在 `baidu.com` 权限域名服务器，`ai.baidu.com` 放在 `ai.baidu.com` 权限域名服务器中，并且 baidu.com 权限域名服务器和 `ai.baidu.com` 权限域名服务器是同等地位的。
+区和域其实是不同的，区可以有多种不同的划分方法。以百度为例，我们假设有 `fanyi.baidu.com`、`ai.baidu.com`、`tieba.baidu.com` 这三个三级域名。我们可以这样分区，`fanyi.baidu.com` 和 `tieba.baidu.com` 放在 `baidu.com` 权限域名服务器，`ai.baidu.com` 放在 `ai.baidu.com` 权限域名服务器中，并且 `baidu.com` 权限域名服务器和 `ai.baidu.com` 权限域名服务器是同等地位的。
 
 画个图直观理解一下：
 
 <img src="image/2024-03-05-16-21-45.png" style="zoom:50%;" />
 
+
+
 ## 本地域名服务器
 除了上面三种 DNS 服务器，还有一种不在 DNS 层次结构之中，但是很重要的 DNS 服务器，就是本地域名服务器。本地域名服务器（Local DNS Server，简称Local DNS）是电脑解析时的默认域名服务器，即电脑中设置的首选 DNS 服务器和备选 DNS 服务器。常见的有电信、联通、谷歌、阿里等的本地 DNS 服务。
+
+递归 DNS 又称 Local DNS，用于域名查询。递归 DNS 会迭代权威服务器返回的应答，直至最终查询到的 IP 地址，将其返回给客户端，并将请求结果缓存到本地。
+
+我们平时使用最多的就是这类DNS，他对公众开放服务，一般由网络运营商提供，大家都自己可以架递归DNS提供服务。本地电脑上设置的DNS就是这类DNS。 `google`的`8.8.8.8`和`8.8.4.4`以及`114`的`114.114.114.114`和`114.114.115.115`都属于这一类DNS。
+
+**TTL**
+
+表示解析记录在递归 DNS 中的缓存时间，单位秒。递归 DNS 得到解析记录后，会依照 TTL 进行缓存，但是有可能递归 DNS 不遵循 TTL，比如递归 DNS 觉得 TTL 太小，频繁的递归请求会耗尽递归 DNS 的资源。优化减少请求到权威 DNS 服务器的次数，尽量访问递归 DNS，需要调高 TTL 时长，让客户端尽量访问递归 DNS 缓存。但是 TTL 时长较长可能导致更改源 DNS 记录无效，因为记录值依照 TTL 规范缓存在递归 DNS 中。
 
 # DNS查询方式
 具体 DNS 查询的方式有两种：
