@@ -1,6 +1,4 @@
 # 29｜接口：为什么nil接口不等于nil？
-你好，我是Tony Bai。
-
 上一讲我们学习了Go接口的基础知识与设计惯例，知道Go接口是构建Go应用骨架的重要元素。从语言设计角度来看，Go语言的接口（interface）和并发（concurrency）原语是我最喜欢的两类Go语言语法元素。Go语言核心团队的技术负责人Russ Cox也曾说过这样一句话：“ **如果要从Go语言中挑选出一个特性放入其他语言，我会选择接口**”，这句话足以说明接口这一语法特性在这位Go语言大神心目中的地位。
 
 为什么接口在Go中有这么高的地位呢？这是因为 **接口是Go这门静态语言中唯一“动静兼备”的语法特性**。而且，接口“动静兼备”的特性给Go带来了强大的表达能力，但同时也给Go语言初学者带来了不少困惑。要想真正解决这些困惑，我们必须深入到Go运行时层面，看看Go语言在运行时是如何表示接口类型的。在这一讲中，我就带着你一起深入到接口类型的运行时表示层面看看。
@@ -11,18 +9,16 @@
 
 接口的 **静态特性** 体现在 **接口类型变量具有静态类型**，比如 `var err error` 中变量err的静态类型为error。拥有静态类型，那就意味着编译器会在编译阶段对所有接口类型变量的赋值操作进行类型检查，编译器会检查右值的类型是否实现了该接口方法集合中的所有方法。如果不满足，就会报错：
 
-```plain
+```go
 var err error = 1 // cannot use 1 (type int) as type error in assignment: int does not implement error (missing Error method)
-
 ```
 
 而接口的 **动态特性**，就体现在接口类型变量在运行时还存储了右值的真实类型信息，这个右值的真实类型被称为接口类型变量的 **动态类型**。你看一下下面示例代码：
 
-```plain
+```go
 var err error
 err = errors.New("error1")
 fmt.Printf("%T\n", err)  // *errors.errorString
-
 ```
 
 我们可以看到，这个示例通过errros.New构造了一个错误值，赋值给了error接口类型变量err，并通过fmt.Printf函数输出接口类型变量err的动态类型为\*errors.errorString。
@@ -33,7 +29,7 @@ fmt.Printf("%T\n", err)  // *errors.errorString
 
 比如下面的例子：
 
-```plain
+```go
 type QuackableAnimal interface {
     Quack()
 }
@@ -66,7 +62,6 @@ func main() {
         AnimalQuackInForest(animal)
     }
 }
-
 ```
 
 这个例子中，我们用接口类型QuackableAnimal来代表具有“会叫”这一特征的动物，而Duck、Bird和Dog类型各自都具有这样的特征，于是我们可以将这三个类型的变量赋值给QuackableAnimal接口类型变量a。每次赋值，变量a中存储的动态类型信息都不同，Quack方法的执行结果将根据变量a中存储的动态类型信息而定。
@@ -120,7 +115,6 @@ func main() {
 
 ```plain
 error occur: <nil>
-
 ```
 
 我们看到，示例程序并未如我们前面预期的那样输出ok。程序显然是进入了错误处理分支，输出了err的值。那这里就有一个问题了：明明returnsError函数返回的p值为nil，为什么却满足了 `if err != nil` 的条件进入错误处理分支呢？
@@ -142,7 +136,6 @@ type eface struct {
     _type *_type
     data  unsafe.Pointer
 }
-
 ```
 
 我们看到，在运行时层面，接口类型变量有两种内部表示： `iface` 和 `eface`，这两种表示分别用于不同的接口类型变量：
@@ -175,7 +168,6 @@ type _type struct {
     str       nameOff
     ptrToThis typeOff
 }
-
 ```
 
 而iface除了要存储动态类型信息之外，还要存储接口本身的信息（接口的类型信息、方法列表信息等）以及动态类型所实现的方法的信息，因此iface的第一个字段指向一个 `itab` 类型结构。itab结构的定义如下：
@@ -189,7 +181,6 @@ type itab struct {
     _     [4]byte
     fun   [1]uintptr // variable sized. fun[0]==0 means _type does not implement inter.
 }
-
 ```
 
 这里我们也可以看到，itab结构中的第一个字段 `inter` 指向的interfacetype结构，存储着这个接口类型自身的信息。你看一下下面这段代码表示的interfacetype类型定义， 这个interfacetype结构由类型信息（typ）、包路径名（pkgpath）和接口方法集合切片（mhdr）组成。
@@ -225,7 +216,7 @@ func main() {
 
 这个例子中的空接口类型变量ei在Go运行时的表示是这样的：
 
-![图片](images/473414/2d8f103e2973d2e31c9f4237e6799eae.jpg)
+<img src="images/473414/2d8f103e2973d2e31c9f4237e6799eae.jpg" alt="图片" style="zoom: 33%;" />
 
 我们看到空接口类型的表示较为简单，图中上半部分\_type字段指向它的动态类型T的类型信息，下半部分的data则是指向一个T类型的实例值。
 
