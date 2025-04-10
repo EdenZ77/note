@@ -183,7 +183,7 @@ type itab struct {
 }
 ```
 
-这里我们也可以看到，itab结构中的第一个字段 `inter` 指向的interfacetype结构，存储着这个接口类型自身的信息。你看一下下面这段代码表示的interfacetype类型定义， 这个interfacetype结构由类型信息（typ）、包路径名（pkgpath）和接口方法集合切片（mhdr）组成。
+这里我们也可以看到，itab结构中的第一个字段 `inter` 指向的 interfacetype 结构，存储着这个接口类型自身的信息。你看一下下面这段代码表示的 interfacetype 类型定义， 这个 interfacetype 结构由类型信息（typ）、包路径名（pkgpath）和接口方法集合切片（mhdr）组成。
 
 ```go
 // $GOROOT/src/runtime/type.go
@@ -321,7 +321,7 @@ func printNonEmptyInterface1() {
 
 在编译阶段，编译器会根据要输出的参数的类型将println替换为特定的函数，这些函数都定义在 `$GOROOT/src/runtime/print.go` 文件中，而针对eface和iface类型的打印函数实现如下：
 
-```plain
+```go
 // $GOROOT/src/runtime/print.go
 func printeface(e eface) {
     print("(", e._type, ",", e.data, ")")
@@ -330,14 +330,13 @@ func printeface(e eface) {
 func printiface(i iface) {
     print("(", i.tab, ",", i.data, ")")
 }
-
 ```
 
-我们看到，printeface和printiface会输出各自的两个指针字段的值。下面我们就来使用println函数输出各类接口类型变量的内部表示信息，并结合输出结果，解析接口类型变量的等值比较操作。
+我们看到，printeface 和 printiface 会输出各自的两个指针字段的值。下面我们就来使用 println 函数输出各类接口类型变量的内部表示信息，并结合输出结果，解析接口类型变量的等值比较操作。
 
 ### 第一种：nil接口变量
 
-我们前面提过，未赋初值的接口类型变量的值为nil，这类变量也就是nil接口变量，我们来看这类变量的内部表示输出的例子：
+我们前面提过，未赋初值的接口类型变量的值为 nil，这类变量也就是 nil 接口变量，我们来看这类变量的内部表示输出的例子：
 
 ```go
 func printNilInterface() {
@@ -362,7 +361,7 @@ err = nil: true
 i = err: true
 ```
 
-我们看到，无论是空接口类型还是非空接口类型变量，一旦变量值为nil，那么它们内部表示均为 `(0x0,0x0)`，也就是类型信息、数据值信息均为空。因此上面的变量i和err等值判断为true。
+我们看到，无论是空接口类型还是非空接口类型变量，一旦变量值为 nil，那么它们内部表示均为 `(0x0,0x0)`，也就是类型信息、数据值信息均为空。因此上面的变量 i 和 err 等值判断为 true。
 
 ### 第二种：空接口类型变量
 
@@ -409,7 +408,7 @@ eif1 = eif2: false
 
 我们按顺序分析一下这个输出结果。
 
-首先，代码执行到第11行时，eif1与eif2已经分别被赋值整型值17与18，这样eif1和eif2的动态类型的类型信息是相同的（都是0x10ac580），但data指针指向的内存块中存储的值不同，一个是17，一个是18，于是eif1不等于eif2。
+首先，代码执行到第11行时，eif1 与 eif2 已经分别被赋值整型值17与18，这样 eif1 和 eif2 的动态类型的类型信息是相同的（都是0x10ac580），但 data 指针指向的内存块中存储的值不同，一个是 17，一个是 18，于是 eif1 不等于 eif2。
 
 接着，代码执行到第16行的时候，eif2已经被重新赋值为17，这样eif1和eif2不仅存储的动态类型的类型信息是相同的（都是0x10ac580），data指针指向的内存块中存储值也相同了，都是17，于是eif1等于eif2。
 
@@ -502,7 +501,6 @@ eif = err: true
 eif: (0x10b3b00,0x10eb4d0)
 err: (0x10ed380,0x10eb4e0)
 eif = err: false
-
 ```
 
 你可以看到，空接口类型变量和非空接口类型变量内部表示的结构有所不同（第一个字段：\_type vs. tab)，两者似乎一定不能相等。但Go在进行等值比较时，类型比较使用的是eface的\_type和iface的tab.\_type，因此就像我们在这个例子中看到的那样，当eif和err都被赋值为 `T(5)` 时，两者之间是划等号的。
