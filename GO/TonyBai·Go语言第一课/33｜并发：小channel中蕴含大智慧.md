@@ -1,6 +1,4 @@
 # 33｜并发：小channel中蕴含大智慧
-你好，我是Tony Bai。
-
 通过上两节课的学习，我们知道了Go语言实现了基于CSP（Communicating Sequential Processes）理论的并发方案。
 
 Go语言的CSP模型的实现包含两个主要组成部分：一个是Goroutine，它是Go应用并发设计的基本构建与执行单元；另一个就是channel，它在并发模型中扮演着重要的角色。channel既可以用来实现Goroutine间的通信，还可以实现Goroutine间的同步。它就好比Go并发设计这门“武功”的秘籍口诀，可以说，学会在Go并发设计时灵活运用channel，才能说真正掌握了Go并发设计的真谛。
@@ -19,19 +17,17 @@ Go对并发的原生支持可不是仅仅停留在口号上的，Go在语法层�
 
 和切片、结构体、map等一样，channel也是一种复合数据类型。也就是说，我们在声明一个channel类型变量时，必须给出其具体的元素类型，比如下面的代码这样：
 
-```plain
+```go
 var ch chan int
-
 ```
 
 这句代码里，我们声明了一个元素为int类型的channel类型变量ch。
 
 如果channel类型变量在声明时没有被赋予初值，那么它的默认值为nil。并且，和其他复合数据类型支持使用复合类型字面值作为变量初始值不同，为channel类型变量赋初值的唯一方法就是使用 **make** 这个Go预定义的函数，比如下面代码：
 
-```plain
+```go
 ch1 := make(chan int)
 ch2 := make(chan int, 5)
-
 ```
 
 这里，我们声明了两个元素类型为int的channel类型变量ch1和ch2，并给这两个变量赋了初值。但我们看到，两个变量的赋初值操作使用的make调用的形式有所不同。
@@ -44,12 +40,11 @@ ch2 := make(chan int, 5)
 
 Go提供了 `<-` 操作符用于对channel类型变量进行发送与接收操作：
 
-```plain
+```go
 ch1 <- 13    // 将整型字面值13发送到无缓冲channel类型变量ch1中
 n := <- ch1  // 从无缓冲channel类型变量ch1中接收一个整型值存储到整型变量n中
 ch2 <- 17    // 将整型字面值17发送到带缓冲channel类型变量ch2中
 m := <- ch2  // 从带缓冲channel类型变量ch2中接收一个整型值存储到整型变量m中
-
 ```
 
 这里我要提醒你一句，在理解channel的发送与接收操作时，你一定要始终牢记： **channel是用于Goroutine间通信的**，所以绝大多数对channel的读写都被分别放在了不同的Goroutine中。
@@ -94,27 +89,25 @@ func main() {
 
 如果光看文字还不是很好理解，你可以再看看下面几个关于带缓冲channel的操作的例子：
 
-```plain
+```go
 ch2 := make(chan int, 1)
 n := <-ch2 // 由于此时ch2的缓冲区中无数据，因此对其进行接收操作将导致goroutine挂起
 
 ch3 := make(chan int, 1)
 ch3 <- 17  // 向ch3发送一个整型数17
 ch3 <- 27  // 由于此时ch3中缓冲区已满，再向ch3发送数据也将导致goroutine挂起
-
 ```
 
 也正是因为带缓冲channel与无缓冲channel在发送与接收行为上的差异，在具体使用上，它们有各自的“用武之地”，这个我们等会再细说，现在我们先继续把channel的基本语法讲完。
 
 使用操作符 `<-`，我们还可以声明 **只发送channel类型**（send-only）和 **只接收channel类型**（recv-only），我们接着看下面这个例子：
 
-```plain
+```go
 ch1 := make(chan<- int, 1) // 只发送channel类型
 ch2 := make(<-chan int, 1) // 只接收channel类型
 
 <-ch1       // invalid operation: <-ch1 (receive from send-only type chan<- int)
 ch2 <- 13   // invalid operation: ch2 <- 13 (send to receive-only type <-chan int)
-
 ```
 
 你可以从这个例子中看到，试图从一个只发送channel类型变量中接收数据，或者向一个只接收channel类型发送数据，都会导致编译错误。通常只发送channel类型和只接收channel类型，会被用作函数的参数类型或返回值，用于限制对channel内的操作，或者是明确可对channel进行的操作的类型，比如下面这个例子：
@@ -178,11 +171,10 @@ for v := range ch { // 当ch被关闭后，for range循环结束
 
 这是因为发送端没有像接受端那样的、可以安全判断channel是否被关闭了的方法。同时，一旦向一个已经关闭的channel执行发送操作，这个操作就会引发panic，比如下面这个示例：
 
-```plain
+```go
 ch := make(chan int, 5)
 close(ch)
 ch <- 13 // panic: send on closed channel
-
 ```
 
 ### select
@@ -424,7 +416,6 @@ goroutine-5: current counter value is 6
 goroutine-1: current counter value is 2
 goroutine-7: current counter value is 8
 goroutine-3: current counter value is 4
-
 ```
 
 ## 带缓冲channel的惯用法
@@ -605,7 +596,7 @@ func main() {
 
 这样一来，针对带缓冲channel的len调用似乎才是有意义的。那我们是否可以使用len函数来实现带缓冲channel的“判满”、“判有”和“判空”逻辑呢？就像下面示例中伪代码这样：
 
-```plain
+```go
 var ch chan T = make(chan T, capacity)
 
 // 判空
@@ -622,7 +613,6 @@ if len(ch) > 0 {
 if len(ch) == cap(ch) {
     // 此时channel ch满了?
 }
-
 ```
 
 你可以看到，我在上面代码注释的“空了”、“有数据”和“满了”的后面都 **打上了问号** **。** 这是为什么呢？
@@ -631,7 +621,7 @@ if len(ch) == cap(ch) {
 
 我们以判空为例看看：
 
-![图片](images/477365/39b77d5624701d2df79ff0b8865d339a.jpg)
+<img src="images/477365/39b77d5624701d2df79ff0b8865d339a.jpg" alt="图片" style="zoom:33%;" />
 
 从上图可以看到，Goroutine1使用len(channel)判空后，就会尝试从channel中接收数据。但在它真正从channel读数据之前，另外一个Goroutine2已经将数据读了出去，所以，Goroutine1后面的 **读取就会阻塞在channel上**，导致后面逻辑的失效。
 
@@ -749,7 +739,7 @@ func main() {
 
 如果一个channel类型变量的值为nil，我们称它为 **nil channel**。nil channel有一个特性，那就是对nil channel的读写都会发生阻塞。比如下面示例代码：
 
-```plain
+```go
 func main() {
 	var c chan int
 	<-c //阻塞
@@ -761,7 +751,6 @@ func main() {
 	var c chan int
 	c<-1  //阻塞
 }
-
 ```
 
 你会看到，无论上面的哪段代码被执行，main goroutine都会阻塞在对nil channel的操作上。
@@ -889,7 +878,7 @@ select语句的default分支的语义，就是在其他非default分支因通信
 
 其实在前面的 **“len(channel)的应用”** 小节的例子中，我们就已经用到了“利用default分支”实现的 `trySend` 和 `tryRecv` 两个函数：
 
-```plain
+```go
 func tryRecv(c <-chan int) (int, bool) {
 	select {
 	case i := <-c:
@@ -908,14 +897,13 @@ func trySend(c chan<- int, i int) bool {
 		return false
 	}
 }
-
 ```
 
 而且，无论是无缓冲channel还是带缓冲channel，这两个函数都能适用，并且不会阻塞在空channel或元素个数已经达到容量的channel上。
 
 在Go标准库中，这个惯用法也有应用，比如：
 
-```plain
+```go
 // $GOROOT/src/time/sleep.go
 func sendTime(c interface{}, seq uintptr) {
     // 无阻塞的向c发送当前时间
@@ -924,7 +912,6 @@ func sendTime(c interface{}, seq uintptr) {
     default:
     }
 }
-
 ```
 
 ### 第二种用法：实现超时机制
@@ -933,7 +920,7 @@ func sendTime(c interface{}, seq uintptr) {
 
 比如，下面示例代码实现了一次具有30s超时的select：
 
-```plain
+```go
 func worker() {
 	select {
 	case <-c:
@@ -942,7 +929,6 @@ func worker() {
 	    return
 	}
 }
-
 ```
 
 不过，在应用带有超时机制的select时，我们要特别注意 **timer使用后的释放**，尤其在大量创建timer的时候。
@@ -953,7 +939,7 @@ Go语言标准库提供的timer实际上是由Go运行时自行维护的，而�
 
 结合time包的Ticker，我们可以实现带有心跳机制的select。这种机制让我们可以在监听channel的同时，执行一些 **周期性的任务**，比如下面这段代码：
 
-```plain
+```go
 func worker() {
 	heartbeat := time.NewTicker(30 * time.Second)
 	defer heartbeat.Stop()
@@ -966,7 +952,6 @@ func worker() {
 		}
 	}
 }
-
 ```
 
 这里我们使用time.NewTicker，创建了一个Ticker类型实例heartbeat。这个实例包含一个channel类型的字段C，这个字段会按一定时间间隔持续产生事件，就像“心跳”一样。这样for循环在channel c无数据接收时，会每隔特定时间完成一次迭代，然后回到for循环进行下一次迭代。
@@ -984,9 +969,3 @@ func worker() {
 此外，你也要牢记值为nil的channel的阻塞特性，有些时候它也能帮上大忙。而面对已关闭的channel你也一定要小心，尤其要避免向已关闭的channel发送数据，那会导致panic。
 
 最后，select是Go为了支持同时操作多个channel，而引入的另外一个并发原语，select与channel有几种常用的固定搭配，你也要好好掌握和理解。
-
-## 思考题
-
-channel作为Go并发设计的重要组成部分，需要你掌握的细节非常多。而且，channel的应用模式也非常多，我们这一讲仅挑了几个常见的模式做了讲解。在日常开发中你还见过哪些实用的channel使用模式呢？欢迎在留言区分享。
-
-如果你觉得有收获，也欢迎你把这节课分享给更多对Go并发感兴趣的朋友。我是Tony Bai，我们下节课见。
