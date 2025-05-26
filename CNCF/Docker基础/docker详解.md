@@ -2,7 +2,7 @@
 | -------- | ---- | ------ | ---------------------------------- |
 | 20220826 | v1.0 | eden   | 梳理整体流程、删除不必要文字和样式 |
 | 20240203 | v2.0 | eden   | 回顾docker基本结构                 |
-|          |      |        |                                    |
+| 20250526 |      |        | 贯穿路线                           |
 
 
 
@@ -16,7 +16,7 @@
 
 ### Docker架构
 
-![image-20211118212054926](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20211118212054926.png)
+<img src="https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20211118212054926.png" alt="image-20211118212054926" style="zoom:50%;" />
 
 ### 安装
 
@@ -138,7 +138,7 @@ yum remove docker \
 
 获取加速器地址
 
-![image-20211118213704283](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20211118213704283.png)
+<img src="https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20211118213704283.png" alt="image-20211118213704283" style="zoom:60%;" />
 
 配置本机docker镜像加速
 
