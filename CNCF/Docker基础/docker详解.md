@@ -558,11 +558,11 @@ cp的细节
 
 ## 基本使用
 
-![image-20220328204530471](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220328204530471.png)
+<img src="https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220328204530471.png" alt="image-20220328204530471" style="zoom: 50%;" />
 
 编写好上面的Dockerfile文件之后，执行下面的命令即可构建镜像，注意我们文件名叫Dockerfile1，上下文环境就是当前目录，说明当前目录下存在Dockerfile1这个可以构建的文件。
 
-![image-20220328204457804](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220328204457804.png)
+<img src="https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220328204457804.png" alt="image-20220328204457804" style="zoom:50%;" />
 
 ### docker build命令
 
@@ -575,7 +575,7 @@ cp的细节
 
 **示例**
 
-下面的解释终于让我明白了上下文目录的作用！！！，来之GPT
+下面的解释终于让我明白了上下文目录的作用！！！，来自GPT
 
 如果你当前位于 `/mydir` 目录，并且 `Dockerfile` 文件位于 `/data/test/MyDockerfile`，你可以使用 `-f` 或 `--file` 选项指定 `Dockerfile` 的路径，并且在 `docker build` 命令中指定上下文目录。上下文目录是 Docker 在构建镜像时用来寻找构建所需文件（如 `COPY`、`ADD` 指令所需的文件）的路径。
 
@@ -597,38 +597,38 @@ docker build -f /data/test/MyDockerfile -t myimage:latest /data/test/
 
 在编写 Dockerfile 时使用 `FROM` 指令选择一个基础镜像（base image）是为了提供运行应用程序所需的用户空间环境，而不是提供操作系统内核。容器确实使用宿主机的内核，但是它们仍然需要一个用户空间来执行应用程序，这包括文件系统、系统库、工具和其他运行时组件。
 
-以下是从基础操作系统镜像开始构建容器镜像的几个原因：
+以下是从基础镜像开始构建容器镜像的几个原因：
 
-1. **系统库和工具**：许多应用程序需要标准的系统库和工具来运行，例如 C 标准库、shell、核心工具集等。基础 OS 镜像通常已经包含了这些基础组件。
+1. **系统库和工具**：许多应用程序需要标准的系统库和工具来运行，例如 C 标准库、shell、核心工具集等。基础镜像通常已经包含了这些基础组件。
 
-2. **环境一致性**：基础 OS 镜像提供了一个一致的环境，使得不同开发者和环境之间的构建可以保持一致性，减少了 “在我机器上可以运行” 问题。
+2. **环境一致性**：基础镜像提供了一个一致的环境，使得不同开发者和环境之间的构建可以保持一致性，减少了 “在我机器上可以运行” 问题。
 
-3. **依赖管理和打包**：操作系统提供了软件包管理器和打包系统（如 Debian 的 apt、Red Hat 的 yum），它们可以简化依赖管理和安装过程。
+3. **依赖管理和打包**：提供了软件包管理器和打包系统（如 Debian 的 apt、Red Hat 的 yum），它们可以简化依赖管理和安装过程。
 
-5. **方便和可扩展**：基础 OS 镜像提供了一个可以轻松构建和扩展来满足特定需求的起点。你可以在此基础上安装需要的软件、配置环境和添加应用程序文件。
+5. **方便和可扩展**：基础镜像提供了一个可以轻松构建和扩展来满足特定需求的起点。你可以在此基础上安装需要的软件、配置环境和添加应用程序文件。
 
-6. **最小化和定制**：虽然基础 OS 镜像包含了一组标准组件，但是许多流行的基础镜像也提供了最小化版本，比如 Alpine Linux，它非常小巧，但仍然提供了必要的工具和库来运行很多应用程序。
+6. **最小化和定制**：虽然基础镜像包含了一组标准组件，但是许多流行的基础镜像也提供了最小化版本，比如 Alpine Linux，它非常小巧，但仍然提供了必要的工具和库来运行很多应用程序。
 
 
-因此，即使容器不包括内核，基础 OS 镜像在创建容器时仍然扮演着关键的角色，它们为应用程序提供了运行所需的环境和依赖。这也是为什么 Dockerfile 中几乎总是从一个基础 OS 镜像开始的原因。
+因此，即使容器不包括内核，基础镜像在创建容器时仍然扮演着关键的角色，它们为应用程序提供了运行所需的环境和依赖。这也是为什么 Dockerfile 中几乎总是从一个基础 OS 镜像开始的原因。
 
 ### LABEL
 
-<img src="https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220328210450155.png" alt="image-20220328210450155" style="zoom:67%;" />
+<img src="https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220328210450155.png" alt="image-20220328210450155" style="zoom: 50%;" />
 
 ###  RUN
 
-<img src="https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220328212611065.png" alt="image-20220328212611065" style="zoom:67%;" />
+<img src="https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220328212611065.png" alt="image-20220328212611065" style="zoom: 50%;" />
 
-run和cmd之间什么区别呢？
+run 和 cmd 之间什么区别呢？
 
-![image-20220328213039912](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220328213039912.png)
+<img src="https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220328213039912.png" alt="image-20220328213039912" style="zoom:50%;" />
 
-### CMD和ENTRYPOINT
+### CMD 和 ENTRYPOINT
 
-ENTRYPOINT或者CMD作为唯一入口，只能写一个，最后一个生效。即：多个CMD只有最后一次生效，多个ENTRYPOINT只有最后一次生效。
+ENTRYPOINT 或者 CMD 作为唯一入口，只能写一个，最后一个生效。即：多个 CMD 只有最后一次生效，多个ENTRYPOINT 只有最后一次生效。
 
-均可作为容器启动入口。cmd可以通过docker run 进行修改，而entryporint无法修改
+均可作为容器启动入口。cmd 可以通过 docker run 进行修改，而 entryporint 无法修改
 
 ![image-20220329115044736](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220329115044736.png)
 
@@ -637,12 +637,12 @@ ENTRYPOINT或者CMD作为唯一入口，只能写一个，最后一个生效。�
 ![image-20220329114743044](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220329114743044.png)
 
 ```dockerfile
-#官方推荐的写法,，变化的写CMD，而CMD是提供参数给ENTRYPOINT
+# 官方推荐的写法，变化的写CMD，而CMD是提供参数给ENTRYPOINT
 # docker run imageName  cmd1  一旦传递了cmd1，CMD指定的所有参数都会被覆盖，
 # 自定义参数的情况下一定要传完
 CMD [ "5","baidu.com" ]
 
-#exec的写法 不变的写 ENTRYPOINT；未来他是容器启动的唯一入口，
+# exec的写法 不变的写 ENTRYPOINT；未来他是容器启动的唯一入口，
 ENTRYPOINT [ "ping","-c" ]
 ```
 
@@ -749,7 +749,7 @@ docker run --entrypoint /bin/bash myimage -c "echo Hello, Goodbye"
 
 注意ARG不能在运行时生效，只能在构建时生效。
 
-我们在使用docker build构建镜像的时候可以通过--build-arg参数传递arg变量值。可以添加`--no-cache` 不使用缓存
+我们在使用 docker build 构建镜像的时候可以通过 --build-arg 参数传递 arg 变量值。可以添加`--no-cache` 不使用缓存
 
 ![image-20220328214440993](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220328214440993.png)
 
@@ -791,7 +791,8 @@ CMD ["/bin/sh","-c","echo 1111;echo app_${app}"]
 
 在Docker中，`ARG`和`ENV`是用来设置变量的两个不同的指令，它们在`Dockerfile`中有不同的使用场景和目的。
 
-##### ARG
+**ARG**
+
 `ARG` 指令用于定义构建时变量，它们在Docker镜像构建过程中使用。这些变量在构建完成后不会保留在最终的镜像中。你可以在命令行中使用 `docker build` 命令时通过 `--build-arg` 标志来传递这些变量的值。
 
 例如，你可以在 `Dockerfile` 中这样使用 `ARG`：
@@ -819,7 +820,8 @@ docker build --build-arg VERSION=3.20 --build-arg TEST=1.1 -t test:v1 -f Dockerf
 # 并没有警告信息，不影响构建
 ```
 
-##### ENV
+**ENV**
+
 `ENV` 指令用于设置环境变量，这些变量会被包含在镜像中，并且可以在容器运行时使用。它们通常用于提供运行时配置，例如数据库的地址、端口号或其他服务的配置信息。
 
 下面是如何在 `Dockerfile` 中使用 `ENV`：
@@ -836,7 +838,8 @@ COPY . $APP_HOME
 
 当你基于这样的 `Dockerfile` 创建并运行容器时，`APP_HOME` 环境变量将可用于容器内部。
 
-##### 区别
+**区别**
+
 - `ARG` 是用于构建过程，一旦镜像构建完成，与之相关的变量就不可用了。
 - `ENV` 是用于运行时，它设置的环境变量会成为最终镜像的一部分，并且在容器运行时可用。
 - `ARG` 变量在构建时可以通过命令行参数 `--build-arg` 传递值，而 `ENV` 变量的值通常在 `Dockerfile` 中定义，但也可以在运行时通过 `docker run` 命令的 `-e` 或 `--env` 选项覆盖。
@@ -876,61 +879,7 @@ RUN cd /redis && ls -l
 
 
 
-#### GPT介绍
-
-在 Dockerfile 中，`ADD` 和 `COPY` 都是用来将文件和目录复制到镜像中的指令，但它们之间有一些细微的差别：
-
-#### COPY
-`COPY` 指令用来复制本地文件或目录到镜像中的指定路径。它仅接受一个源路径和一个目标路径作为参数，并且只能访问构建上下文中的文件。
-
-```Dockerfile
-COPY source_file.txt /destination_file.txt
-```
-
-或者复制整个目录：
-
-```Dockerfile
-COPY source_directory /destination_directory
-```
-
-`COPY` 指令主要用于复制本地文件到镜像中，它不具备任何额外的功能。
-
-#### ADD
-`ADD` 指令也用来复制文件和目录到镜像中，但是它比 `COPY` 拥有更多的功能：
-
-1. `ADD` 能够处理本地文件，也能够处理 URL。
-2. 如果 `ADD` 的源参数是一个本地 tar 压缩文件的路径，它会自动解压缩这个文件到目标路径。
-
-```Dockerfile
-ADD source_file_or_url /destination
-```
-
-例如，解压本地 tar 文件：
-
-```Dockerfile
-ADD files.tar.gz /path/to/directory
-```
-
-或者从 URL 添加文件：
-
-```Dockerfile
-ADD https://example.com/download/app.tar.gz /usr/local/bin
-```
-
-#### 区别
-- `COPY` 是一个比较简单的指令，推荐用于复制本地文件到 Docker 镜像。
-- `ADD` 拥有更多功能，可以从 URL 下载文件，并且能够自动解压缩 tar 文件。
-- 如果你不需要 `ADD` 的额外功能，建议使用 `COPY`，因为它的语义更明确，行为也更可预测。
-
-通常，官方 Docker 文档建议只在需要 `ADD` 的额外功能时使用它，例如自动解压缩。在大多数情况下，使用 `COPY` 更为合适，因为它更简单且易于理解。
-
-
-
 ### USER
-
-
-
-
 
 
 
@@ -961,13 +910,14 @@ RUN  pwd && ls -l
 CMD ping baidu.com
 ```
 
-#### GPT
+##### GPT
 
 在 Dockerfile 中，`WORKDIR` 指令用来设置工作目录，也就是接下来的 `RUN`, `CMD`, `ENTRYPOINT`, `COPY` 和 `ADD` 指令的执行环境路径。如果指定的工作目录不存在，Docker 会自动为你创建这个目录。
 
 这个指令主要用来改变当前工作目录。类似于在命令行中使用 `cd` 命令切换目录。设置工作目录可以让你在构建 Docker 镜像的后续命令中使用相对路径，从而使 Dockerfile 更易于阅读和维护。
 
-##### 使用 WORKDIR
+**使用 WORKDIR**
+
 下面是一个简单的例子，展示了如何在 Dockerfile 中使用 `WORKDIR`：
 
 ```Dockerfile
@@ -986,7 +936,8 @@ CMD ["node", "server.js"]
 
 在这个例子中，`WORKDIR /app` 指令设置了工作目录为 `/app`。后续的 `COPY`, `RUN` 和 `CMD` 命令都是在这个目录下执行。
 
-##### 注意事项
+**注意事项**
+
 1. 使用 `WORKDIR` 指令可以避免多次使用 `RUN cd` 并且配合其他命令，这样不仅可以减少层数，还可以使 Dockerfile 更清晰。
 2. 如果指定了多个 `WORKDIR` 指令，每个 `WORKDIR` 会基于前一个 `WORKDIR` 的路径。例如：
    ```Dockerfile
@@ -1004,9 +955,9 @@ CMD ["node", "server.js"]
 
 我们先看一个最简单的案例
 
-![image-20220329104305157](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220329104305157.png)
+<img src="https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220329104305157.png" alt="image-20220329104305157" style="zoom: 67%;" />
 
-然后我们inspect 容器看看挂载信息
+然后我们 inspect 容器看看挂载信息
 
 ![image-20220329104351584](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220329104351584.png)
 
@@ -1031,7 +982,7 @@ VOLUME [ "/hello","/app" ]
 
 
 # 暴露 ，这个只是一个声明；主要给程序员看。
-# docker也能看到： docker -d -P（随机分配端口，）
+# 启动容器时通过 -P 选项随机将宿主机的端口和EXPOSE指定的端口进行映射： docker -d -P（随机分配端口）
 EXPOSE 8080
 EXPOSE 999
 
@@ -1039,11 +990,12 @@ EXPOSE 999
 CMD ping baidu.com
 ```
 
-#### GPT
+##### GPT
 
 `VOLUME` 指令用于在 Dockerfile 中定义匿名卷。当你创建一个容器时，Docker 会根据 Dockerfile 中的 `VOLUME` 指令自动挂载卷到容器内指定的路径。卷是 Docker 用于持久化和共享数据的一种机制，它不会随容器删除而丢失，并且可以在容器之间共享。
 
-##### 使用 VOLUME
+**使用 VOLUME**
+
 以下是一个简单的 Dockerfile 示例，它在 `/data` 目录下定义了一个卷：
 
 ```Dockerfile
@@ -1063,7 +1015,7 @@ VOLUME /data
 3. 在容器运行时，可以使用 `docker run` 命令的 `-v` 或 `--volume` 选项来覆盖 Dockerfile 中通过 `VOLUME` 指令定义的卷。这允许将宿主机上的目录或已命名卷挂载到容器中。（你需要确保 `-v` 指定的容器目录与 `VOLUME` 定义的目录相同。）
 4. 一旦 `VOLUME` 指令在 Dockerfile 中定义，之后的任何写入到这个卷的操作（如 COPY 或 RUN 指令）都不会更改镜像的内容。这是因为卷的内容在容器运行时才会被初始化。
 
-##### 最佳实践
+**最佳实践**
 
 不良示例：在构建过程中向卷中添加大量数据
 
@@ -1080,7 +1032,7 @@ RUN echo "hello" > /app/data/greeting
 
 当启动容器时，Docker 会在容器内部为 `/app/data` 目录创建一个匿名卷，但是并不会存在`/app/data/greeting` 文件，因为我们之前在 `Dockerfile` 中往卷中写入的内容不会被保留。实际上，如果我们进入到容器内部查看 `/app/data/greeting` 文件，将会发现它不存在。
 
-那VOLUME指令的意义是什么，如何正确的使用它？
+那 VOLUME 指令的意义是什么，如何正确的使用它？
 
 当你确定一个目录需要用于存储持久化数据（如数据库文件、配置文件、日志等），你可以在 `Dockerfile` 中使用 `VOLUME` 来指定这个目录：
 
@@ -1118,9 +1070,9 @@ VOLUME /app/data
 
 ### EXPOSE
 
-我们使用上面的dockerfile文件，然后运行`docker -d -P`随机分配端口，ps看看
+我们使用上面的dockerfile文件，然后运行`docker -d -P`随机分配端口，ps 看看：
 
-![image-20220329111016316](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220329111016316.png)
+<img src="https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220329111016316.png" alt="image-20220329111016316" style="zoom: 67%;" />
 
 可以看到主机给暴露的端口做了映射。
 
@@ -1186,12 +1138,6 @@ RUN apt-get update && apt-get install -y \
 - 使用 `.dockerignore` 文件，排除上下文中无需参与构建的资源
 - 使用多阶段构建
 - 合理使用构建缓存加速构建。
-
-
-
-
-
-
 
 # 4. Docker网络
 
