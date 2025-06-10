@@ -91,9 +91,9 @@ sudo systemctl status ssh
 ```
 # 修改 /etc/ssh/sshd_config 文件
 
-找到 #PermitRootLogin 一行 改成 PermitRootLogin yes ，也就是删掉前端的注释并做改后面的值为yes
+1、找到 #PermitRootLogin 一行 改成 PermitRootLogin yes ，也就是删掉前端的注释并做改后面的值为yes
 
-删掉#PasswordAuthentication yes 前面的 #
+2、删掉#PasswordAuthentication yes 前面的 #
 
 # 重启 ssh 服务
 sudo service ssh restart
@@ -104,13 +104,26 @@ sudo service ssh restart
 ```
 并不是说原生debian是不支持ll命令，而是因为ll本身就是别名命令。
 别名可以在bashrc上追加再应用即可，一行搞定：
-echo "alias ll='ls -l --color=auto'" >> ~/.bashrc && source ~/.bashrc
+echo "alias ll='ls -la --color=auto'" >> ~/.bashrc && source ~/.bashrc
 ```
 
-支持复制
+## vim支持复制
 
 ```
-sudo apt install vim-gtk3
+# 检查剪贴板支持
+vim --version | grep clipboard
+# 如果显示 +clipboard 则支持，若显示 -clipboard 需要重装vim
+sudo apt install vim-gtk3  # Debian 10+ 使用这个名称
+```
+
+## 安装curl
+
+```
+# 安装 curl（默认版本）
+sudo apt install curl -y
+
+# 验证安装
+curl --version
 ```
 
 
@@ -136,6 +149,9 @@ rm /opt/fastgithub_linux-x64.zip
 export http_proxy=http://127.0.0.1:38457
 export https_proxy=http://127.0.0.1:38457
 
+#一条命令执行
+echo -e "export http_proxy=http://127.0.0.1:38457\nexport https_proxy=http://127.0.0.1:38457" >> ~/.bashrc && source ~/.bashrc
+
 # 修改完 $HOME/.bashrc 之后，执行以下命令：
 source ~/.bashrc
 ```
@@ -144,7 +160,7 @@ source ~/.bashrc
 
 1、下载安装包
 
-你可以从 Go 语言官方网站下载对应的 Go 安装包和源码包。以下命令将下载 go1.24.0 安装包：
+可以从 Go 语言官方网站下载对应的 Go 安装包和源码包。以下命令将下载 go1.24.0 安装包：
 
 ```shell
 $ wget -P /tmp/ https://go.dev/dl/go1.24.0.linux-amd64.tar.gz
@@ -159,17 +175,6 @@ $ mkdir -p $HOME/go
 $ tar -xvzf /tmp/go1.24.0.linux-amd64.tar.gz -C $HOME/go
 $ mv $HOME/go/go $HOME/go/go1.24.0
 ```
-
-`tar` 命令解析：
-
-- `tar`: 是用于打包和解包文件的工具；
-- `-xvzf`: 是 tar 命令的选项，含义如下：
-  - `x`: 表示解压缩文件；
-  - `v`: 表示显示详细的解压缩过程；
-  - `z`: 表示使用gzip解压缩；
-  - `f`: 表示后面跟着要解压的文件名。
-- `go1.24.0.linux-amd64.tar.gz`: 是待解压缩的压缩文件名。
-- `-C $HOME/go`: 表示解压缩后的文件要放到指定目录 `$HOME/go` 目录中。
 
 3、配置 `$HOME/.bashrc` 文件
 
@@ -187,5 +192,34 @@ export GOPROXY=https://goproxy.cn,direct # 安装 Go 模块时，代理服务器
 export GOPRIVATE=
 export GOSUMDB=off # 关闭校验 Go 依赖包的哈希值
 EOF
+
+# 修改完 $HOME/.bashrc 之后，执行以下命令：
+source ~/.bashrc
+```
+
+
+
+## Git安装与配置
+
+```
+# 安装 Git（默认版本）
+sudo apt install git -y
+
+# 验证安装
+git --version
+# 应输出类似：git version 2.39.2
+
+# 设置用户名（全局）
+git config --global user.name "debian-eden"
+
+# 设置邮箱（全局）
+git config --global user.email "2660996862@example.com"
+
+# 查看配置
+git config --list
+
+# 生成密钥，总共三次需要输入的，你都直接三次回车就好！
+ssh-keygen -t rsa -C "2660996862@example.com"
+# 生成后，会在当前用户的目录下，生成一个.ssh隐藏目录，目录中会有【id_rsa】和【id_rsa.pub】两个文件，一个是私钥，一个是公钥
 ```
 
