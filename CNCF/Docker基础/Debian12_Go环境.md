@@ -223,3 +223,73 @@ ssh-keygen -t rsa -C "2660996862@example.com"
 # 生成后，会在当前用户的目录下，生成一个.ssh隐藏目录，目录中会有【id_rsa】和【id_rsa.pub】两个文件，一个是私钥，一个是公钥
 ```
 
+
+
+## VSCode远程调试
+
+在 VS Code 中通过 **Remote-SSH** 连接到 Debian 12 服务器后调试 Go 程序，需要配置远程调试环境。以下是分步指南：
+
+```shell
+# 必需组件
+sudo apt update
+sudo apt install -y delve gcc
+
+# 检查安装
+dlv version
+# 如果未安装，使用go安装
+go install github.com/go-delve/delve/cmd/dlv@latest
+```
+
+在服务器启动 Delve 调试器
+
+```shell
+# 编译并启动调试（在服务器上执行）
+cd ~/your-project
+dlv debug ./cmd/fg-apiserver/main.go --headless --listen=:2345 --api-version=2 -- \
+  -c configs/fg-apiserver.yaml
+```
+
+配置 VS Code `launch.json`
+
+```json
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Remote Attach",
+            "type": "go",
+            "request": "attach",
+            "mode": "remote",
+            "remotePath": "/root/golang/src/github.com/onexstack/fastgo", // 服务器上的项目路径
+            "port": 2345,
+            "host": "192.168.220.151",
+        }
+    ]
+}
+```
+
+在 VS Code 中：
+
+- 选择调试配置 **「Remote Attach」**
+- 按 `F5` 开始调试
+- 使用断点、变量查看等功能
+
+**常见问题解决**
+
+问题1：连接被拒绝
+
+- 确认服务器防火墙放行端口：
+
+  ```
+  sudo ufw allow 2345
+  ```
+
+- 检查 Delve 是否正在运行：
+
+  ```
+  netstat -tulnp | grep 2345
+  ```
+
+问题2：源码不匹配
+
+- 确保 `remotePath` 与服务器路径完全一致
