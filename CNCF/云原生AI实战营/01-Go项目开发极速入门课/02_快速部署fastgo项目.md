@@ -28,7 +28,7 @@
 
 安装命令如下：
 
-```
+```shell
 $ sudo apt install -y mariadb-server mariadb-client
 ```
 
@@ -36,7 +36,7 @@ $ sudo apt install -y mariadb-server mariadb-client
 
 启动命令如下：
 
-```
+```shell
 $ sudo systemctl enable mariadb
 $ sudo systemctl start mariadb
 $ sudo systemctl status mariadb
@@ -46,7 +46,7 @@ $ sudo systemctl status mariadb
 
 初始化命令如下：
 
-```
+```shell
 $ sudo mysqladmin -uroot password 'fastgo1234'
 ```
 
@@ -58,7 +58,7 @@ $ sudo mysqladmin -uroot password 'fastgo1234'
 
 创建命令如下：
 
-```
+```shell
 $ mysql -h127.0.0.1 -P3306 -uroot -p'fastgo1234'
 > grant all on fastgo.* TO fastgo@127.0.0.1 identified by 'fastgo1234';
 > flush privileges;

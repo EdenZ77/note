@@ -6,7 +6,7 @@
 
 在第六步换源操作时，使用下面的操作即可，需要禁用CD/DVD源
 
-```
+```shell
 # 1. 编辑 sources.list
 sudo vi /etc/apt/sources.list
 
@@ -28,7 +28,7 @@ sudo apt install -y vim
 
 额外建议：优化您的 sources.list；修改后的完整 `sources.list` 建议：
 
-```
+```shell
 主要改进：
 1、添加了 contrib 和 non-free 仓库：包含更多软件
 2、移除了 CD/DVD 源：避免安装时要求插入光盘
@@ -75,24 +75,23 @@ vim --version
 
 1、Debian12配置ssh服务器
 
-```
+```shell
 # 1.1安装ssh安装ssh-server
 sudo apt install openssh-server
 # 1.2启动ssh
 sudo systemctl start ssh
 # 1.3启用ssh
 sudo systemctl enable ssh
-# 1.4查看ssh状态 
+# 1.4查看ssh状态
 sudo systemctl status ssh
 ```
 
 2、打开 root 远程登录
 
-```
+```shell
 # 修改 /etc/ssh/sshd_config 文件
 
 1、找到 #PermitRootLogin 一行 改成 PermitRootLogin yes ，也就是删掉前端的注释并做改后面的值为yes
-
 2、删掉#PasswordAuthentication yes 前面的 #
 
 # 重启 ssh 服务
@@ -101,15 +100,15 @@ sudo service ssh restart
 
 ## 支持ll命令
 
-```
-并不是说原生debian是不支持ll命令，而是因为ll本身就是别名命令。
-别名可以在bashrc上追加再应用即可，一行搞定：
+```shell
+# 并不是说原生debian是不支持ll命令，而是因为ll本身就是别名命令。
+# 别名可以在bashrc上追加再应用即可，一行搞定：
 echo "alias ll='ls -la --color=auto'" >> ~/.bashrc && source ~/.bashrc
 ```
 
 ## vim支持复制
 
-```
+```shell
 # 检查剪贴板支持
 vim --version | grep clipboard
 # 如果显示 +clipboard 则支持，若显示 -clipboard 需要重装vim
@@ -118,7 +117,7 @@ sudo apt install vim-gtk3  # Debian 10+ 使用这个名称
 
 ## 安装curl
 
-```
+```shell
 # 安装 curl（默认版本）
 sudo apt install curl -y
 
@@ -201,7 +200,7 @@ source ~/.bashrc
 
 ## Git安装与配置
 
-```
+```shell
 # 安装 Git（默认版本）
 sudo apt install git -y
 
