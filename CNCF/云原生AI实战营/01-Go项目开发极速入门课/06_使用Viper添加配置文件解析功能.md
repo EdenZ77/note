@@ -64,6 +64,7 @@ func NewFastGOCommand() *cobra.Command {
     }
 
     // 初始化配置函数，在每个命令运行时调用
+    // 在 Cobra 解析命令行参数后，执行 RunE 前自动调用
     cobra.OnInitialize(onInitialize)
 
     // cobra 支持持久性标志(PersistentFlag)，该标志可用于它所分配的命令以及该命令下的每个子命令
