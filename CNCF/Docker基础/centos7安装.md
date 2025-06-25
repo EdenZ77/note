@@ -98,7 +98,7 @@
 
 ### 静态化
 
-![image-20220331210103082](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220331210103082.png)
+<img src="https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220331210103082.png" alt="image-20220331210103082" style="zoom:50%;" />
 
 
 
@@ -144,6 +144,22 @@ nameserver fe80::1%enp0s3
 nameserver 8.8.8.8
 search localdomain
 ```
+
+同时，切换到国内镜像源（推荐）
+
+```
+# 备份原有源配置
+sudo mv /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.bak
+
+# 下载阿里云镜像源（CentOS 7）
+sudo curl -o /etc/yum.repos.d/CentOS-Base.repo http://mirrors.aliyun.com/repo/Centos-7.repo
+
+# 清理缓存并重建
+sudo yum clean all
+sudo yum makecache  
+```
+
+
 
 # 3. VMware克隆与快照
 
