@@ -1,0 +1,18 @@
+# dns-demo.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dns-demo
+spec:
+  containers:
+    - name: dnsutils
+      image: cnych/jessie-dnsutils:1.3
+      command:
+        - sleep
+        - "infinity"
+      imagePullPolicy: IfNotPresent
+  restartPolicy: Always
+  dnsConfig:
+    options:
+      - name: ndots
+        value: "1"

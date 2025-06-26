@@ -1,0 +1,21 @@
+# nginx-vpa-test.yaml
+apiVersion: autoscaling.k8s.io/v1beta2
+kind: VerticalPodAutoscaler
+metadata:
+  name: nginx-vpa-test
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: vpa-demo
+  updatePolicy:
+    updateMode: "Off" # 必须带双引号
+  resourcePolicy:
+    containerPolicies:
+      - containerName: nginx
+        minAllowed:
+          cpu: 250m
+          memory: 100Mi
+        maxAllowed:
+          cpu: 2000m
+          memory: 2048Mi

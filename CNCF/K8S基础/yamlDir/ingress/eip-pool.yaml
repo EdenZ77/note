@@ -1,0 +1,9 @@
+apiVersion: network.kubesphere.io/v1alpha2
+kind: Eip
+metadata:
+  name: eip-pool
+spec:
+  address: 196.168.220.10-196.168.220.30
+  protocol: layer2
+  disable: false
+  interface: ens33

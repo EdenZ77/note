@@ -1,0 +1,23 @@
+# vpa-demo.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vpa-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vpa
+  template:
+    metadata:
+      labels:
+        app: vpa
+    spec:
+      containers:
+        - image: nginx
+          name: nginx
+          resources:
+            requests:
+              cpu: 20m
+              memory: 25Mi
+
