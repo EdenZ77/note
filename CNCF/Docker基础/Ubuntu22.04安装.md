@@ -79,3 +79,75 @@ sudo apt install curl -y
 # 验证安装
 curl --version
 ```
+
+
+
+## 桌面版关闭GUI
+
+
+
+```shell
+# 永久关闭
+sudo systemctl set-default multi-user.target
+
+# 永久开启
+sudo systemctl set-default graphical.target
+
+# 修改后重启
+reboot
+```
+
+
+
+
+
+## 静态IP
+
+你有可能想固定机器的IP地址，编辑`/etc/netplan`下的`xxx.yaml`文件，如果只有一张网卡，就只有一个文件
+
+```shell
+root@master:/etc/netplan# ll
+总计 20
+drwxr-xr-x   2 root root  4096  6月 27 13:36 ./
+drwxr-xr-x 130 root root 12288  6月 27 11:05 ../
+-rw-------   1 root root   537  6月 27 13:36 01-network-manager-all.yaml
+
+# 原始内容如下：
+root@node2:/etc/netplan# cat 01-network-manager-all.yaml
+# Let NetworkManager manage all devices on this system
+network:
+  version: 2
+  renderer: NetworkManager
+
+
+# 修改为如下内容：
+network:
+  version: 2
+  renderer: NetworkManager  # 桌面版必须保留此行
+  ethernets:
+    ens33: # 要固定的网卡名
+      dhcp4: false # false是关闭自动获取地址，true是开启
+      addresses:
+        - 192.168.220.152/24 # 你要固定的IP地址
+      routes:                   
+        - to: default           # 表示默认路由
+          via: 192.168.220.2    # 网关地址
+      nameservers:
+        addresses: # DNS地址，可以有多个
+          - 223.5.5.5 # 阿里DNS
+          - 8.8.8.8 # 谷歌DNS
+          
+# 改完文件后应用更改：
+netplan apply
+
+# 有可能有如下警告：
+root@master:/etc/netplan# netplan apply
+
+** (generate:12063): WARNING **: 13:38:06.306: Permissions for /etc/netplan/01-network-manager-all.yaml are too open. Netplan configuration should NOT be accessible by others.
+# Netplan 要求配置文件权限必须为 600（仅 root 可读写），禁止其他用户访问。若权限设置为 644（其他用户可读）或 777（完全开放），则会触发警告
+
+# 修改配置文件权限
+sudo chmod 600 /etc/netplan/01-network-manager-all.yaml  # 仅 root 可读写
+
+```
+
