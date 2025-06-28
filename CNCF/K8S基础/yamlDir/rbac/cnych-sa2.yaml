@@ -1,6 +1,0 @@
-# cnych-sa2.yaml
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: cnych-sa2
-  namespace: kube-system

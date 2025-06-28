@@ -1,9 +1,0 @@
-# cnych-token.yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: cnych-sec
-  namespace: kube-system
-  annotations:
-    kubernetes.io/service-account.name: cnych-sa
-type: kubernetes.io/service-account-token

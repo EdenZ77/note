@@ -1,9 +1,0 @@
-# ip-pool.yaml
-apiVersion: metallb.io/v1beta1
-kind: IPAddressPool
-metadata:
-  name: ip-pool
-  namespace: metallb-system
-spec:
-  addresses:
-    - 192.168.220.10-192.168.220.30 # 分配给LB的IP池，与节点处于同一网段

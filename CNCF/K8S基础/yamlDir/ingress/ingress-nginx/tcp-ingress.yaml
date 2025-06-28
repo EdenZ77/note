@@ -1,9 +1,0 @@
-# tcp-ingress.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: ingress-nginx-tcp
-  namespace: ingress-nginx
-data:
-  "27018": default/mongo:27017
-
