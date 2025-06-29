@@ -95,8 +95,9 @@ yum -y install docker-ce docker-ce-cli containerd.io  #由于repo中默认只开
 
 设置一下阿里云镜像加速器（此步在安装完成之后设置！）如果直接从docker hub中拉取镜像的话因为服务器在国外就很慢，设置为国内镜像显然要快很多。
 
-```
+```shell
 sudo mkdir -p /etc/docker
+# 阿里云的镜像似乎不行了
 sudo tee /etc/docker/daemon.json <<-'EOF'
 {
   "registry-mirrors": ["https://atckcdf3.mirror.aliyuncs.com"]
@@ -104,6 +105,13 @@ sudo tee /etc/docker/daemon.json <<-'EOF'
 EOF
 sudo systemctl daemon-reload
 sudo systemctl restart docker
+
+# 可换用daocloud的镜像，但是还是会存在一些镜像无法拉取
+sudo tee /etc/docker/daemon.json <<-'EOF'
+{
+  "registry-mirrors": ["https://docker.m.daocloud.io"]
+}
+EOF
 ```
 
 启动并加入开机启动
