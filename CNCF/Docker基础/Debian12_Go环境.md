@@ -291,7 +291,3 @@ dlv debug ./cmd/fg-apiserver/main.go --headless --listen=:2345 --api-version=2 -
   ```
   netstat -tulnp | grep 2345
   ```
-
-问题2：源码不匹配
-
-- 确保 `remotePath` 与服务器路径完全一致
