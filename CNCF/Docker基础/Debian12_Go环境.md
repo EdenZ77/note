@@ -229,10 +229,6 @@ ssh-keygen -t rsa -C "2660996862@example.com"
 在 VS Code 中通过 **Remote-SSH** 连接到 Debian 12 服务器后调试 Go 程序，需要配置远程调试环境。以下是分步指南：
 
 ```shell
-# 必需组件
-sudo apt update
-sudo apt install -y delve gcc
-
 # 检查安装
 dlv version
 # 如果未安装，使用go安装
@@ -246,6 +242,13 @@ go install github.com/go-delve/delve/cmd/dlv@latest
 cd ~/your-project
 dlv debug ./cmd/fg-apiserver/main.go --headless --listen=:2345 --api-version=2 -- \
   -c configs/fg-apiserver.yaml
+  
+# debug: 子命令，表示编译并调试指定的 Go 程序
+# --headless 无头模式，不启动交互式终端，作为后台服务运行
+# --listen=:2345 监听端口，在 2345 端口监听调试连接
+# --api-version=2 API 版本，使用 Delve API 版本 2
+# 分隔符 -- 表示后续参数是传递给被调试程序的，而不是调试器本身
+# -c configs/fg-apiserver.yaml 这是传递给 fg-apiserver 程序的参数
 ```
 
 配置 VS Code `launch.json`
