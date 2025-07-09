@@ -291,3 +291,42 @@ dlv debug ./cmd/fg-apiserver/main.go --headless --listen=:2345 --api-version=2 -
   ```
   netstat -tulnp | grep 2345
   ```
+
+### 自动dlv
+
+其实也可以不用上面那种麻烦的方式，操作如下：
+
+```json
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch fg-apiserver",
+            "type": "go",
+            "request": "launch",
+            "mode": "debug",
+            "program": "${workspaceFolder}/cmd/fg-apiserver/main.go",
+            "args": ["-c", "configs/fg-apiserver.yaml"],
+            "cwd": "${workspaceFolder}",// Current Working Directory​​（当前工作目录）
+            "env": {
+                "GIN_MODE": "debug"  // 可选：设置环境变量
+            }
+        }
+    ]
+}
+```
+
+然后调试时选择该配置名即可，控制台的输出如下，可以看到也是使用了 dlv 的方式进行远程调试。
+
+```shell
+Starting: /root/golang/bin/dlv dap --listen=127.0.0.1:45101 --log-dest=3 from /root/golang/src/github.com/onexstack/fastgo/cmd/fg-apiserver
+DAP server listening at: 127.0.0.1:45101
+Type 'dlv help' for list of commands.
+2025/07/09 10:24:46 maxprocs: Leaving GOMAXPROCS=4: CPU quota undefined
+命令行参数: [/root/golang/src/github.com/onexstack/fastgo/cmd/fg-apiserver/__debug_bin2379856144 -c configs/fg-apiserver.yaml]
+else versionFlag: false
+[GIN-debug] [WARNING] Running in "debug" mode. Switch to "release" mode in production.
+ - using env:	export GIN_MODE=release
+ - using code:	gin.SetMode(gin.ReleaseMode)
+```
+
