@@ -4,15 +4,18 @@
 DNS报文格式：https://fasionchan.com/network/dns/packet-format/
 
 # DNS前置疑问
-## 为什么需要DNS解析域名为IP地址？
+**为什么需要DNS解析域名为IP地址？**
+
 网络通讯大部分是基于 TCP/IP 的，而 TCP/IP 是基于 IP 地址的，所以计算机在网络上进行通讯时只能识别如“202.96.134.133”之类的 IP 地址，而不能认识域名。我们无法记住10个以上 IP 地址的网站，所以我们访问网站时，更多的是在浏览器地址栏中输入域名，就能看到所需要的页面，这是因为有一个叫“DNS服务器”的计算机自动把我们的域名“翻译”成了相应的IP地址，然后调出 IP 地址所对应的网页。
 
-## 具体什么是DNS？
+**具体什么是DNS？**
+
 DNS( Domain Name System)是“域名系统”的英文缩写，它所提供的服务是用来将域名转换为 IP 地址的工作。DNS就是这样的一位“翻译官”，基本工作原理可用下图来表示。
 
 <img src="image/2024-03-05-16-15-05.png" style="zoom:50%;" />
 
-## DNS的过程？
+**DNS的过程？**
+
 DNS 是应用层协议，事实上它是为其他应用层协议工作的，包括不限于 HTTP 和 SMTP 以及 FTP，用于将用户提供的主机名解析为 IP 地址。
 
 具体过程如下：
@@ -23,12 +26,14 @@ DNS 是应用层协议，事实上它是为其他应用层协议工作的，包�
 4. 该 DNS 客户机最终会收到一份回答报文，其中包含有该主机名对应的 IP 地址
 5. 一旦该浏览器收到来自 DNS 的 IP 地址，就可以向该 IP 地址定位的 HTTP 服务器发起 TCP 连接
 
-## DNS服务的体系架构是怎样的？
+**DNS服务的体系架构是怎样的？**
+
 假设运行在用户主机上的某些应用程序（如 Web 浏览器或者邮件阅读器）需要将主机名转换为 IP 地址。这些应用程序将调用 DNS 的客户机端，并指明需要被转换的主机名，用户主机的 DNS 客户端接收到后，向网络中发送一个 DNS 查询报文。所有 DNS 请求和回答报文使用的 UDP 数据报经过端口53发送，经过若干 ms 到若干 s 的延时后，用户主机上的 DNS 客户端接收到一个提供所希望映射的 DNS 回答报文。这个查询结果则被传递到调用 DNS 的应用程序。因此，从用户主机上调用应用程序的角度看，DNS 是一个提供简单、直接的转换服务的黑盒子。但事实上，实现这个服务的黑盒子非常复杂，它由分布于全球的大量 DNS 服务器以及定义了 DNS 服务器与查询主机通信方式的应用层协议组成。
 
 使用分布式的层次数据库模式以及缓存方法来解决单点集中式的问题。
 
-## DNS为什么使用分布式集群的工作方式？
+**DNS为什么使用分布式集群的工作方式？**
+
 DNS 的一种简单的设计模式就是在因特网上只使用一个 DNS 服务器，该服务器包含所有的映射，在这种集中式的设计中，客户机直接将所有查询请求发往单一的 DNS 服务器，同时该 DNS 服务器直接对所有查询客户机做出响应，尽管这种设计方式非常诱人，但它不适用当前的互联网，因为当今的因特网有着数量巨大并且在持续增长的主机，这种集中式设计会有**单点故障**（嗝屁一个，全球着急），**通信容量**（上亿台主机发送的查询 DNS 报文请求，包括但不限于所有的 HTTP 请求，电子邮件报文服务器，TCP 长连接服务），**远距离的时间延迟**，**维护开销大**（因为所有的主机名-IP 映射都要在一个服务站点更新）等问题。
 
 # DNS层级关系
@@ -248,8 +253,6 @@ root@netbox [ ~ ]  ➜ cat /etc/resolv.conf
 nameserver 192.168.65.1
 ```
 关键字 `nameserver` 后面跟 DNS 缓存服务器地址，可以写多行配置多个 DNS 缓存服务器，以达到冗余效果。
-
-
 
 # DNS报文格式
 经过前面学习，我们知道查询一个域名，需要与 DNS 服务器进行通信。那么，DNS 通信过程大概是怎样的呢？DNS 是一个典型的 Client-Server 应用，客户端发起域名查询请求，服务端对请求进行应答：
@@ -647,7 +650,7 @@ qq.com.                 380     IN      A       123.150.76.218
 
 NS 记录，保存着负责该域解析的权威 DNS 服务器，记录值为 DNS 服务器的域名。
 
-以我的域名 `fasionchan.com` 为例，它在腾讯云 `dnspod` 上解析，我注册域名后需要配置 NS 记录，指向 `dnspod` 服务器，这个 NS 记录，最终会被同步到 `.com` 顶级域名服务器。
+以我的域名 `fasionchan.com` 为例，它在腾讯云 `dnspod` 上解析，我注册域名后需要配置 NS 记录，指向 `dnspod` 服务器，这个 NS 记录最终会被同步到 `.com` 顶级域名服务器。
 
 <img src="image/2024-03-05-18-08-39.png" style="zoom: 25%;" />
 
@@ -664,47 +667,6 @@ NS 记录，保存着负责该域解析的权威 DNS 服务器，记录值为 DN
 <img src="image/2024-03-05-18-09-05.png" style="zoom:25%;" />
 
 由此可见，NS 记录在 DNS 迭代查询中扮演着非常重要的角色。上级 DNS 服务器通过 NS 记录，找到下级 DNS 服务器，直到域名查询完毕。
-
-理论上，根域也需要 NS 记录，来指向全球的 13 台根域名服务器，那根域的 NS 记录维护在哪里呢？由于根服务器极少改动，所以可以通过配置的形式指定。客户端可以查询根域 NS 记录，DNS 缓存服务器会根据自己的配置进行回答：
-```sh
-root@netbox [ ~ ]  ➜ dig . NS
-
-; <<>> DiG 9.16.1-Ubuntu <<>> . NS
-;; global options: +cmd
-;; Got answer:
-;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 10652
-;; flags: qr rd ra; QUERY: 1, ANSWER: 13, AUTHORITY: 0, ADDITIONAL: 4
-
-;; OPT PSEUDOSECTION:
-; EDNS: version: 0, flags:; udp: 4000
-;; QUESTION SECTION:
-;.				IN	NS
-
-;; ANSWER SECTION:
-.			1767	IN	NS	h.root-servers.net.
-.			1767	IN	NS	l.root-servers.net.
-.			1767	IN	NS	k.root-servers.net.
-.			1767	IN	NS	f.root-servers.net.
-.			1767	IN	NS	b.root-servers.net.
-.			1767	IN	NS	d.root-servers.net.
-.			1767	IN	NS	m.root-servers.net.
-.			1767	IN	NS	i.root-servers.net.
-.			1767	IN	NS	c.root-servers.net.
-.			1767	IN	NS	g.root-servers.net.
-.			1767	IN	NS	e.root-servers.net.
-.			1767	IN	NS	j.root-servers.net.
-.			1767	IN	NS	a.root-servers.net.
-
-;; ADDITIONAL SECTION:
-h.root-servers.net.	2926	IN	A	198.97.190.53
-c.root-servers.net.	37	IN	A	192.33.4.12
-a.root-servers.net.	2217	IN	A	198.41.0.4
-
-;; Query time: 17 msec
-;; SERVER: 10.2.66.66#53(10.2.66.66)
-;; WHEN: Thu Apr 29 19:45:54 CST 2021
-;; MSG SIZE  rcvd: 300
-```
 
 ## TXT记录
 TXT 记录用来保存一些文本信息，这些信息可以用作配置，但不太常见，我们举个例子：
@@ -736,52 +698,64 @@ t-txt.fasionchan.com.	600	IN	TXT	"hello world"
 
 本节我们趁热打铁，安排一次实验——按迭代解析步骤来解析域名 `test.fasionchan.com` ，以此加深理解。
 
-迭代解析从 根域名服务器 开始，根服务器列表可以从 `root-servers.org` 上获取，也可以通过 `dig` 命令查询：
+迭代解析从 根域名服务器 开始，可以通过 `dig` 命令查询：
 
 ```sh
 # 查询 根域名 的NS（名称服务器）
-root@netbox [ ~ ]  ➜ dig . NS
+controlplane:~$ dig . NS
 
-; <<>> DiG 9.16.1-Ubuntu <<>> @10.2.66.66 . NS
-; (1 server found)
+; <<>> DiG 9.18.30-0ubuntu0.24.04.1-Ubuntu <<>> . NS
 ;; global options: +cmd
 ;; Got answer:
-;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 42791
-;; flags: qr rd ra; QUERY: 1, ANSWER: 13, AUTHORITY: 0, ADDITIONAL: 8
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 29969
+;; flags: qr rd ra ad; QUERY: 1, ANSWER: 13, AUTHORITY: 0, ADDITIONAL: 1
 
 ;; OPT PSEUDOSECTION:
-; EDNS: version: 0, flags:; udp: 4000
+; EDNS: version: 0, flags:; udp: 512
 ;; QUESTION SECTION:
-;.				IN	NS
+;.                              IN      NS
 
-;; ANSWER SECTION: # 回答节
-.			1700	IN	NS	k.root-servers.net.
-.			1700	IN	NS	m.root-servers.net.
-.			1700	IN	NS	l.root-servers.net.
-.			1700	IN	NS	b.root-servers.net.
-.			1700	IN	NS	g.root-servers.net.
-.			1700	IN	NS	f.root-servers.net.
-.			1700	IN	NS	d.root-servers.net.
-.			1700	IN	NS	e.root-servers.net.
-.			1700	IN	NS	i.root-servers.net.
-.			1700	IN	NS	a.root-servers.net.
-.			1700	IN	NS	h.root-servers.net.
-.			1700	IN	NS	j.root-servers.net.
-.			1700	IN	NS	c.root-servers.net.
+;; ANSWER SECTION:
+.                       87203   IN      NS      g.root-servers.net.
+.                       87203   IN      NS      e.root-servers.net.
+.                       87203   IN      NS      i.root-servers.net.
+.                       87203   IN      NS      b.root-servers.net.
+.                       87203   IN      NS      d.root-servers.net.
+.                       87203   IN      NS      l.root-servers.net.
+.                       87203   IN      NS      j.root-servers.net.
+.                       87203   IN      NS      k.root-servers.net.
+.                       87203   IN      NS      h.root-servers.net.
+.                       87203   IN      NS      c.root-servers.net.
+.                       87203   IN      NS      a.root-servers.net.
+.                       87203   IN      NS      f.root-servers.net.
+.                       87203   IN      NS      m.root-servers.net.
 
-;; ADDITIONAL SECTION: # 附加节，给出了对应的 IP
-k.root-servers.net.	3282	IN	A	193.0.14.129
-g.root-servers.net.	2845	IN	A	192.112.36.4
-d.root-servers.net.	118	IN	A	199.7.91.13
-e.root-servers.net.	494	IN	A	192.203.230.10
-a.root-servers.net.	1771	IN	A	198.41.0.4
-j.root-servers.net.	3197	IN	A	192.58.128.30
-c.root-servers.net.	1830	IN	A	192.33.4.12
+;; Query time: 20 msec
+;; SERVER: 8.8.8.8#53(8.8.8.8) (UDP)
+;; WHEN: Thu Jul 10 05:46:55 UTC 2025
+;; MSG SIZE  rcvd: 239
 
-;; Query time: 14 msec
-;; SERVER: 10.2.66.66#53(10.2.66.66)
-;; WHEN: Thu Apr 08 09:01:17 CST 2021
-;; MSG SIZE  rcvd: 364
+controlplane:~$ 
+controlplane:~$ dig a.root-servers.net. A
+
+; <<>> DiG 9.18.30-0ubuntu0.24.04.1-Ubuntu <<>> a.root-servers.net. A
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 57082
+;; flags: qr rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 512
+;; QUESTION SECTION:
+;a.root-servers.net.            IN      A
+
+;; ANSWER SECTION:
+a.root-servers.net.     259197  IN      A       198.41.0.4
+
+;; Query time: 21 msec
+;; SERVER: 8.8.8.8#53(8.8.8.8) (UDP)
+;; WHEN: Thu Jul 10 05:47:09 UTC 2025
+;; MSG SIZE  rcvd: 63
 ```
 
 根域名服务器总共有 13 台，编号从 A 到 M 。我们可以从中选择一台，比如 A ，它的 IP 地址是 `198.41.0.4` 。
