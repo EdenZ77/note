@@ -131,28 +131,19 @@ curl --version
 
 ## Github全局加速
 
-国内大部分服务器无法访问 github，或者即时能访问也是速度慢，时灵时不灵的。需要给 github 加速一下。
+国内大部分服务器无法访问 github，或者即时能访问也是速度慢，时灵时不灵的。所以需要给ssh增加代理：
 
 ```shell
-github地址：https://github.com/WangGithubUser/FastGitHub
+# 如果是虚拟机中增加，则需要使用与虚拟机同一网段的宿主机IP地址
+git config --global https.'https://github.com'.proxy "http://192.168.220.1:10809"
+git config --global http.'https://github.com'.proxy "http://192.168.220.1:10809"
 
-wget -c -O /opt/fastgithub_linux-x64.zip https://gitee.com/chcrazy/FastGithub/releases/download/2.1.4/fastgithub_linux-x64.zip
-unzip -d /opt /opt/fastgithub_linux-x64.zip
-rm /opt/fastgithub_linux-x64.zip
+git config --list
+git config --global --list
 
-
-/opt/fastgithub_linux-x64/fastgithub start
-/opt/fastgithub_linux-x64/fastgithub stop # 卸载服务
-
-# 手动修改 $HOME/.bashrc 文件，在 $HOME/.bashrc 添加以下代码：
-export http_proxy=http://127.0.0.1:38457
-export https_proxy=http://127.0.0.1:38457
-
-#一条命令执行
-echo -e "export http_proxy=http://127.0.0.1:38457\nexport https_proxy=http://127.0.0.1:38457" >> ~/.bashrc && source ~/.bashrc
-
-# 修改完 $HOME/.bashrc 之后，执行以下命令：
-source ~/.bashrc
+# 如果是window中增加
+git config --global https.'https://github.com'.proxy "http://127.0.0.1:10809"
+git config --global http.'https://github.com'.proxy "http://127.0.0.1:10809"
 ```
 
 ## Go安装
