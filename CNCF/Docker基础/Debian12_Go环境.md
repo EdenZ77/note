@@ -211,6 +211,8 @@ git config --list
 # 生成密钥，总共三次需要输入的，你都直接三次回车就好！
 ssh-keygen -t rsa -C "2660996862@example.com"
 # 生成后，会在当前用户的目录下，生成一个.ssh隐藏目录，目录中会有【id_rsa】和【id_rsa.pub】两个文件，一个是私钥，一个是公钥
+
+git config --global core.longpaths true # 解决 Git 中 'Filename too long' 的错误
 ```
 
 
