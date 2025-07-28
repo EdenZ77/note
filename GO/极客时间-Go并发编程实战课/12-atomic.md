@@ -107,57 +107,268 @@ Store 函数会把一个值存入到指定的 addr 地址中，即使在多处�
 
 ![](images/304127/478b665391766de77043ffeb0d6fff76.png)
 
-接下来，我以一个配置变更的例子，来演示Value类型的使用。这里定义了一个Value类型的变量config， 用来存储配置信息。
+# Value原理
 
-首先，我们启动一个 goroutine，然后让它随机 sleep 一段时间，之后就变更一下配置，并通过我们前面学到的Cond并发原语，通知其它的 reader 去加载新的配置。
+`Mutex`由**操作系统**实现，而`atomic`包中的原子操作则由**底层硬件**直接提供支持。在 CPU 实现的指令集里，有一些指令被封装进了`atomic`包，这些指令在执行的过程中是不允许中断（interrupt）的，因此原子操作可以在`lock-free`的情况下保证并发安全。
 
-接下来，我们启动一个 goroutine 等待配置变更的信号，一旦有变更，它就会加载最新的配置。
-
-通过这个例子，你可以了解到Value的Store/Load函数的使用，因为它只有这两个函数，只要掌握了它们的使用，你就完全掌握了Value类型。
+## 源码剖析
 
 ```go
-type Config struct {
-    NodeName string
-    Addr     string
-    Count    int32
+package atomic
+
+import (
+	"unsafe"
+)
+
+// A Value provides an atomic load and store of a consistently typed value.
+// The zero value for a Value returns nil from Load.
+// Once Store has been called, a Value must not be copied.
+//
+// A Value must not be copied after first use.
+type Value struct {
+	v any
 }
 
-func loadNewConfig() Config {
-    return Config{
-        NodeName: "北京",
-        Addr:     "10.77.95.27",
-        Count:    rand.Int31(),
-    }
+// efaceWords is interface{} internal representation.
+type efaceWords struct {
+	typ  unsafe.Pointer
+	data unsafe.Pointer
 }
-func main() {
-    var config atomic.Value
-    config.Store(loadNewConfig())
-    var cond = sync.NewCond(&sync.Mutex{})
 
-    // 设置新的config
-    go func() {
-        for {
-            time.Sleep(time.Duration(5+rand.Int63n(5)) * time.Second)
-            config.Store(loadNewConfig())
-            cond.Broadcast() // 通知等待着配置已变更
-        }
-    }()
+// Load returns the value set by the most recent Store.
+// It returns nil if there has been no call to Store for this Value.
+func (v *Value) Load() (val any) {
+	vp := (*efaceWords)(unsafe.Pointer(v))
+	typ := LoadPointer(&vp.typ)
+	if typ == nil || typ == unsafe.Pointer(&firstStoreInProgress) {
+		// First store not yet completed.
+		return nil
+	}
+	data := LoadPointer(&vp.data)
+	vlp := (*efaceWords)(unsafe.Pointer(&val))
+	vlp.typ = typ
+	vlp.data = data
+	return
+}
 
-    go func() {
-        for {
-            cond.L.Lock()
-            cond.Wait()                 // 等待变更信号
-            c := config.Load().(Config) // 读取新的配置
-            fmt.Printf("new config: %+v\n", c)
-            cond.L.Unlock()
-        }
-    }()
+// 使用firstStoreInProgress是为了在第一次存储过程中提供一个中间状态
+var firstStoreInProgress byte
 
-    select {}
+// Swap stores new into Value and returns the previous value. It returns nil if
+// the Value is empty.
+//
+// All calls to Swap for a given Value must use values of the same concrete
+// type. Swap of an inconsistent type panics, as does Swap(nil).
+func (v *Value) Swap(new any) (old any) {
+	if new == nil {
+		panic("sync/atomic: swap of nil value into Value")
+	}
+	vp := (*efaceWords)(unsafe.Pointer(v))
+	np := (*efaceWords)(unsafe.Pointer(&new))
+	for {
+		typ := LoadPointer(&vp.typ)
+		if typ == nil {
+			// Attempt to start first store.
+			// Disable preemption so that other goroutines can use
+			// active spin wait to wait for completion; and so that
+			// GC does not see the fake type accidentally.
+			runtime_procPin()
+			if !CompareAndSwapPointer(&vp.typ, nil, unsafe.Pointer(&firstStoreInProgress)) {
+				runtime_procUnpin()
+				continue
+			}
+			// Complete first store.
+			StorePointer(&vp.data, np.data)
+			StorePointer(&vp.typ, np.typ)
+			runtime_procUnpin()
+			return nil
+		}
+		if typ == unsafe.Pointer(&firstStoreInProgress) {
+			// First store in progress. Wait.
+			// Since we disable preemption around the first store,
+			// we can wait with active spinning.
+			continue
+		}
+		// First store completed. Check type and overwrite data.
+		if typ != np.typ {
+			panic("sync/atomic: swap of inconsistently typed value into Value")
+		}
+		op := (*efaceWords)(unsafe.Pointer(&old))
+		op.typ, op.data = np.typ, SwapPointer(&vp.data, np.data)
+		return old
+	}
+}
+
+// CompareAndSwap executes the compare-and-swap operation for the Value.
+//
+// All calls to CompareAndSwap for a given Value must use values of the same
+// concrete type. CompareAndSwap of an inconsistent type panics, as does
+// CompareAndSwap(old, nil).
+func (v *Value) CompareAndSwap(old, new any) (swapped bool) {
+	if new == nil {
+		panic("sync/atomic: compare and swap of nil value into Value")
+	}
+	vp := (*efaceWords)(unsafe.Pointer(v))
+	np := (*efaceWords)(unsafe.Pointer(&new))
+	op := (*efaceWords)(unsafe.Pointer(&old))
+	if op.typ != nil && np.typ != op.typ {
+		panic("sync/atomic: compare and swap of inconsistently typed values")
+	}
+	for {
+		typ := LoadPointer(&vp.typ)
+		if typ == nil {
+			if old != nil {
+				return false
+			}
+			// Attempt to start first store.
+			// Disable preemption so that other goroutines can use
+			// active spin wait to wait for completion; and so that
+			// GC does not see the fake type accidentally.
+			runtime_procPin()
+			if !CompareAndSwapPointer(&vp.typ, nil, unsafe.Pointer(&firstStoreInProgress)) {
+				runtime_procUnpin()
+				continue
+			}
+			// Complete first store.
+			StorePointer(&vp.data, np.data)
+			StorePointer(&vp.typ, np.typ)
+			runtime_procUnpin()
+			return true
+		}
+		if typ == unsafe.Pointer(&firstStoreInProgress) {
+			// First store in progress. Wait.
+			// Since we disable preemption around the first store,
+			// we can wait with active spinning.
+			continue
+		}
+		// First store completed. Check type and overwrite data.
+		if typ != np.typ {
+			panic("sync/atomic: compare and swap of inconsistently typed value into Value")
+		}
+		// Compare old and current via runtime equality check.
+		// This allows value types to be compared, something
+		// not offered by the package functions.
+		// CompareAndSwapPointer below only ensures vp.data
+		// has not changed since LoadPointer.
+		data := LoadPointer(&vp.data)
+		var i any
+		(*efaceWords)(unsafe.Pointer(&i)).typ = typ
+		(*efaceWords)(unsafe.Pointer(&i)).data = data
+		if i != old {
+			return false
+		}
+		return CompareAndSwapPointer(&vp.data, data, np.data)
+	}
+}
+
+// 在Go的运行时中，runtime_procPin()和runtime_procUnpin()这两个函数分别用于“禁止”和“恢复”当前Goroutine的抢占调度（preemption）。
+// Disable/enable preemption, implemented in runtime.
+func runtime_procPin() int
+func runtime_procUnpin()
+
+```
+
+
+
+### Store方法详解
+
+```go
+// Store sets the value of the Value v to val.
+// All calls to Store for a given Value must use values of the same concrete type.
+// Store of an inconsistent type panics, as does Store(nil).
+// 如果两次Store的类型不同将会 panic
+// 如果写入nil，也会 panic
+func (v *Value) Store(val any) {
+	if val == nil {
+		panic("sync/atomic: store of nil value into Value")
+	}
+	vp := (*efaceWords)(unsafe.Pointer(v)) // Old value
+	vlp := (*efaceWords)(unsafe.Pointer(&val)) // New value
+	for {
+        // 通过LoadPointer这个原子操作拿到当前Value中存储的类型。下面根据这个类型的不同，分3种情况处理。
+		typ := LoadPointer(&vp.typ)
+        // 一个Value实例被初始化后，它的typ字段会被设置为指针的零值nil，所以先判断如果typ是nil 那就证明这个Value还未被写入过数据。
+		if typ == nil {
+			// Attempt to start first store.
+			// Disable preemption so that other goroutines can use
+			// active spin wait to wait for completion.
+            // 禁止抢占当前 Goroutine
+			runtime_procPin()
+			if !CompareAndSwapPointer(&vp.typ, nil, unsafe.Pointer(&firstStoreInProgress)) {
+				runtime_procUnpin()
+				continue
+			}
+			// Complete first store.
+			StorePointer(&vp.data, vlp.data)
+			StorePointer(&vp.typ, vlp.typ)
+			runtime_procUnpin()
+			return
+		}
+		if typ == unsafe.Pointer(&firstStoreInProgress) {
+			// First store in progress. Wait.
+			// Since we disable preemption around the first store,
+			// we can wait with active spinning.
+			continue
+		}
+		// First store completed. Check type and overwrite data.
+        // 第一次存储完成，检查上传写入的类型与这次要写入的类型是否一致，如果不一致则抛出异常
+		if typ != vlp.typ {
+			panic("sync/atomic: store of inconsistently typed value into Value")
+		}
+        // 如果类型一致，则直接把这次要写入的值赋值到data字段
+		StorePointer(&vp.data, vlp.data)
+		return
+	} // for
 }
 ```
 
-好了，关于标准库的atomic提供的函数，到这里我们就学完了。事实上，atomic包提供了非常好的支持各种平台的一致性的API，绝大部分项目都是直接使用它。接下来，我再给你介绍一下第三方库，帮助你稍微开拓一下思维。
+第一次存储时，需要同时设置类型指针（`typ`）和数据指针（`data`），这是一个两步操作，而这两个操作必须是原子性的。为了保证第一次存储的原子性，代码使用了一个标志：`firstStoreInProgress`。它是一个全局变量，类型为`byte`（占用1个字节，所以它的地址可以作为一个唯一的标识）。
+
+在`Store`方法中：
+
+1. 首先检查如果`typ`为 nil，意味着还没有任何存储操作完成（可能是第一次存储，也可能其他 goroutine 正在第一次存储）。
+2. 如果 `typ` 为 nil，当前 goroutine 会尝试通过 CAS（CompareAndSwap）操作将 `typ` 从 nil 设置为`unsafe.Pointer(&firstStoreInProgress)`。这个标志表示第一次存储正在进行中。
+   - 在 CAS 之前，调用了`runtime_procPin()`，这个函数的作用是禁止当前 goroutine 被抢占（preemption）。这样做的目的是为了确保在第一次存储的过程中，当前 goroutine 不会被挂起，从而避免其他 goroutine 长时间等待（因为第一次存储的完成需要当前 goroutine 来完成）。
+   - 如果 CAS 成功，那么当前 goroutine 就获得了完成第一次存储的权利，然后会设置`vp.data`和`vp.typ`（注意顺序：先设置 data，然后设置 typ）。最后解除抢占禁止（`runtime_procUnpin()`）。
+   - 如果 CAS 失败（意味着有别的 goroutine 已经抢先进入了第一次存储），那么当前 goroutine 会解除抢占禁止，然后重新循环（等待）。
+3. 在循环中，如果检测到`typ`等于`unsafe.Pointer(&firstStoreInProgress)`，说明当前有另一个 goroutine 正在进行第一次存储，因此当前 goroutine 需要等待（通过 `continue` 重新循环）。由于持有第一次存储的 goroutine 禁用了抢占，所以它不会被挂起，可以很快完成第一次存储。因此，等待是通过 active spinning（主动循环）进行的。
+
+那么为什么使用一个全局变量`firstStoreInProgress`的地址呢？
+
+- 我们需要一个非 nil 的唯一标识，用来表示第一次存储正在进行中。使用一个全局变量的地址可以保证这个标识的唯一性（在整个程序运行期间，这个变量的地址是唯一的）。
+- 这个标识的作用是临时占用`typ`字段，告诉其他 goroutine：第一次存储正在进行，请等待。当第一次存储完成时，`typ`会被替换成实际存储值的类型指针。
+
+
+
+通过禁止抢占，我们可以让这个存储过程尽快完成，从而减少其他等待的Goroutine自旋的时间。
+
+注意：虽然禁止抢占可以减少第一次存储操作期间的延迟，但它也会增加当前Goroutine长时间占用M（Machine，系统线程）的风险。因此，这两个函数之间的代码必须尽可能快地执行，不能有任何阻塞调用，也不能执行耗时操作。
+
+在Go语言中，一般只有在非常关键的短时间操作中才会使用`runtime_procPin()`，以避免影响调度和GC。
+
+## 抢占调度
+
+在Go语言中，调度器负责将多个Goroutine调度到系统线程（由调度器管理的线程，通常称为M）上运行。为了确保公平性和避免一个Goroutine长时间占用线程导致其他Goroutine“饿死”，Go调度器会进行抢占调度。
+
+1. 基本概念：
+   - 非抢占式调度：在非抢占式调度中，一旦一个任务开始执行，除非它主动让出执行权（比如调用阻塞操作、睡眠等），否则会一直运行到结束。
+   - 抢占式调度：调度器可以强制暂停当前正在执行的任务，将执行权交给其他任务。这样可以避免一个任务长时间占用资源。
+2. Go语言中的抢占：
+   - 在Go 1.2之前，调度器是协作式的，即Goroutine需要自己主动让出执行权（比如通过函数调用、通道操作等）。如果一个Goroutine陷入死循环且没有调用任何函数，那么它将永远占用线程，导致其他Goroutine无法执行。
+   - 从Go 1.2开始，调度器引入了部分抢占的机制。具体来说，调度器会在函数调用的序言（prologue）中检查一个标记，如果该标记被设置，则表示该Goroutine需要被抢占。但是，如果一个循环不调用任何函数，那么仍然不会被抢占。
+   - 在Go 1.14中，引入了基于信号的抢占。这样，即使Goroutine没有进行函数调用，调度器也能发送信号来抢占该Goroutine，从而保证调度的公平性。
+
+## runtime_procPin与runtime_procUnpin
+
+在Go的运行时中，`runtime_procPin()`和`runtime_procUnpin()`这两个函数分别用于“禁止”和“恢复”当前Goroutine的抢占调度（preemption）。
+
+`runtime_procPin()`：
+
+- 这个函数会将当前Goroutine“钉”在当前的P（Processor，Go调度器中的一个概念）上，从而禁止被抢占（preemption）。
+- 调用这个函数后，当前Goroutine会一直运行，不会被调度器挂起，除非它主动让出（比如调用某个阻塞函数）或者已经完成。
+- 在这个状态下，GC也会被延迟执行（因为GC需要STW（stop the world）或者需要调度器协作），所以需要谨慎使用，避免长时间占用。
+
+`runtime_procUnpin()`：这个函数与`runtime_procPin()`相反，它会释放之前设置的“钉住”状态，允许当前Goroutine被抢占。
 
 # 第三方库的扩展
 
@@ -169,12 +380,11 @@ func main() {
 
 其它的数据类型也和Bool类型相似，使用起来就像面向对象的编程一样，你可以看下下面的这段代码。
 
-```
+```go
     var running atomic.Bool
     running.Store(true)
     running.Toggle()
     fmt.Println(running.Load()) // false
-
 ```
 
 # 使用atomic实现Lock-Free queue
@@ -183,7 +393,7 @@ atomic常常用来实现Lock-Free的数据结构，这次我会给你展示一�
 
 Lock-Free queue最出名的就是 Maged M. Michael 和 Michael L. Scott 1996年发表的 [论文](https://www.cs.rochester.edu/u/scott/papers/1996_PODC_queues.pdf) 中的算法，算法比较简单，容易实现，伪代码的每一行都提供了注释，我就不在这里贴出伪代码了，因为我们使用Go实现这个数据结构的代码几乎和伪代码一样：
 
-```
+```go
 package queue
 import (
 	"sync/atomic"
@@ -256,7 +466,6 @@ func cas(p *unsafe.Pointer, old, new *node) (ok bool) {
 	return atomic.CompareAndSwapPointer(
 		p, unsafe.Pointer(old), unsafe.Pointer(new))
 }
-
 ```
 
 我来给你介绍下这里的主要逻辑。
@@ -267,28 +476,8 @@ func cas(p *unsafe.Pointer, old, new *node) (ok bool) {
 
 出队的时候移除一个节点，并通过CAS操作移动head指针，同时在必要的时候移动尾指针。
 
-# 总结
 
-好了，我们来小结一下。这节课，我们学习了atomic的基本使用函数，以及它提供的几种函数，包括Add、CAS、Swap、Load、Store、Value类型。除此之外，我还介绍了一些第三方库，并且带你实现了Lock-free queue。到这里，相信你已经掌握了atomic提供的各种函数，并且能够应用到实践中了。
 
-最后，我还想和你讨论一个额外的问题：对一个地址的赋值是原子操作吗？
 
-这是一个很有趣的问题，如果是原子操作，还要atomic包干什么？官方的文档中并没有特意的介绍，不过，在一些issue或者论坛中，每当有人谈到这个问题时，总是会被建议用atomic包。
-
-[Dave Cheney](https://dave.cheney.net/2018/01/06/if-aligned-memory-writes-are-atomic-why-do-we-need-the-sync-atomic-package) 就谈到过这个问题，讲得非常好。我来给你总结一下他讲的知识点，这样你就比较容易理解使用atomic和直接内存操作的区别了。
-
-在现在的系统中，write的地址基本上都是对齐的（aligned）。 比如，32位的操作系统、CPU以及编译器，write的地址总是4的倍数，64位的系统总是8的倍数（还记得WaitGroup针对64位系统和32位系统对state1的字段不同的处理吗）。对齐地址的写，不会导致其他人看到只写了一半的数据，因为它通过一个指令就可以实现对地址的操作。如果地址不是对齐的话，那么，处理器就需要分成两个指令去处理，如果执行了一个指令，其它人就会看到更新了一半的错误的数据，这被称做撕裂写（torn write） 。所以，你可以认为赋值操作是一个原子操作，这个“原子操作”可以认为是保证数据的完整性。
-
-但是，对于现代的多处理多核的系统来说，由于cache、指令重排，可见性等问题，我们对原子操作的意义有了更多的追求。在多核系统中，一个核对地址的值的更改，在更新到主内存中之前，是在多级缓存中存放的。这时，多个核看到的数据可能是不一样的，其它的核可能还没有看到更新的数据，还在使用旧的数据。
-
-多处理器多核心系统为了处理这类问题，使用了一种叫做内存屏障（memory fence或memory barrier）的方式。一个写内存屏障会告诉处理器，必须要等到它管道中的未完成的操作（特别是写操作）都被刷新到内存中，再进行操作。此操作还会让相关的处理器的CPU缓存失效，以便让它们从主存中拉取最新的值。
-
-atomic包提供的函数会提供内存屏障的功能，所以，atomic不仅仅可以保证赋值的数据完整性，还能保证数据的可见性，一旦一个核更新了该地址的值，其它处理器总是能读取到它的最新值。但是，需要注意的是，因为需要处理器之间保证数据的一致性，atomic的操作也是会降低性能的。
 
 ![](images/304127/53d55255fe851754659d90cbee814f13.jpg)
-
-# 思考题
-
-atomic.Value只有Load/Store函数，你是不是感觉意犹未尽？你可以尝试为Value类型增加 Swap和CompareAndSwap函数（可以参考一下 [这份资料](https://github.com/golang/go/issues/39351)）。
-
-欢迎在留言区写下你的思考和答案，我们一起交流讨论。如果你觉得有所收获，也欢迎你把今天的内容分享给你的朋友或同事。
