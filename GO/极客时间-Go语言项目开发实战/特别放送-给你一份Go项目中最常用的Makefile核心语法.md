@@ -1,6 +1,3 @@
-# 特别放送 | 给你一份Go项目中最常用的Makefile核心语法
-你好，我是孔令飞。今天，我们更新一期特别放送作为“加餐”，希望日常催更的朋友们食用愉快。
-
 在第 [**14讲**](https://time.geekbang.org/column/article/388920) 里 **，** 我强调了熟练掌握Makefile语法的重要性，还推荐你去学习陈皓老师编写的 [《跟我一起写 Makefile》 (PDF 重制版)](https://github.com/seisman/how-to-write-makefile)。也许你已经点开了链接，看到那么多Makefile语法，是不是有点被“劝退”的感觉？
 
 其实在我看来，虽然Makefile有很多语法，但不是所有的语法都需要你熟练掌握，有些语法在Go项目中是很少用到的。要编写一个高质量的Makefile，首先应该掌握一些核心的、最常用的语法知识。这一讲我就来具体介绍下Go项目中常用的Makefile语法和规则，帮助你快速打好最重要的基础。
@@ -9,21 +6,21 @@ Makefile文件由三个部分组成，分别是Makefile规则、Makefile语法�
 
 ## Makefile的使用方法
 
-在实际使用过程中，我们一般是先编写一个Makefile文件，指定整个项目的编译规则，然后通过Linux make命令来解析该Makefile文件，实现项目编译、管理的自动化。
+在实际使用过程中，我们一般是先编写一个 Makefile 文件，指定整个项目的编译规则，然后通过 Linux make 命令来解析该 Makefile 文件，实现项目编译、管理的自动化。
 
-默认情况下，make命令会在当前目录下，按照GNUmakefile、makefile、Makefile文件的顺序查找Makefile文件，一旦找到，就开始读取这个文件并执行。
+默认情况下，make 命令会在当前目录下，按照 GNUmakefile、makefile、Makefile 文件的顺序查找 Makefile 文件，一旦找到，就开始读取这个文件并执行。
 
-大多数的make都支持“makefile”和“Makefile”这两种文件名，但 **我建议使用“Makefile”**。因为这个文件名第一个字符大写，会很明显，容易辨别。make也支持 `-f` 和 `--file` 参数来指定其他文件名，比如 `make -f golang.mk` 或者 `make --file golang.mk` 。
+大多数的 make 都支持“makefile”和“Makefile”这两种文件名，但 **我建议使用“Makefile”**。因为这个文件名第一个字符大写，会很明显，容易辨别。make也支持 `-f` 和 `--file` 参数来指定其他文件名，比如 `make -f golang.mk` 或者 `make --file golang.mk` 。
 
 ## Makefile规则介绍
 
-学习Makefile，最核心的就是学习Makefile的规则。规则是Makefile中的重要概念，它一般由目标、依赖和命令组成，用来指定源文件编译的先后顺序。Makefile之所以受欢迎，核心原因就是Makefile规则，因为Makefile规则可以自动判断是否需要重新编译某个目标，从而确保目标仅在需要时编译。
+学习 Makefile，最核心的就是学习 Makefile 的规则。规则是 Makefile 中的重要概念，它一般由目标、依赖和命令组成，用来指定源文件编译的先后顺序。Makefile之所以受欢迎，核心原因就是Makefile规则，因为Makefile规则可以自动判断是否需要重新编译某个目标，从而确保目标仅在需要时编译。
 
 这一讲我们主要来看Makefile规则里的规则语法、伪目标和order-only依赖。
 
 ### 规则语法
 
-Makefile的规则语法，主要包括target、prerequisites和command，示例如下：
+Makefile的规则语法，主要包括 target、prerequisites 和 command，示例如下：
 
 ```
 target ...: prerequisites ...
@@ -33,35 +30,34 @@ target ...: prerequisites ...
 
 ```
 
-**target，** 可以是一个object file（目标文件），也可以是一个执行文件，还可以是一个标签（label）。target可使用通配符，当有多个目标时，目标之间用空格分隔。
+**target，** 可以是一个 object file（目标文件），也可以是一个执行文件，还可以是一个标签（label）。target 可使用通配符，当有多个目标时，目标之间用空格分隔。
 
-**prerequisites，** 代表生成该target所需要的依赖项。当有多个依赖项时，依赖项之间用空格分隔。
+**prerequisites，** 代表生成该 target 所需要的依赖项。当有多个依赖项时，依赖项之间用空格分隔。
 
-**command**，代表该target要执行的命令（可以是任意的shell命令）。
+**command**，代表该 target 要执行的命令（可以是任意的 shell 命令）。
 
-- 在执行command之前，默认会先打印出该命令，然后再输出命令的结果；如果不想打印出命令，可在各个command前加上 `@`。
-- command可以为多条，也可以分行写，但每行都要以tab键开始。另外，如果后一条命令依赖前一条命令，则这两条命令需要写在同一行，并用分号进行分隔。
-- 如果要忽略命令的出错，需要在各个command之前加上减号 `-`。
+- 在执行 command 之前，默认会先打印出该命令，然后再输出命令的结果；如果不想打印出命令，可在各个command 前加上 `@`。
+- command 可以为多条，也可以分行写，但每行都要以 tab 键开始。另外，如果后一条命令依赖前一条命令，则这两条命令需要写在同一行，并用分号进行分隔。
+- 如果要忽略命令的出错，需要在各个 command 之前加上减号 `-`。
 
-**只要targets不存在，或prerequisites中有一个以上的文件比targets文件新，那么command所定义的命令就会被执行，从而产生我们需要的文件，或执行我们期望的操作。**
+只要 targets 不存在，或 prerequisites 中有一个以上的文件比 targets 文件新，那么 command 所定义的命令就会被执行，从而产生我们需要的文件，或执行我们期望的操作。
 
-我们直接通过一个例子来理解下Makefile的规则吧。
+我们直接通过一个例子来理解下Makefile的规则。
 
-第一步，先编写一个hello.c文件。
+第一步，先编写一个 hello.c 文件。
 
-```
+```c
 #include <stdio.h>
 int main()
 {
   printf("Hello World!\n");
   return 0;
 }
-
 ```
 
 第二步，在当前目录下，编写Makefile文件。
 
-```
+```makefile
 hello: hello.o
 	gcc -o hello hello.o
 
@@ -70,95 +66,108 @@ hello.o: hello.c
 
 clean:
 	rm hello.o
-
 ```
 
-第三步，执行make，产生可执行文件。
+第三步，执行 make，产生可执行文件。
 
-```
+```shell
 $ make
 gcc -c hello.c
 gcc -o hello hello.o
 $ ls
 hello  hello.c  hello.o  Makefile
-
 ```
 
-上面的示例Makefile文件有两个target，分别是hello和hello.o，每个target都指定了构建command。当执行make命令时，发现hello、hello.o文件不存在，就会执行command命令生成target。
+执行流程分析（当输入 `make` 时）
 
-第四步，不更新任何文件，再次执行make。
+1. 确定默认目标：默认目标通常是Makefile中定义的第一个目标，在这个Makefile中，第一个目标是 `hello`。因此，运行 `make` 就等价于运行 `make hello`。
+2. 检查目标 `hello`：`make` 查看 `hello` 目标的依赖：它依赖于 `hello.o`。目标 `hello` 不是伪目标（它没有声明为 `.PHONY`），所以 `make` 会去检查磁盘上是否实际存在一个名为 `hello` 的文件（可执行文件）。同时，`make` 会比较时间戳来确定 `hello` 是否需要重新构建。
+3. 解析依赖 `hello.o`：
+   - 由于 `hello` 依赖于 `hello.o`，`make` 必须先处理 `hello.o`。
+   - `make` 会在当前的Makefile中查找是否有为`hello.o`这个目标显式定义的规则，它找到了规则 `hello.o: hello.c ...`。`hello.o` 也不是伪目标，所以 `make` 会检查磁盘上是否实际存在一个名为 `hello.o` 的目标文件。
+   - 同时，`make` 会比较 `hello.o` 文件的时间戳与其依赖项 `hello.c` 源文件的时间戳。
+4. 处理 `hello.o`（可能发生的步骤）：
+   - 情况A (需要构建 `hello.o`)：如果 `hello.o` 不存在，或者 `hello.c` 比 `hello.o` 更新（比如你刚修改了 `hello.c`，但还没有编译成 `hello.o`）。那么 `make` 会执行 `hello.o` 目标的命令：`gcc -c hello.c`。这条命令会编译 `hello.c` 源文件，生成 `hello.o` 目标文件。
+   - 情况B (不需要构建 `hello.o`)：如果 `hello.o` 已经存在，并且 `hello.c` 比 `hello.o` 更旧或时间相同（表示 `hello.c` 没有被修改过）。那么 `make` 会跳过 `hello.o` 目标的命令，认为它是最新的。控制台会显示类似 `'hello.o' is up to date.` 的信息（或者什么都不显示）。
+   - 情况C (错误情况)：如果 `hello.c` 根本不存在，`make` 会报错 `No rule to make target 'hello.c', needed by 'hello.o'.` 并终止执行。
+5. 回到 `hello` 目标（可能发生的步骤）：
+   - 情况A (需要构建 `hello`)：
+     - 如果 `hello`（可执行文件）不存在，或者刚刚生成的/现有的 `hello.o` 比 `hello` 更新（比如你刚编译了新的 `hello.o`，或者手动删除了 `hello`）。
+     - 那么 `make` 会执行 `hello` 目标的命令：`gcc -o hello hello.o`。
+     - 这条命令会将 `hello.o`（目标文件）链接成名为 `hello` 的可执行文件。
+   - 情况B (不需要构建 `hello`):
+     - 如果 `hello`（可执行文件）已经存在，并且 `hello.o` 比 `hello` 更旧或时间相同（表示依赖项 `hello.o` 没有被重新构建）。
+     - 那么 `make` 会跳过 `hello` 目标的命令，认为它是最新的。控制台会显示类似 `'hello' is up to date.` 的信息（或者什么都不显示）。
+6. 完成:
+   - 当处理完 `hello` 目标及其所有依赖后，`make` 结束运行。
 
-```
+注意：目标`clean`不会被默认执行，除非在命令行中显式指定`make clean`。另外，这个Makefile中，`clean`目标没有被声明为伪目标（.PHONY），所以如果当前目录下恰好有一个名为`clean`的文件，那么当我们执行`make clean`时，make会检查这个文件，如果它存在且没有依赖项比它新，则不会执行删除命令。因此，通常我们会将`clean`声明为伪目标。
+
+第四步，不更新任何文件，再次执行 make。
+
+```shell
 $ make
 make: 'hello' is up to date.
-
 ```
 
-当target存在，并且prerequisites都不比target新时，不会执行对应的command。
+当 target 存在，并且 prerequisites 都不比 target 新时，不会执行对应的 command。
 
-第五步，更新hello.c，并再次执行make。
+第五步，更新 hello.c，并再次执行 make。
 
-```
+```shell
 $ touch hello.c
 $ make
 gcc -c hello.c
 gcc -o hello hello.o
-
 ```
 
-当target存在，但 prerequisites 比 target 新时，会重新执行对应的command。
+当 target 存在，但 prerequisites 比 target 新时，会重新执行对应的 command。
 
 第六步，清理编译中间文件。
 
-Makefile一般都会有一个clean伪目标，用来清理编译中间产物，或者对源码目录做一些定制化的清理：
+Makefile一般都会有一个 clean 伪目标，用来清理编译中间产物，或者对源码目录做一些定制化的清理：
 
-```
+```shell
 $ make clean
 rm hello.o
-
 ```
 
-我们可以在规则中使用通配符，make 支持三个通配符：\*，?和~，例如：
+我们可以在规则中使用通配符，make 支持三个通配符：`\*`，`?` 和 `~`，例如：
 
-```
+```makefile
 objects = *.o
 print: *.c
     rm *.c
-
 ```
 
 ### 伪目标
 
 接下来我们介绍下Makefile中的伪目标。Makefile的管理能力基本上都是通过伪目标来实现的。
 
-在上面的Makefile示例中，我们定义了一个clean目标，这其实是一个伪目标，也就是说我们不会为该目标生成任何文件。因为伪目标不是文件，make 无法生成它的依赖关系，也无法决定是否要执行它。
+在上面的Makefile示例中，我们定义了一个clean目标，这其实是一个伪目标。通常情况下，我们需要显式地标识这个目标为伪目标。在Makefile中可以使用 `.PHONY` 来标识一个目标为伪目标：
 
-通常情况下，我们需要显式地标识这个目标为伪目标。在Makefile中可以使用 `.PHONY` 来标识一个目标为伪目标：
-
-```
+```makefile
 .PHONY: clean
 clean:
     rm hello.o
-
 ```
 
-伪目标可以有依赖文件，也可以作为“默认目标”，例如：
+伪目标可以有依赖项，也可以作为“默认目标”（通常，Makefile中定义的第一个目标就是默认目标。在Makefile中，默认目标（Default Goal）指的是当用户在命令行中简单地输入 `make` 而不指定任何具体目标时，Make工具会尝试去构建的那个目标），例如：
 
-```
+```makefile
 .PHONY: all
 all: lint test build
-
 ```
 
-因为伪目标总是会被执行，所以其依赖总是会被决议。通过这种方式，可以达到 **同时执行所有依赖项** 的目的。
+为了清晰和控制，我们通常明确创建一个名为 `all` 的目标作为默认目标。`all` 目标明确表示“构建整个项目所需的一切”。
 
 ### order-only依赖
 
-在上面介绍的规则中，只要prerequisites中有任何文件发生改变，就会重新构造target。但是有时候，我们希望 **只有当prerequisites中的部分文件改变时，才重新构造target。** 这时，你可以通过order-only prerequisites实现。
+在上面介绍的规则中，只要 prerequisites 中有任何文件发生改变，就会重新构造 target。但是有时候，我们希望只有当 prerequisites 中的部分文件改变时，才重新构造 target。 这时，你可以通过 order-only prerequisites 实现。
 
-order-only prerequisites的形式如下：
+order-only prerequisites 的形式如下：
 
-```
+```makefile
 targets : normal-prerequisites | order-only-prerequisites
     command
     ...
@@ -166,11 +175,11 @@ targets : normal-prerequisites | order-only-prerequisites
 
 ```
 
-在上面的规则中，只有第一次构造targets时，才会使用order-only-prerequisites。后面即使order-only-prerequisites发生改变，也不会重新构造targets。
+在上面的规则中，只有第一次构造 targets 时，才会使用 order-only-prerequisites，后面即使 order-only-prerequisites 发生改变，也不会重新构造 targets。
 
-只有normal-prerequisites中的文件发生改变时，才会重新构造targets。这里，符号“ \| ”后面的prerequisites就是order-only-prerequisites。
+只有 normal-prerequisites 中的文件发生改变时，才会重新构造 targets。这里，符号“ \| ”后面的 prerequisites 就是 order-only-prerequisites。
 
-到这里，我们就介绍了Makefile的规则。接下来，我们再来看下Makefile中的一些核心语法知识。
+接下来，我们再来看下Makefile中的一些核心语法知识。
 
 ## Makefile语法概览
 
@@ -182,37 +191,33 @@ Makefile支持Linux命令，调用方式跟在Linux系统下调用命令的方�
 
 我们看一个例子。现在有这么一个Makefile：
 
-```
+```makefile
 .PHONY: test
 test:
     echo "hello world"
-
 ```
 
 执行make命令：
 
-```
+```shell
 $ make test
 echo "hello world"
 hello world
-
 ```
 
 可以看到，make输出了执行的命令。很多时候，我们不需要这样的提示，因为我们更想看的是命令产生的日志，而不是执行的命令。这时就可以在命令行前加 `@`，禁止make输出所执行的命令：
 
-```
+```makefile
 .PHONY: test
 test:
     @echo "hello world"
-
 ```
 
 再次执行make命令：
 
-```
+```shell
 $ make test
 hello world
-
 ```
 
 可以看到，make只是执行了命令，而没有打印命令本身。这样make输出就清晰了很多。
@@ -221,10 +226,9 @@ hello world
 
 默认情况下，每条命令执行完make就会检查其返回码。如果返回成功（返回码为0），make就执行下一条指令；如果返回失败（返回码非0），make就会终止当前命令。很多时候，命令出错（比如删除了一个不存在的文件）时，我们并不想终止，这时就可以在命令行前加 `-` 符号，来让make忽略命令的出错，以继续执行下一条命令，比如：
 
-```
+```makefile
 clean:
     -rm hello.o
-
 ```
 
 ### 变量
