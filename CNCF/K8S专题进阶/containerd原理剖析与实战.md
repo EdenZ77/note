@@ -1,3 +1,167 @@
+
+
+# 第2章 初识容器运行时
+
+## 2.3 容器运行时概述
+
+### 2.3.2 OCI规范
+
+#### 镜像规范
+
+OCI 镜像规范是以 Docker 镜像规范 v2 为基础制定的，定义了镜像的主要格式和内容，用于镜像仓库存放和分发镜像。通过统一容器镜像格式，可以在跨容器平台对相同的镜像进行构建、分发及准备容器镜像。
+
+OCI 镜像规范定义的镜像主要包含以下4个部分。
+
+(1) 镜像索引(Image Index)：该部分是可选的，可以看作镜像清单(Image Manifest)的 Manifest(更高维度的清单聚合器)，是 JSON 格式的描述文件。Image Index 指向不同平台的 Manifest 文件，确保一个镜像可以跨平台使用，每个平台拥有不同的 Manifest 文件。
+
+(2) 镜像清单(Image Manifest)：是 JSON 格式的描述文件，包含镜像的配置(Configuration)和层文件(Layer)以及镜像的各种元数据信息，是组成一个容器镜像所需的所有组件的集合。
+
+(3) 镜像层(Image Layer)：是以 Layer 保存的文件系统，是镜像的主要内容，一般是压缩后的二进制数据文件格式。一个镜像有一个或多个 Layer 文件。每个 Layer 保存了与上层相比变化的部分（如在某一 Layer 上增加、修改和删除的文件等）。
+
+(4) 镜像配置(Image Configuration)：也是 JSON 格式的描述文件，保存了容器 rootfs 文件系统的层级信息，以及容器运行时需要的一些信息（如环境变量、工作目录、命令参数、mount列表）。内容同 nerdctl/docker inspect \<image id> 中看到的类似。
+
+镜像各部分之间通过摘要(digest)来相互引用，相关引用的关系如图2.15所示。
+
+<img src="image/image-20250729111829082.png" alt="image-20250729111829082" style="zoom:67%;" />
+
+下面对 OCI 镜像的各部分做一个详细的介绍。
+
+1) 镜像索引
+
+镜像索引是镜像中非必需的部分，该内容主要是区分镜像的不同架构平台（如Linux/AMD64、Linux/ARM64、Windows/AMD64等）。同一个镜像支持跨平台时，可根据镜像索引引用不同架构平台的镜像清单。在不同架构平台上使用同一个镜像时，可以使用相同的镜像名。
+
+镜像索引文件的示例如下。
+
+<img src="image/image-20250729112643273.png" alt="image-20250729112643273" style="zoom:67%;" />
+
+镜像索引文件中包含的参数如下：
+
+- schemaVersion：规范的版本号，为了与旧版本的Docker兼容，此处必须是2。
+- mediaType：媒体类型，如 application/vnd.oci.image.index.v1+json 表示 Index 文件，application/vnd.oci.image.manifest.v1+json 则表示 Manifest 文件。
+- manifests：表示 Manifest 的列表集合，是一个数组。
+- size：表示内容大小，单位为字节(byte)。
+- digest：摘要，OCI 镜像各个部分之间通过摘要来建立引用关系，命名格式是所引用内容的 sha256 值，如sha256:xxxxxxx，在镜像仓库或宿主机本地通过 digest 对镜像的各内容进行寻址。
+- platform：平台架构类型，包含操作系统类型、CPU架构类型等。其中包含两个必选的值，即 architecture 和 os。architecture 表示 CPU 架构类型，如ARM64、AMD64、ppc64le等。os 表示操作系统类型，如Linux、Windows等。
+- annotations：可选项，使用键-值对表示的附加信息。
+
+支持多平台架构的镜像在下载时，客户端解析镜像索引文件后，根据自身所在的平台架构和上述 platform 字段中的列表匹配，去拉取指定的 Manifest 文件。例如 Linux AMD64 架构下的客户端会拉取 Linux AMD64 架构对应的 Manifest 文件。
+
+
+
+2) 镜像清单
+
+镜像清单文件针对特定架构平台，主要包含镜像配置和镜像的多个层文件。
+
+镜像清单文件的示例如下。
+
+<img src="image/image-20250729140724275.png" alt="image-20250729140724275" style="zoom:67%;" />
+
+可以看到，镜像清单文件大部分字段与镜像索引文件类似，其中不同的字段解释如下：
+
+config：镜像配置文件的信息，其中 mediaType 的值为“application/vnd.oci.image.config.v1+json”，表示镜像配置类型。
+
+layers：表示镜像层列表，是镜像层文件信息的数组，其中mediaType为“application/vnd.oci.image.layer.v1.tar+gzip”表示的是 targz 类型的二进制数据信息。该示例中，总共包含3层，OCI 规范规定，镜像解压时，按照数组的 index 从第一个开始，即 layers[0] 为第一层，依次按顺序叠加解压，组成容器运行时的根文件系统 rootfs。其中的 size 表示层的大小，digest 表示层文件的摘要。
+
+
+
+3) 镜像层文件
+
+在镜像清单文件中可以看到，镜像是由多个层文件叠加成的。每个层文件在分发时均被打包成 tar 文件：在传输时通常通过压缩的方式，如 gzip 或 zstd 等，把每层的内容打包成单个 tar 文件，然后基于 sha256 生成 tar 文件对应的摘要，便于寻址与索引。用户通过镜像清单的 layers 字段可以看到，除了摘要，还包含 tar 文件压缩的格式，如 gzip，则对应的 mediaType 为“application/vnd.oci.image.layer.v1.tar+gzip”。
+
+镜像层文件解压后一层一层叠加组成镜像的根文件系统，上层文件叠加在父层文件之上，若上层文件与父层文件有重复，则覆盖父层文件。每个层文件都包含了对父层所做的更改，包含增加、删除、修改等类型。针对父层增加和修改的文件，镜像使用时直接使用上层的文件即可，父层的文件被覆盖不可见。对于删除的文件，会通过 whiteout 的方式进行标记。在生成镜像根文件系统时，如果识别到 whiteout 文件，则将父层的对应文件隐藏。
+
+
+
+4) 镜像配置
+
+镜像配置文件即镜像清单中的 config，也是一个 JSON 格式的文件，描述的是容器的根文件系统和容器运行时所使用的执行参数(CMD)，以及环境变量(ENV)、存储卷(volume)等。镜像配置中包含镜像的根文件系统(rootfs)、程序运行的配置(config)、构建历史(history)等。其中 rootfs 部分包含组成该根文件系统所需的镜像层文件的列表，这里的 diff_ids 要区别于镜像层文件 layer，diff_ids 对应的是解压后的文件夹，而 layer 则是压缩后的单个文件。
+
+当启动容器时，会根据镜像配置转换为对应的 OCI runtime bundle，进而通过 OCI runtime 启动容器。
+
+一个典型的镜像配置文件示例如下。
+
+<img src="image/image-20250729140834526.png" alt="image-20250729140834526" style="zoom:67%;" />
+
+<img src="image/image-20250729140851752.png" alt="image-20250729140851752" style="zoom:67%;" />
+
+镜像配置文件中包含的参数说明如下：
+
+- created：镜像创建时间。
+- author：镜像作者。
+- architecture：镜像支持的CPU架构。
+- os：镜像的操作系统。
+- config：镜像运行的一些参数，包括服务端口、环境变量、入口命令、命令参数、数据卷、用户和工作目录等。
+- rootfs：镜像的根文件系统信息，由多个解压后的层文件组成。
+- history：镜像的构建历史信息。
+
+
+
+#### 运行时规范
+
+OCI 运行时规范指定了容器运行所需要的配置、执行环境以及容器的生命周期，同时定义了低级容器运行时（如runc）的行为和配置接口。运行时规范主要包含以下两部分内容。
+
+- 运行时文件系统包：即 OCI runtime bundle，该部分定义了如何将容器涉及的文件及配置保存在本地文件系统上，内容包含容器启动所需的所有必要数据和元数据。
+- 容器生命周期：该部分定义了容器的运行状态和生命周期，以及 OCI 容器运行时运行容器的接口和规范。
+
+1) 运行时文件系统包
+
+一个标准的 OCI 运行时文件系统包包含容器运行所需要的所有信息，主要内容为 config.json 和 rootfs。运行时文件系统包在宿主机上的示例如下。
+
+<img src="image/image-20250729144149766.png" alt="image-20250729144149766" style="zoom:50%;" />
+
+config.json 位于文件系统包的根目录，是容器运行的配置文件，主要包含容器运行的进程，要注入的环境变量，要挂载的存储卷、设备，以及 rootfs 所在的文件路径等。下面是 config.json 的一个典型示例：
+
+> https://github.com/opencontainers/runtime-spec/blob/main/config.md
+
+下面对 config.json 中比较重要的字段进行说明：
+
+- ociVersion：当前社区最新支持的版本是1.0.1。
+- process：容器进程的执行信息，包含进程启动参数args、进程环境变量env，以及进程Linux capability设置等。
+- root：容器的根文件系统所在的目录，其中的 path 是 rootfs 相对于 OCI runtime bundle 路径的相对路径，也可以设置宿主机的绝对路径。
+- hostname：容器中的进程看到的主机名，在Linux中可以通过UTS namespace来改变容器进程的主机名。
+- mounts：容器中根目录下挂载的挂载点，运行时挂载点需按顺序依次挂载。其中挂载点 destination 是容器内的路径；source 可以是设备名，也可以是文件或文件夹，当是文件或文件夹时，为宿主机上的绝对路径或相对于OCI runtime bundle的相对路径。
+- hooks：容器生命周期的回调接口，可以在容器对应的生命周期执行特定的命令。当前OCI runtime-spec 1.0.1版本支持的 hook 点有 prestart、createRuntime、createContainer、startContainer、poststart、poststop。
+- linux：该字段为平台特定的配置，可以理解为 process 中的配置为全局配置。对于不同平台的配置则在不同的平台配置字段下，如 linux、windows、solaris、vm、zos 等。示例中展示的是 linux 平台。对于示例中的linux配置，resources 中对应的是 cgroup 限制（如cpu、memory等），devices 为挂载到容器中的设备。
+
+2) 容器生命周期
+
+OCI运行时规范规定了容器的运行状态，如图2.16所示。容器的运行状态主要有以下4种。
+
+<img src="image/image-20250729151327030.png" alt="image-20250729151327030" style="zoom:40%;" />
+
+(1) creating：容器正在创建中，是指调用了OCI容器运行时的 create 命令之后的阶段，该过程容器运行时会基于OCI runtime bundle来启动容器，如果启动成功，则进入 created 阶段。
+
+(2) created：该阶段是指调用了OCI容器运行时 create 之后的阶段，此时容器运行所需的所有依赖都已经准备好，但是进程还没有开始运行。
+
+(3) running：该阶段容器正在执行用户进程，即 config.json 中 process 字段指定的进程。该阶段进程还没有退出。
+
+(4) stopped：容器进程运行退出之后的状态。可以是进程正常运行完成，也可以是进程运行出错结束。该阶段容器的信息还保存在宿主机中，并没有被删除。当调用OCI容器运行时的 delete 命令之后，容器的信息才会被完全删除。
+
+同样，运行时规范对容器的状态也做了声明，状态信息可以通过调用OCI容器运行时的 state 命令来查询，如下所示。
+
+<img src="image/image-20250729151746843.png" alt="image-20250729151746843" style="zoom:50%;" />
+
+其中：
+
+- status 字段表示容器的运行状态。
+- bundle 字段表示容器的运行时文件系统包的路径。
+- pid 字段表示程序进程号。
+
+运行时规范中还定义了容器的生命周期回调(lifecycle hook)，允许用户在容器启动阶段的不同时间段执行相应的命令。当前支持的生命周期回调阶段有：
+
+- prestart：该回调发生在在调用容器运行时 create 命令之后，当容器所有依赖的环境准备好之后，pivot_root 操作之前。prestart 回调会在 createRuntime 回调之前执行。注意该回调已被弃用，推荐使用createRuntime、createContainer、startContainer。
+- createRuntime：该回调发生在调用容器运行时 create 命令之后，并在 prestart 回调之后被执行。该回调同样发生在 pivot_root 操作之前。
+- createContainer：该回调发生在调用容器运行时 create 命令之后，在 createRuntime 回调之后执行，同样发生在pivot_root 操作之前，但是该阶段Mount namespace已经被创建并被设置。
+- startContainer：该回调发生在容器启动阶段，在启动用户进程之前。
+- poststart：该回调发生在调用容器运行时 start 命令之后，启动用户进程之后会发生该调用，之后OCI容器运行时返回 start 的结果。
+- poststop：该回调发生在调用容器运行时 delete 命令之后，在 delete 命令返回之前。
+
+> 注意：关于运行时规范，可以在其官网 https://github.com/opencontainers/runtime-spec 了解更多详情。
+
+#### 分发规范
+
+
+
 # 第3章 使用containerd
 
 containerd 作为一个高级容器运行时，简单来说，是一个守护进程，在单个主机上管理完整的容器生命周期，包括创建、启动、停止容器以及存储镜像、配置挂载、配置网络等。
