@@ -222,6 +222,8 @@ Device Plugin: Kubernets提供的一种设备插件框架，通过该接口可�
 
 ## 4.2 containerd与CRI Plugin
 
+### containerd中的CRI Plugin
+
 CRI Plugin 是 Kubernetes 容器运行时接口 CRI 的具体实现，在 containerd 1.0 版本之前是作为独立的二级制形式存在的（GitHub地址为https://github.com/containerd/cri，该仓库已于2022年3月9日归档，当前为只读状态）。如图4.17所示，它通过 gRPC 请求分别与 kubelet 和 containerd 交互。
 
 <img src="image/image-20250723154555690.png" alt="image-20250723154555690" style="zoom:67%;" />
@@ -247,3 +249,35 @@ CRI Plugin 插件实现了 kubelet CRI 中的 ImageService 和 RuntimeService，
 (5) CRI Plugin 最终通过 containerd client sdk 调用 containerd 的接口创建容器，并在 pod 所在的Cgroups和namespace中启动容器。
 
 经过上述过程之后，pod 和 pod 内的容器就正常启动了。
+
+### CRI Plugin中的重要配置
+
+CRI Plugin作为containerd中的插件，同样是通过 containerd configuration 配置的。containerd configuration路径为/etc/containerd/config.toml。
+
+首先来看CRI Plugin的配置项。通过 containerd config default 可以查看containerd中默认的全部配置项，下面看其中CRI Plugin插件的配置。
+
+```toml
+
+```
+
+CRI Plugin 插件的配置基本上是containerd中最复杂的配置了，可以看到 CRI Plugin 的全局配置项在[plugins."io.containerd.grpc.v1.cri"] 中，按照功能模块分为以下几个部分。
+
+(1) CNI 容器网络配置，该配置在 [plugins."io.containerd.grpc.v1.cri".cni] 项目下，主要是 cni 插件的路径、conf 模板等。
+
+(2) CRI 中 containerd 的配置，如各种 runtime 配置、默认的 runtime 配置、默认的 snapshotter 等，该配置在[plugins."io.containerd.grpc.v1.cri".containerd] 项目下。
+
+(3) CRI 中的镜像和仓库配置，该配置在 [plugins."io.containerd.grpc.v1.cri".image_decryption] 和[plugins."io.containerd.grpc.v1.cri".registry] 项目下。
+
+> 注意：CRI Plugin 的配置项仅仅作用于 CRI Plugin 插件，对于通过其他方式的调用，如ctr、nerdctl、Docker等，均不起作用。
+
+下面介绍containerd中的几项重要配置：Cgroup Driver配置、snapshotter配置、RuntimeClass配置、镜像仓库配置、镜像解密配置以及CNI配置。
+
+
+
+# 第5章 containerd与容器网络
+
+
+
+
+
+# 第6章 containerd与容器存储
