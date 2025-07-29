@@ -183,13 +183,13 @@ targets : normal-prerequisites | order-only-prerequisites
 
 ## Makefile语法概览
 
-因为Makefile的语法比较多，这一讲只介绍Makefile的核心语法，以及 IAM项目的Makefile用到的语法，包括命令、变量、条件语句和函数。因为Makefile没有太多复杂的语法，你掌握了这些知识点之后，再在实践中多加运用，融会贯通，就可以写出非常复杂、功能强大的Makefile文件了。
+因为Makefile的语法比较多，这一讲只介绍Makefile的核心语法，包括命令、变量、条件语句和函数。因为Makefile没有太多复杂的语法，你掌握了这些知识点之后，再在实践中多加运用，融会贯通，就可以写出非常复杂、功能强大的Makefile文件了。
 
 ### 命令
 
 Makefile支持Linux命令，调用方式跟在Linux系统下调用命令的方式基本一致。默认情况下，make会把正在执行的命令输出到当前屏幕上。但我们可以通过在命令前加 `@` 符号的方式，禁止make输出当前正在执行的命令。
 
-我们看一个例子。现在有这么一个Makefile：
+我们看一个例子，现在有这么一个Makefile：
 
 ```makefile
 .PHONY: test
@@ -220,11 +220,9 @@ $ make test
 hello world
 ```
 
-可以看到，make只是执行了命令，而没有打印命令本身。这样make输出就清晰了很多。
+可以看到，make只是执行了命令，而没有打印命令本身，这样make输出就清晰了很多。这里， 我建议在命令前都加 `@` 符号，禁止打印命令本身，以保证你的Makefile输出易于阅读的、有用的信息。
 
-这里， **我建议在命令前都加** `@` 符号，禁止打印命令本身，以保证你的Makefile输出易于阅读的、有用的信息。
-
-默认情况下，每条命令执行完make就会检查其返回码。如果返回成功（返回码为0），make就执行下一条指令；如果返回失败（返回码非0），make就会终止当前命令。很多时候，命令出错（比如删除了一个不存在的文件）时，我们并不想终止，这时就可以在命令行前加 `-` 符号，来让make忽略命令的出错，以继续执行下一条命令，比如：
+默认情况下，每条命令执行完make就会检查其返回码。如果返回成功（返回码为0），make就执行下一条指令；如果返回失败（返回码非0），make就会终止。很多时候，命令出错（比如删除了一个不存在的文件）时，我们并不想终止，这时就可以在命令行前加 `-` 符号，来让make忽略命令的出错，以继续执行下一条命令，比如：
 
 ```makefile
 clean:
@@ -237,125 +235,130 @@ clean:
 
 我们先来看下最基本的 **变量赋值** 功能。
 
-Makefile也可以像其他语言一样支持变量。在使用变量时，会像shell变量一样原地展开，然后再执行替换后的内容。
-
 Makefile可以通过变量声明来声明一个变量，变量在声明时需要赋予一个初值，比如 `ROOT_PACKAGE=github.com/marmotedu/iam`。
 
-引用变量时可以通过 `$()` 或者 `${}` 方式引用。我的建议是，用 `$()` 方式引用变量，例如 `$(ROOT_PACKAGE)`，也建议整个makefile的变量引用方式保持一致。
+引用变量时可以通过 `$()` 或者 `${}` 方式引用。我的建议是，用 `$()` 方式引用变量，例如 `$(ROOT_PACKAGE)`，也建议整个makefile的变量引用方式保持一致。比如：
 
-变量会像bash变量一样，在使用它的地方展开。比如：
-
-```
+```makefile
 GO=go
 build:
     $(GO) build -v .
-
 ```
 
 展开后为：
 
-```
+```makefile
 GO=go
 build:
     go build -v .
-
 ```
 
 接下来，我给你介绍下Makefile中的4种变量赋值方法。
 
 1. `=` 最基本的赋值方法。
 
-例如：
-
-```
+```makefile
 BASE_IMAGE = alpine:3.10
-
 ```
 
 使用 `=` 进行赋值时，要注意下面这样的情况：
 
-```
+```makefile
 A = a
 B = $(A) b
 A = c
-
 ```
 
 B最后的值为 c b，而不是a b。也就是说，在用变量给变量赋值时，右边变量的取值，取的是最终的变量值。
 
-1. `:=` 直接赋值，赋予当前位置的值。
+2. `:=` 直接赋值，赋予当前位置的值。
 
-例如：
-
-```
+```makefile
 A = a
 B := $(A) b
 A = c
-
 ```
 
 B最后的值为 a b。通过 `:=` 的赋值方式，可以避免 `=` 赋值带来的潜在的不一致。
 
-1. `?=` 表示如果该变量没有被赋值，则赋予等号后的值。
+3. `?=` 表示如果该变量没有被赋值，则赋予等号后的值。
 
-例如：
+```makefile
+# 定义一个变量（未赋值）
+# 使用 ?= 赋值
+MY_VAR ?= "Default Value"
 
+test:
+    @echo "MY_VAR = $(MY_VAR)"
+    
+# 运行 make test 将输出：MY_VAR = "Default Value"
+###################
+
+# 先定义变量
+MY_VAR = "Original Value"
+
+# 使用 ?= 尝试重新赋值
+MY_VAR ?= "This won't apply"
+
+test:
+    @echo "MY_VAR = $(MY_VAR)"
+
+# 运行 make test 将输出：MY_VAR = "Original Value"
 ```
-PLATFORMS ?= linux_amd64 linux_arm64
 
+4. `+=` 表示将等号后面的值添加到前面的变量上。
+
+```makefile
+VARIABLE += new_value
+
+# 这表示：
+# 如果 VARIABLE 不存在 → 创建它并设置为 new_value
+# 如果 VARIABLE 已存在 → 将 new_value 添加到其值的末尾
 ```
 
-1. `+=` 表示将等号后面的值添加到前面的变量上。
 
-例如：
 
-```
-MAKEFLAGS += --no-print-directory
+Makefile还支持 **多行变量**。使用 `define` 关键字可以创建多行变量，这对于定义复杂的命令序列或配置内容特别有用。
 
-```
-
-Makefile还支持 **多行变量**。可以通过define关键字设置多行变量，变量中允许换行。定义方式为：
-
-```
-define 变量名
-变量内容
+```makefile
+define VARIABLE_NAME
+line1
+line2
 ...
 endef
-
 ```
 
-变量的内容可以包含函数、命令、文字或是其他变量。例如，我们可以定义一个USAGE\_OPTIONS变量：
 
-```
-define USAGE_OPTIONS
-
-Options:
-  DEBUG        Whether to generate debug symbols. Default is 0.
-  BINS         The binaries to build. Default is all of cmd.
-  ...
-  V            Set to 1 enable verbose build. Default is 0.
-endef
-
-```
 
 Makefile还支持 **环境变量**。在Makefile中，有两种环境变量，分别是Makefile预定义的环境变量和自定义的环境变量。
 
-其中，自定义的环境变量可以覆盖Makefile预定义的环境变量。默认情况下，Makefile中定义的环境变量只在当前Makefile有效，如果想向下层传递（Makefile中调用另一个Makefile），需要使用export关键字来声明。
+其中，自定义的环境变量可以覆盖Makefile预定义的环境变量。默认情况下，Makefile中定义的环境变量只在当前Makefile有效，如果想向下层传递（Makefile中调用另一个Makefile），需要使用 export 关键字来声明。
 
 下面的例子声明了一个环境变量，并可以在下层Makefile中使用：
 
-```
+```makefile
 ...
 export USAGE_OPTIONS
 ...
 
 ```
 
+Make 工具内置的变量，提供系统信息和默认行为控制：
+
+| 变量名  |       说明       |   默认值示例    |
+| :-----: | :--------------: | :-------------: |
+|  `CC`   |     C 编译器     |      `cc`       |
+| `MAKE`  |  make 程序路径   | `/usr/bin/make` |
+| `SHELL` | 执行命令的 shell |    `/bin/sh`    |
+|  `PWD`  |   当前工作目录   |    自动设置     |
+
+
+
 此外，Makefile还支持两种内置的变量：特殊变量和自动化变量。
 
-**特殊变量** 是make提前定义好的，可以在makefile中直接引用。特殊变量列表如下：
+**特殊变量** 是Make提前定义好的，可以在Makefile中直接引用。特殊变量列表如下：
 
-![](images/389115/c1cba21aaed2eb0117yyb0470byy641d.png)
+<img src="images/389115/c1cba21aaed2eb0117yyb0470byy641d.png" style="zoom:40%;" />
 
 Makefile还支持 **自动化变量**。自动化变量可以提高我们编写Makefile的效率和质量。
 
@@ -363,28 +366,27 @@ Makefile还支持 **自动化变量**。自动化变量可以提高我们编写M
 
 这时就可以用到自动化变量。所谓自动化变量，就是这种变量会把模式中所定义的一系列的文件自动地挨个取出，一直到所有符合模式的文件都取完为止。这种自动化变量只应出现在规则的命令中。Makefile中支持的自动化变量见下表。
 
-![](images/389115/13ec33008eaff973c0dd854a795ff712.png)
+<img src="images/389115/13ec33008eaff973c0dd854a795ff712.png" style="zoom:40%;" />
 
 上面这些自动化变量中， `$*` 是用得最多的。 `$*` 对于构造有关联的文件名是比较有效的。如果目标中没有模式的定义，那么 `$*` 也就不能被推导出。但是，如果目标文件的后缀是make所识别的，那么 `$*` 就是除了后缀的那一部分。例如：如果目标是foo.c ，因为.c是make所能识别的后缀名，所以 `$*` 的值就是foo。
 
 ### 条件语句
 
-Makefile也支持条件语句。这里先看一个示例。
+Makefile也支持条件语句，这里先看一个示例。
 
 下面的例子判断变量 `ROOT_PACKAGE` 是否为空，如果为空，则输出错误信息，不为空则打印变量值：
 
-```
+```makefile
 ifeq ($(ROOT_PACKAGE),)
 $(error the variable ROOT_PACKAGE must be set prior to including golang.mk)
 else
 $(info the value of ROOT_PACKAGE is $(ROOT_PACKAGE))
 endif
-
 ```
 
 条件语句的语法为：
 
-```
+```makefile
 # if ...
 <conditional-directive>
 <text-if-true>
@@ -395,7 +397,6 @@ endif
 else
 <text-if-false>
 endif
-
 ```
 
 例如，判断两个值是否相等：
