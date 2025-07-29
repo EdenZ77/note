@@ -372,34 +372,7 @@ Makefile还支持 **自动化变量**。自动化变量可以提高我们编写M
 
 ### 条件语句
 
-Makefile也支持条件语句，这里先看一个示例。
-
-下面的例子判断变量 `ROOT_PACKAGE` 是否为空，如果为空，则输出错误信息，不为空则打印变量值：
-
-```makefile
-ifeq ($(ROOT_PACKAGE),)
-$(error the variable ROOT_PACKAGE must be set prior to including golang.mk)
-else
-$(info the value of ROOT_PACKAGE is $(ROOT_PACKAGE))
-endif
-```
-
-条件语句的语法为：
-
-```makefile
-# if ...
-<conditional-directive>
-<text-if-true>
-endif
-# if ... else ...
-<conditional-directive>
-<text-if-true>
-else
-<text-if-false>
-endif
-```
-
-例如，判断两个值是否相等：
+Makefile也支持条件语句，例如，判断两个值是否相等：
 
 ```
 ifeq 条件表达式
@@ -407,32 +380,34 @@ ifeq 条件表达式
 else
 ...
 endif
-
 ```
 
-- ifeq表示条件语句的开始，并指定一个条件表达式。表达式包含两个参数，参数之间用逗号分隔，并且表达式用圆括号括起来。
-- else表示条件表达式为假的情况。
-- endif表示一个条件语句的结束，任何一个条件表达式都应该以endif结束。
+- ifeq 表示条件语句的开始，并指定一个条件表达式。表达式包含两个参数，参数之间用逗号分隔，并且表达式用圆括号括起来。
+- else 表示条件表达式为假的情况。
+- endif 表示一个条件语句的结束，任何一个条件表达式都应该以 endif 结束。
 - 表示条件关键字，有4个关键字：ifeq、ifneq、ifdef、ifndef。
 
 为了加深你的理解，我们分别来看下这4个关键字的例子。
 
 1. ifeq：条件判断，判断是否相等。
 
-例如：
+```makefile
+ifeq (arg1, arg2)
+    # 条件为真时执行的语句
+else
+    # 条件为假时执行的语句
+endif
 
-```
 ifeq (<arg1>, <arg2>)
 ifeq '<arg1>' '<arg2>'
 ifeq "<arg1>" "<arg2>"
 ifeq "<arg1>" '<arg2>'
 ifeq '<arg1>' "<arg2>"
-
 ```
 
-比较arg1和arg2的值是否相同，如果相同则为真。也可以用make函数/变量替代arg1或arg2，例如 `ifeq ($(origin ROOT_DIR),undefined)` 或 `ifeq ($(ROOT_PACKAGE),)` 。origin函数会在之后专门讲函数的一讲中介绍到。
+比较 arg1 和 arg2 的值是否相同，如果相同则为真。也可以用 make 函数/变量替代 arg1 或 arg2，例如 `ifeq ($(origin ROOT_DIR),undefined)` 或 `ifeq ($(ROOT_PACKAGE),)` 。origin 函数会在之后专门讲函数的一讲中介绍到。
 
-1. ifneq：条件判断，判断是否不相等。
+2. ifneq：条件判断，判断是否不相等。
 
 ```
 ifneq (<arg1>, <arg2>)
@@ -440,25 +415,22 @@ ifneq '<arg1>' '<arg2>'
 ifneq "<arg1>" "<arg2>"
 ifneq "<arg1>" '<arg2>'
 ifneq '<arg1>' "<arg2>"
-
 ```
 
 比较arg1和arg2的值是否不同，如果不同则为真。
 
-1. ifdef：条件判断，判断变量是否已定义。
+3. ifdef：条件判断，判断变量是否已定义。
 
 ```
 ifdef <variable-name>
-
 ```
 
 如果值非空，则表达式为真，否则为假。也可以是函数的返回值。
 
-1. ifndef：条件判断，判断变量是否未定义。
+4. ifndef：条件判断，判断变量是否未定义。
 
 ```
 ifndef <variable-name>
-
 ```
 
 如果值为空，则表达式为真，否则为假。也可以是函数的返回值。
@@ -467,13 +439,12 @@ ifndef <variable-name>
 
 Makefile同样也支持函数，函数语法包括定义语法和调用语法。
 
-**我们先来看下自定义函数。** make解释器提供了一系列的函数供Makefile调用，这些函数是Makefile的预定义函数。我们可以通过define关键字来自定义一个函数。自定义函数的语法为：
+**我们先来看下自定义函数。** Make提供了一系列的函数供Makefile调用，这些函数是Makefile的预定义函数。我们可以通过 define 关键字来自定义一个函数。自定义函数的语法为：
 
 ```
 define 函数名
 函数体
 endef
-
 ```
 
 例如，下面这个自定义函数：
@@ -483,31 +454,27 @@ define Foo
     @echo "my name is $(0)"
     @echo "param is $(1)"
 endef
-
 ```
 
-define本质上是定义一个多行变量，可以在call的作用下当作函数来使用，在其他位置使用只能作为多行变量来使用，例如：
+define 本质上是定义一个多行变量，可以在 call 的作用下当作函数来使用，在其他位置使用只能作为多行变量来使用，例如：
 
 ```
 var := $(call Foo)
 new := $(Foo)
-
 ```
 
 自定义函数是一种过程调用，没有任何的返回值。可以使用自定义函数来定义命令的集合，并应用在规则中。
 
-**再来看下预定义函数。** 刚才提到，make编译器也定义了很多函数，这些函数叫作预定义函数，调用语法和变量类似，语法为：
+**再来看下预定义函数。** 刚才提到，Make也定义了很多函数，这些函数叫作预定义函数，调用语法和变量类似，语法为：
 
 ```
 $(<function> <arguments>)
-
 ```
 
 或者
 
 ```
 ${<function> <arguments>}
-
 ```
 
 `<function>` 是函数名， `<arguments>` 是函数参数，参数间用逗号分割。函数的参数也可以是变量。
@@ -517,16 +484,15 @@ ${<function> <arguments>}
 ```
 PLATFORM = linux_amd64
 GOOS := $(word 1, $(subst _, ,$(PLATFORM)))
-
 ```
 
-上面的例子用到了两个函数：word和subst。word函数有两个参数，1和subst函数的输出。subst函数将PLATFORM变量值中的\_替换成空格（替换后的PLATFORM值为linux amd64）。word函数取linux amd64字符串中的第一个单词。所以最后GOOS的值为linux。
+上面的例子用到了两个函数：word 和 subst。word 函数有两个参数，1 和 subst 函数的输出。subst 函数将PLATFORM变量值中的\_替换成空格（替换后的PLATFORM值为 linux amd64）。word 函数取 linux amd64 字符串中的第一个单词。所以最后GOOS的值为 linux。
 
 Makefile预定义函数能够帮助我们实现很多强大的功能，在编写Makefile的过程中，如果有功能需求，可以优先使用这些函数。如果你想使用这些函数，那就需要知道有哪些函数，以及它们实现的功能。
 
 常用的函数包括下面这些，你需要先有个印象，以后用到时再来查看。
 
-![](images/389115/96da0853e8225a656d2c0489e544865f.jpg)
+<img src="images/389115/96da0853e8225a656d2c0489e544865f.jpg" style="zoom: 50%;" />
 
 ## 引入其他Makefile
 
@@ -539,7 +505,6 @@ Makefile预定义函数能够帮助我们实现很多强大的功能，在编写
 ```
 include scripts/make-rules/common.mk
 include scripts/make-rules/golang.mk
-
 ```
 
 include也可以包含通配符 `include scripts/make-rules/*`。make命令会按下面的顺序查找makefile文件：
@@ -549,13 +514,3 @@ include也可以包含通配符 `include scripts/make-rules/*`。make命令会�
 3. 如果目录 `<prefix>/include`（一般是 `/usr/local/bin` 或 `/usr/include`）存在的话，make也会去找。
 
 如果有文件没有找到，make会生成一条警告信息，但不会马上出现致命错误，而是继续载入其他的文件。一旦完成makefile的读取，make会再重试这些没有找到或是不能读取的文件。如果还是不行，make才会出现一条致命错误信息。如果你想让make忽略那些无法读取的文件继续执行，可以在include前加一个减号 `-`，如 `-include <filename>`。
-
-## 总结
-
-在这一讲里，为了帮助你编写一个高质量的Makefile，我重点介绍了Makefile规则和Makefile语法里的一些核心语法知识。
-
-在讲Makefile规则时，我们主要学习了规则语法、伪目标和order-only依赖。掌握了这些Makefile规则，你就掌握了Makefile中最核心的内容。
-
-在介绍Makefile的语法时，我只介绍了Makefile的核心语法，以及 IAM项目的Makefile用到的语法，包括命令、变量、条件语句和函数。你可能会觉得这些语法学习起来比较枯燥，但还是那句话，工欲善其事，必先利其器。希望你能熟练掌握Makefile的核心语法，为编写高质量的Makefile打好基础。
-
-今天的内容就到这里啦，欢迎你在下面的留言区谈谈自己的看法，我们下一讲见。
