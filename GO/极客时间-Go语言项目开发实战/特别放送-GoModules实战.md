@@ -246,7 +246,7 @@ ok  	github.com/marmotedu/gopractise-demo/modules/hello	0.004s
 
 可以看到，更新到 `v1.3.1` 版本，测试是通过的。 `go get` 还支持多种参数，如下表所示：
 
-![](images/420325/2b80e94c1e91bb18dea9c20695b25bf6.jpg)
+<img src="images/420325/2b80e94c1e91bb18dea9c20695b25bf6.jpg" style="zoom:25%;" />
 
 1. 添加一个新的major版本依赖
 

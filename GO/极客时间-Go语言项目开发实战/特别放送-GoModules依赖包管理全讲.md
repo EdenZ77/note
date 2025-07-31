@@ -171,7 +171,7 @@ GONOPROXY、GONOSUMDB和GOPRIVATE都支持通配符，多个域名用逗号隔�
 
 通常，我们通过 `go get` 来下载模块，下载命令格式为 `go get <package[@version]>`，如下表所示：
 
-![](images/416397/63fbbf7cf8b67af85aa4e7ce76a99392.jpg)
+<img src="images/416397/63fbbf7cf8b67af85aa4e7ce76a99392.jpg" style="zoom:20%;" />
 
 你可以使用 `go get -u` 更新package到latest版本，也可以使用 `go get -u=patch` 只更新小版本，例如从 `v1.2.4` 到 `v1.2.5`。
 
@@ -179,13 +179,13 @@ GONOPROXY、GONOSUMDB和GOPRIVATE都支持通配符，多个域名用逗号隔�
 
 一个模块往往会依赖许多其他模块，并且不同的模块也可能会依赖同一个模块的不同版本，如下图所示：
 
-![](images/416397/00794e3487e63d9d3302bfe977af6d46.jpg)
+<img src="images/416397/00794e3487e63d9d3302bfe977af6d46.jpg" style="zoom:20%;" />
 
 在上述依赖中，模块A依赖了模块B和模块C，模块B依赖了模块D，模块C依赖了模块D和模块F，模块D又依赖了模块E。并且，同模块的不同版本还依赖了对应模块的不同版本。
 
 那么Go Modules是如何选择版本的呢？Go Modules 会把每个模块的依赖版本清单都整理出来，最终得到一个构建清单，如下图所示：
 
-![](images/416397/4f83ffe8125d75764c5f8069a73966f2.jpg)
+<img src="images/416397/4f83ffe8125d75764c5f8069a73966f2.jpg" style="zoom:20%;" />
 
 上图中，rough list和final list的区别在于重复引用的模块 D（ `v1.3`、 `v1.4`），最终清单选用了D的 `v1.4` 版本。
 
@@ -356,7 +356,7 @@ rsc.io/quote v1.5.2/go.mod h1:LzX7hefJvL54yjefDEDHNONDjII0t9xZLPXsUe+TKr0=
 
 ## 模块下载流程
 
-上面，我介绍了模块下载的整体流程，还介绍了go.mod和go.sum这两个文件。因为内容比较多，这里用一张图片来做个总结：
+上面，我介绍了模块下载的整体流程，还介绍了 go.mod 和 go.sum 这两个文件。因为内容比较多，这里用一张图片来做个总结：
 
 ![](images/416397/8b92e53cebd4373f8c41fdbe9328ba8d.jpg)
 
