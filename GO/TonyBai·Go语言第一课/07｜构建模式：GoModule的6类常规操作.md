@@ -602,7 +602,7 @@ go.work 文件的语法和 go.mod 类似（go.work 优先级高于 go.mod），�
 
 注意：实际项目中，多个模块之间可能还依赖其他模块，建议在 go.work 所在目录执行 `go work sync`。
 
-现在，我们将 example/go.mod 中的 replace 语句删除，再次执行 go run main.go（在 example 目录下），得到了正常的输出。也可以在 polarisxu 目录下，这么运行：go run example/main.go，也能正常。
+现在，我们将 example/go.mod 中的 replace、require 语句删除，再次执行 go run main.go（在 example 目录下），得到了正常的输出。也可以在 polarisxu 目录下，这么运行：go run example/main.go，也能正常。
 
 注意，go.work 不需要提交到 Git 中，因为它只是你本地开发使用的。
 
