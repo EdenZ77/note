@@ -150,23 +150,222 @@ replace (
 )
 ```
 
-如果你是用的 vendor 机制，你会发现 vendor/k8s.io/api 目录也被作了软连接：
+如果你是用的 vendor 机制，你会发现 vendor/k8s.io/api 目录也被做了软连接：
 
 ```
 vendor/k8s.io/api -> ../../staging/src/k8s.io/api
 ```
 
-### 如何根据 kubernetes v1.30.2 查找 staging 包的版本？
+### 如何查找 staging 包的版本？
 
-我们基于 Kubernetes v1.30.2 来进行讲解，Kubernetes 会依赖 staging 包，在 kubernetes 包中，对 staging 包的依赖配置如下：
+在 kubernetes 包中，对 staging 包的依赖配置如下：
 
-```
+```shell
 $ grep -w k8s.io/api go.mod
 k8s.io/api v0.0.0
 k8s.io/api => ./staging/src/k8s.io/api
 ```
 
-可以看到，go.mod 中并没有配置 k8s.io/api 包的版本。那么，我们如何知道 kubernetes v1.30.2 所依赖 k8s.io/api 包的具体发布版本呢？
+可以看到，go.mod 中并没有配置 k8s.io/api 包的版本。那么，我们如何知道所依赖 k8s.io/api 包的具体发布版本呢？
 
-了解版本映射很重要，因为如果第三方项目需要引用 kubernetes 包及 staging 包，是需要指明版本的，如果 kubernetes 包、staging 包之间的版本不匹配，会带来很多兼容性问题。
+......
 
+## cmd/ 目录下组件介绍
+
+Kubernetes cmd/ 目录下有很多组件，v1.30.2 版本下，cmd/ 目录下有 27 个组件（也即有 27 个 main 文件）。这些组件按功能大概可以分为以下几类：
+
+- Kubernetes控制面组件（核心组件）：
+  - kube-apiserver
+  - kube-controller-manager
+  - cloud-controller-manager
+  - kube-scheduler
+  - kubelet
+  - kube-proxy
+
+- Kubernetes客户端工具：
+  - kubeadm
+  - kubectl
+
+- 辅助工具：
+  - clicheck
+  - genkubedocs
+  - gendocs
+  - genman
+  - genswaggertypedocs
+  - genyaml
+  - kubectl-convert
+  - kubemark
+
+- 其它：
+  - dependencycheck
+  - dependencyverifier
+  - genutils
+  - fieldnamedocscheck
+  - prune-junit-xml
+  - importverifier
+  - preferredimports
+  - import-boss
+  - gotemplate
+
+## 易混淆的3个API包
+
+在阅读 Kuberneets 源码或者进行 Kubernetes 编程过程中经常会引用以下 3 个包：
+
+1. k8s.io/api；
+2. kubernetes/pkg/api；
+3. kubernetes/pkg/apis。
+
+这三个包都与 Kubernetes API 相关，但在功能和位置上有所不同：
+
+- k8s.io/api：该包包含了 Kubernetes 内置资源对象的结构体定义，以及与这些资源对象相关的操作和状态。
+	- **操作：**该包涉及的操作主要包括针对每种资源对象的 Marshal、Unmarshal、DeepCopy()、DeepCopyObject、DeepCopyInto、String。例如，DaemonSet 资源具有以下操作：
+
+	```
+	
+	```
+	
+	- **状态：**涉及的资源状态，主要是 XXXConditionType。例如 Pod 资源对象具有以下状态：
+	
+	```
+	
+	```
+	
+- kubernetes/pkg/api：该包包含了一些核心资源对象 utill 类型的函数定义。
+
+- kubernetes/pkg/apis：与 k8s.io/api 包内容类似，也包含了 Kubernetes 内置资源对象的结构体定义。但是这个项目只建议被 Kubernetes 内部引用，如果外部项目引用建议使用 k8s.io/api。而且 Kubernetes 内置代码也有很多引用了 k8s.io/api 下面的 api，所以后面可能都会迁移至 k8s.io/api 项目下。
+
+Kubernetes 中的 API 被组织为多个 API 组，每个 API 组都有自己的版本和资源对象。每个 API 组通常对应一个子目录，每一个版本又对应一个子目录，在版本子目录下包含了该版本的资源对象的结构体定义、状态定义和相关的方法。例如 kubernetes/pkg/apis/ 目录下的资源组和版本的目录结构如下：
+
+```shell
+kubernetes/pkg/apis
+├── ...
+├── apps # apps 资源组
+│   ├── doc.go
+│   ├── fuzzer/
+│   ├── install/
+│   ├── register.go
+│   ├── types.go
+│   ├── v1/ # v1版本
+│   ├── v1beta1/ # v1beta1 版本
+│   ├── v1beta2/ # v1beta2 版本
+│   ├── validation/
+│   └── zz_generated.deepcopy.go
+├── ...
+├── core # core 资源组（也叫核心资源组）
+│   ├── annotation_key_constants.go
+│   ├── doc.go
+│   ├── fuzzer/
+│   ├── helper/
+│   ├── install/
+│   ├── json.go
+│   ├── objectreference.go
+│   ├── pods/
+│   ├── register.go
+│   ├── resource.go
+│   ├── taint.go
+│   ├── toleration.go
+│   ├── types.go
+│   ├── v1/ # v1 版本
+│   ├── validation/
+│   └── zz_generated.deepcopy.go
+```
+
+## Kubernetes 源码结构设计特点
+
+因为我阅读 Kubernetes 源码有一段时间了，这里来分享下，我阅读 Kubernetes 过程中觉得一些好的、值得我们借鉴的特点。
+
+### 特点 1：代码架构在不断更新优化中
+
+我从 2019 年开始阅读 Kubernetes 源码，每隔一段时间都会去重新翻一翻 Kubernetes 的源码，到现在已经有 4 个年头。 这 4 年中，给我感受比较深的是 Kubernetes 源码，每隔一段时间都会有一次大的改动，这种改动甚至可以说是从机制上的重构，例如：
+
+1. 代码生成机制的变化：在 Kubernetes v1.25.9 版本中，Kubernetes 生成 client-go、informer、lister、deepcopy 等代码用的还是 Makefile 的 generated_files规则，而到了 v1.30.2 版本，代码生成机制已经改了，用的是 hack/update-codegen.sh脚本，这 2 个版本时间间隔仅仅隔了 2 个月 24 天。
+2. 另外，kube-apiserver 组件、kube-controller-mananger 等组件的代码也一直在不断地大概或者小改。这些改动都是朝着一个目标去：更加标准、更加规范、更加可扩展、代码/脚本复用性也越来越高；
+3. Kubernetes 源码的目录结构，也在随着版本的迭代不断改动；
+4. Kubernetes 源码中的小改动，包括注释等也都在不断地被优化。
+
+所以，在我们自己的项目开发中，代码重构、代码优化也是要一直进行的。只有不断重构、优化我们的项目代码，项目质量才会变得越来越高。因为随着新功能的增加，为了能够让代码架构更好的容纳新功能，适配旧代码时不可避免的。
+
+### 特点 2：注释很详尽
+
+在我的 Go 项目开发生涯中，发现很多开发者其实不太注重代码注释，我觉得原因有以下 2 个：
+
+1. 没有代码注释的编码习惯，或者没有意识到代码注释对代码可阅读性的重要作用；
+2. 项目进度比较赶，忙于需求的开发、Bug 的修复，没有时间为代码编写注释。
+
+其实，在 Go 项目开发中，代码注释很重要，而且注释代码并不需要花费很多时间，尤其现在随着各类 LLM 能力的增强，我们甚至可以将代码扔给 LLM，让 LLM 给你添加注释，然后，我们基于这些注释进行优化。代码注释对于代码质量的提升帮助很大，也很能体现出来你的开发素养。所以，在 Go 项目开发中，也建议像 Kubernetes 一样，给代码加上详尽的注释，至少一些重要的代码，我们要加上注释。
+
+### 特点 3：单测用例很全
+
+Kubernetes 源码目录下有很多单元测试代码，这些单元测试代码并不是为了提高单测覆盖率而编写的 KPI 代码，而是真的在为一个函数、一个功能编写详尽的单元测试用例，以提高代码的质量。Kubernetes 源码目录下很多单测用例是比较复杂的，看的出来开发者编写这些单测用例也花费了不少时间。
+
+在我们的 Go 项目开发中，也建议花点时间，补充一些单元测试用例，通过单元测试用例来提高我们的代码质量。让编写单测用例养成一种习惯。
+
+### 特点 4：Kubernetes 的函数名、变量名、包名有时候会很长
+
+例如，下面是一段 Kubernetes 代码（见 [pkg/controlplane/instance.go](https://github.com/kubernetes/kubernetes/blob/v1.30.2/pkg/controlplane/instance.go)）：
+
+![img](image/Flb5Wn4qVDglFfJfUmytRnsT0R8h)
+
+可以看到，在 Kubernetes 源码中，变量、函数、包名的可读性要比简洁性更加重要。
+
+### 特点 5：代码结构清晰
+
+Kubernetes 源码中，有很多结构清晰的代码。最典型的就是应用构建结构。Kubernetes 核心组件的应用构建结构一般是相同的，结构如下：
+
+<img src="image/FuBL3IAEOCxpv3Oy6WfgYvQwlgba" alt="img" style="zoom:50%;" />
+
+从应用构建架构，可以看到，Kubernetes 开发者，期望整个项目的源码具有合理、清晰的结构，以此提高代码的可读性和可维护性。
+
+### 特点 6：几乎每个目录下都有一个 OWNERS 文件
+
+Kubernetes 源码目录下的 OWNERS 文件最初是参考[Chromium OWNERS files](https://chromium.googlesource.com/chromium/src/+/master/docs/code_reviews.md)的机制，用于定义代码库中不同文件或目录的维护者（Owners）。当前 OWNER 文件主要用来在代码审查阶段，指定 [reviewer](https://git.k8s.io/community/community-membership.md#reviewer) 和 [approver](https://git.k8s.io/community/community-membership.md#approver)。以下是一个 OWNERS 文件样例：
+
+```
+options:
+  # make root approval non-recursive
+  no_parent_owners: true
+reviewers:
+  - dchen1107
+  - dims
+approvers:
+  - dims
+  - liggitt
+emeritus_approvers:
+  - lavalamp
+```
+
+可以看到，Kubernetes 源码功能很多，不同功能由不同的开发者维护，通过 OWNERS 文件，可以更加精细化的指定代码审查是的 reviewer 和 approver。
+
+关于 OWNERS 文件的更多介绍见：[owners](https://github.com/kubernetes/community/blob/master/contributors/guide/owners.md)。
+
+### 特点 7：代码非常规范、结构化
+
+Kubernetes 项目的代码是非常规范的、结构化的。在 Kubernetes 的开发规范中，不仅会对日志、错误等常见的开发规范进行规范性约束，还会对 Kubernetes 的其他内容进行规范性约束。例如，Kubernetes 会约束 Shell 脚本的函数命名，命名格式统一为 kube::xxx:yyy：
+
+- kube：说明该函数是 Kubernetes 的 bash 函数；
+- xxx：模块，指定了 bash 函数所属的功能模块，例如：log、util等。
+- yyy：函数名，而且函数名统一使用蛇形命名；
+
+下面是 Kubernetes 中 bash 函数的命名示例：
+
+```
+kube::golang::setup_env
+kube::util::require-jq
+```
+
+Kubernetes 源码结构化也体现在很多地方。例如统一使用 hack/verify-xxx.sh脚本进行预提交验证。当预提交验证失败后，会有对应的 hack/update-xxx.sh脚本来修复。
+
+Kubernetes 源码结构化的另外一个体现点是，hack目录下的 bash 脚本，这些 bash 脚本都引用了 hack/lib/目录下的 bash 库。其实在很多开源项目中，甚至是一些非常知名的开源项目中，很少结构化的 bash 脚本。
+
+## 如何阅读 Kubernetes 源码
+
+阅读 Kubernetes 源码是一项具有挑战性的任务，因为 Kubernetes 是一个大型且复杂的项目。所以，在开始阅读 Kubernetes 源码之前，我们还需要知道如何高效的阅读 Kubernetes 源码。下面是我阅读 Kubernetes 源码的方法，供你借鉴。
+
+阅读 Kubernetes 源码方法：
+
+- **学习 Kubernetes 开发者文档：**你可以通过阅读 [Kubernetes开发者文档](https://github.com/kubernetes/community/tree/master/contributors)，来学习 Kubernetes 的源码结构、开发方式、开发规范、源码贡献方式等；
+- **学会编译、部署 Kubernetes 源码：**这是阅读 Kubernetes 源码最重要的开始，干读源码，学习效果是很差的。我们需要边阅读、边魔改、边测试。下一节课，会详细介绍如何编译、魔改、测试 Kubernetes 源码；
+- **选择一个组件：**Kubernetes 有很多核心组件，我们需要选择一个组件定点阅读。这里，我建议的阅读顺序如下：kube-sheduler、kube-apiserver、kube-controller-mananger、kube-proxy、kubelet。为什么推荐先阅读 kube-scheduler 呢？这是因为 Kubernetes 调度器不仅仅是 Kubernetes 的核心组件，还是企业使用 Kubernetes 过程中，魔改最多、工作岗位最多的岗位。所以，学好 kube-scheduler 对你未来的职业发展也是有帮助的。另外，本套课程也会详细介绍 kube-scheduler 组件的源码实现；
+- **从 main 函数开始：**当你选择好一个 Kubernetes 组件后，接下来就可以进入阅读阶段。你可以从 cmd/目录下找到该组件的 main 函数，并从 main 函数，按着代码逻辑流程，去过一遍整个组件的代码；
+- **开发一个 Kubernetes 扩展：**Kubernetes 最大的特性就是扩展性极强。你可以尝试给 Kubernetes 贡献一个扩展，来加深你对 Kubernetes 源码、Kubernetes 运行机制、生态的掌握。你可以贡献一个 CSI、CRI、CNI。这里建议你贡献一个 CSI，因为 CSI 实现难度适中，又能让你较好的理解 Kubernetes 源码。
+- **开发一个调度器：**编写一个扩展，能够加深你对 Kubernetes 源码的掌握，但是掌握的知识点范围还是有限的。如果你想进一步扩大对 Kubernetes 源码、运行机制等的学习、掌握等，你可以尝试开发一个 Kubernetes 调度器。
