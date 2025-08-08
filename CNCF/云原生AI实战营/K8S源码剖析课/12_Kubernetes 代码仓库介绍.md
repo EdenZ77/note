@@ -218,7 +218,7 @@ Kubernetes cmd/ 目录下有很多组件，v1.30.2 版本下，cmd/ 目录下有
 这三个包都与 Kubernetes API 相关，但在功能和位置上有所不同：
 
 - k8s.io/api：该包包含了 Kubernetes 内置资源对象的结构体定义，以及与这些资源对象相关的操作和状态。
-	- **操作：**该包涉及的操作主要包括针对每种资源对象的 Marshal、Unmarshal、DeepCopy()、DeepCopyObject、DeepCopyInto、String。例如，DaemonSet 资源具有以下操作：
+	- **操作：**该包涉及的操作主要包括针对每种资源对象的 Marshal、Unmarshal、DeepCopy、DeepCopyObject、DeepCopyInto、String。例如，DaemonSet 资源具有以下操作：
 
 	```go
 	// ./staging/src/k8s.io/api/apps/v1/types.go
@@ -278,7 +278,7 @@ Kubernetes cmd/ 目录下有很多组件，v1.30.2 版本下，cmd/ 目录下有
    - 定位：官方、稳定、面向外部的 API 定义。
    - 内容：包含了 Kubernetes 所有核心 API 对象（如 Pod、Service、Deployment 等）的 Go 结构体（struct）定义。这些结构体直接对应着 etcd 中存储的对象形态以及用户通过 `kubectl`或 API 操作的对象。
    - 使用者：强烈推荐所有 Kubernetes 集群外部的项目使用。这包括：
-     - 自定义控制器/Operator（使用 `controller-runtime`或 `client-go`）
+     - 自定义控制器 / Operator（使用 `controller-runtime`或 `client-go`）
      - kubectl 插件
      - 任何需要与 Kubernetes API 交互的工具或库
      - Kubernetes 自己的很多组件（如 `kube-apiserver`, `kube-controller-manager`, `kube-scheduler`, `kubelet`等）也直接依赖 `k8s.io/api`，而不是 `pkg/apis`。这一点非常关键！
@@ -287,7 +287,7 @@ Kubernetes cmd/ 目录下有很多组件，v1.30.2 版本下，cmd/ 目录下有
    - 内容：确实包含与 `k8s.io/api`非常相似甚至有时看起来完全相同的核心 API 对象结构体定义。然而：
      - 这些结构体通常是作为 **“种子类型” 或 “内部类型”** 存在的。
      - 它们的主要目的是供 Kubernetes 内部的代码生成工具（如 `conversion-gen`, `deepcopy-gen`, `defaulter-gen`）使用，生成类型转换、深拷贝、默认值设置等函数。
-     - 生成的目标代码（输出到 `staging/src/k8s.io/api`和其他地方）最终组成了公开可用的 `k8s.io/api`和 `kube-apiserver`的运行时类型。
+     - 生成的目标代码（输出到 `staging/src/k8s.io/api`和其他地方）最终组成了公开可用的 `k8s.io/api`。
    - 使用者：只建议 Kubernetes 项目本身的内部代码使用。
 3. **`k8s.io/api`是明确且唯一的推荐**：
    - 文档（如开发定制控制器）总是指导使用 `k8s.io/api`。
@@ -295,7 +295,7 @@ Kubernetes cmd/ 目录下有很多组件，v1.30.2 版本下，cmd/ 目录下有
    - `controller-runtime`库直接依赖 `k8s.io/api`。
    - Kubernetes 自身的核心组件现在绝大部分代码也是直接 `import "k8s.io/api/..."`。它们依赖 `pkg/apis`主要是在代码生成阶段，而非运行时业务逻辑中。
 
-Kubernetes 中的 API 被组织为多个 API 组，每个 API 组都有自己的版本和资源对象。每个 API 组通常对应一个子目录，每一个版本又对应一个子目录，在版本子目录下包含了该版本的资源对象的结构体定义、状态定义和相关的方法。例如 kubernetes/pkg/apis/ 目录下的资源组和版本的目录结构如下：
+Kubernetes 中的 API 被组织为多个 API 组，每个 API 组都有自己的版本和资源对象。每个 API 组通常对应一个子目录，每一个版本又对应一个子目录，在版本子目录下包含了该版本的资源对象的结构体定义、状态定义和相关的方法。例如 `kubernetes/pkg/apis/` 目录下的资源组和版本的目录结构如下：
 
 ```shell
 kubernetes/pkg/apis

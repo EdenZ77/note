@@ -78,8 +78,8 @@ $ git checkout -b feature-myfeature
 
 1. 修改代码；
 2. 执行 git add 将工作目录的修改添加到暂存区；
-3. 执行 git commit -m "some useful commit message"
-4. 可以执行 git commit --amend 命令，它允许你修改最近一次的提交（补充内容、修改提交信息或两者兼具）：
+3. 执行 `git commit -m "some useful commit message"`；
+4. 可以执行 `git commit --amend` 命令，它允许你修改最近一次的提交（补充内容、修改提交信息或两者兼具）：
 
 ```shell
 # 追加新变更：将新修改的内容加入上一次提交（避免创建额外的小提交）
@@ -111,7 +111,7 @@ git commit --amend  # 会打开编辑器（如Vim）修改信息
 # 仍是1个提交（取代原提交），并生成全新的哈希值
 ```
 
-关于 git commit --amend 的详细介绍可参考：[amend your previous commit](https://www.w3schools.com/git/git_amend.asp)。
+
 
 **确保分支代码和上游 master 代码的一致性**
 
@@ -125,7 +125,7 @@ $ git fetch upstream # 获取远程仓库（上游）的所有更新，但不会
 $ git rebase upstream/master
 ```
 
-注意，不要使用 git pull 来代替 git fetch 和 git rebase，因为 git pull 会进行合并，并产生一个合并提交记录，这会使 kubernetes 仓库的提交历史变得混乱，并且这也违反了提交记录应该是整洁和清晰的原则。（ git pull 等同于 git fetch + git merge ）
+注意，不要使用 `git pull` 来代替 `git fetch` 和 `git rebase`，因为 `git pull` 会进行合并，并产生一个合并提交记录，这会使 kubernetes 仓库的提交历史变得混乱，并且这也违反了提交记录应该是整洁和清晰的原则。（ `git pull` 等同于 `git fetch + git merge` ）
 
 ```shell
 #### 如果使用
@@ -222,9 +222,7 @@ PR 提交后，会被分配给一个或多个代码审阅者（reviewers），�
 
 ### 压缩提交
 
-在代码 review 后，我们需要压缩我们的提交记录，以准备最终的 PR 合并。
-
-我们应该确保最终的提交记录是有意义的（要么是一个里程碑，要么是一个单独、完整的提交），通过合理的提交记录，来使我们的变更变得更加清晰。
+在代码 review 后，我们需要压缩我们的提交记录，以准备最终的 PR 合并。我们应该确保最终的提交记录是有意义的，通过合理的提交记录，来使我们的变更变得更加清晰。
 
 在合并 PR 之前，以下类型的提交应该被压缩：
 
@@ -232,8 +230,6 @@ PR 提交后，会被分配给一个或多个代码审阅者（reviewers），�
 - 拼写错误；
 - 合并和变基；
 - 进行中的工作。
-
-我们应该确保 PR 中的每一个提交都能够独立编译，并通过测试（这不是必须的）。我们还应该确保合并提交记录被删除，因为这些提交无法通过测试。你可以阅读 [interactive rebase](https://git-scm.com/book/en/v2/Git-Tools-Rewriting-History) 来了解更多压缩提交的知识。
 
 压缩提交的具体操作流程如下：
 
