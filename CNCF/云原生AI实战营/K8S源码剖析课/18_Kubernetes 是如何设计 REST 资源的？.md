@@ -16,18 +16,19 @@ kube-apiserver 本质上是一个提供了 REST 接口的 Web 服务，在开发
 
 首先，我们会根据项目功能，来定义 API 接口。将功能抽象成指定的 REST 资源，并给每一个资源指定请求路径和请求参数：
 
-- **请求路径：**请求路径是一个标准的 HTTP 请求路径。例如：创建 Pod 请求路径为 POST /api/v1/namespaces/{namespace}/pods；
+- **请求路径：**请求路径是一个标准的 HTTP 请求路径。例如：创建 Pod 请求路径为 POST `/api/v1/namespaces/{namespace}/pods`；
 - **请求参数：**根据 HTTP 请求方法的不同，参数的位置也不同。例如：对于 POST、PUT 类请求，请求参数在请求 Body 中指定。GET、DELETE 类请求 ，请求参数在请求 Query 中指定。
 
-提示：更多 Kubernetes API 接口定义请参考 [Kubernetes API](https://kubernetes.io/docs/reference/kubernetes-api/)。
+> 提示：更多 Kubernetes API 接口定义请参考 [Kubernetes API](https://kubernetes.io/docs/reference/kubernetes-api/)。
+>
 
-接着，我们需要进行路由设置。路由设置其实就是指定一个 HTTP 请求，由哪个函数来处理，通常包括：路由创建和路由注册。
+接着，我们需要进行路由设置。路由设置其实就是指定一个 HTTP 请求由哪个函数来处理，通常包括：路由创建和路由注册。
 
 接着，就需要开发路由函数。路由函数用来具体执行一个 HTTP 请求的逻辑处理。在路由函数中，我们通常会根据需要进行以下处理：
 
-1. **默认值设置：**如果有些 HTTP 请求参数没有被指定，为了确保请求能够按预期执行，我们通常会评估这些参数，并设置适合的默认值；
-2. **请求参数校验：**校验请求参数是否合法；
-3. **逻辑处理：**编写代码，根据请求参数，完成既定的业务逻辑处理。
+- **默认值设置：**如果有些 HTTP 请求参数没有被指定，为了确保请求能够按预期执行，我们通常会评估这些参数，并设置适合的默认值；
+- **请求参数校验：**校验请求参数是否合法；
+- **逻辑处理：**编写代码，根据请求参数，完成既定的业务逻辑处理。
 
 接着，如果有些数据需要持久化保存，还需要将数据保存在后端存储中。
 
@@ -41,22 +42,22 @@ kube-apiserver 本质上是一个提供了 REST 接口的 Web 服务，在开发
 
 kube-apiserver 是一个 Web 服务，里面内置了很多 REST 资源。在 Kubernetes v1.32.3 版本中，内置了 75 种资源。你可以通过 kubectl api-resources，来列出 kube-apiserver 支持的资源：
 
-```
-$ kubectl api-resources |egrep 'k8s.io|batch| v1| apps| autoscaling| batch'|wc -l
+```shell
+$ kubectl api-resources |egrep 'k8s.io| v1| apps| autoscaling| batch'|wc -l
 75
 ```
 
-> 提示：要通过 egrep将 Kubernetes 集群中安装的第三方资源过滤掉。
+> 提示：要通过 egrep 将 Kubernetes 集群中安装的第三方资源过滤掉。
 
 那么，Kubernetes 具体是如何设计这些资源的呢？在回答这个问题之前，我们先来看下，一般的 Web 服务是如何设计 REST 资源的：
 
-1. **指定 REST 资源类型：**根据项目功能，将这些功能抽象成一系列的 REST 资源，例如：user、secret 等；
-2. **指定 HTTP 方法：**根据需要对资源进行的操作，指定 HTTP 方法，例如：GET、POST、PUT、DELETE等。不同的 HTTP 方法，完成不同的操作；
+1. 指定 REST 资源类型：根据项目功能，将这些功能抽象成一系列的 REST 资源，例如：user、secret 等；
+2. 指定 HTTP 方法：根据需要对资源进行的操作，指定 HTTP 方法，例如：GET、POST、PUT、DELETE等。不同的 HTTP 方法，完成不同的操作；
 3. 设计 API 版本的标识方法：通常将版本标识放在如下 3 个位置（第 1 个方法最常用）：
-4. URL 中，比如 /v1/users；
-5. HTTP Header 中，比如 Accept: vnd.example-com.foo+json; version=1.0；
-6. Form 参数中，比如 /users?version=v1；
-7. **指定请求参数和返回参数：**给每一个 HTTP 请求指定参数，参数位置要匹配 HTTP 请求方法。
+   4. URL 中，比如 `/v1/users`；
+   2. HTTP Header 中，比如 `Accept: vnd.example-com.foo+json; version=1.0`；
+   3. Form 参数中，比如 `/users?version=v1`；
+4. 指定请求参数和返回参数：给每一个 HTTP 请求指定参数，参数位置要匹配 HTTP 请求方法。
 
 上面是我们在设计 REST API 接口时，需要考虑的点。Kubernetes 作为一个超大型的分布式系统，其 kube-apiserver 组件中集成了 75 种 REST 资源及操作。其在设计时，除了上述我介绍的设计点之外，还做了更进一步的设计。
 
@@ -123,7 +124,7 @@ func main() {
 }
 ```
 
-在上面的示例中，首先创建了一个默认的 Gin 引擎，然后使用 router.Group("/api") 来创建了一个名为 /api 的资源组。在这个资源组中，设置了两个路由（GET，/users/:userID）、（POST、/users）。这意味着这两个路由都会以 /api 作为前缀，即访问路径为 /api/users/:userID 和 /api/users。
+在上面的示例中，首先创建了一个默认的 Gin 引擎，然后使用 `router.Group("/api")` 来创建了一个名为 `/api` 的资源组。在这个资源组中，设置了两个路由（GET，`/users/:userID`）、（POST、`/users`）。这意味着这两个路由都会以 `/api` 作为前缀，即访问路径为 `/api/users/:userID` 和 `/api/users`。
 
 通过设置资源组，可以将具有相同前缀的路由进行分组，使代码结构更加清晰，同时也可以对这些路由进行统一的中间件处理等。
 
@@ -148,7 +149,7 @@ $ curl http://127.0.0.1:8080/api/users # api 是资源组名
 
 在一般的 REST 服务开发中，HTTP 请求路径通常是直接指定的。但是在 Kubernetes 中，HTTP 请求路径很多时候，是由资源组、资源版本、资源类型共同构建的。kube-apiserver 会根据资源组、资源版本、资源类型自动构建出资源的请求路径。
 
-例如：创建 Pod 的 HTTP 请求方法和请求路径为 POST /api/v1/namespaces/{namespace}/pods，其中 api 是资源组，v1 是资源版本，pods 是资源类型。
+例如：创建 Pod 的 HTTP 请求方法和请求路径为 POST `/api/v1/namespaces/{namespace}/pods`，其中 api 是资源组，v1 是资源版本，pods 是资源类型。
 
 > 提示：namespaces是命名空间（其实就是一个租户））。
 
@@ -218,12 +219,12 @@ Kubernetes 资源定义的规范化、标准化，使得 Kubernetes 可以基于
 
 一个企业应用，随着功能的迭代，其 API 接口不可避免的要面临升级的可能。在企业应用开发中，我们通常有以下 2 种方式来支持 API 接口版本的升级：
 
-1. **同一个 Web 服务进程中，不同的路由：**例如：POST /v1/users、POST /v2/users，上述 2 个请求路径分别对应 2 个不同的路由函数；
-2. **不同 Web 服务进程，想通路由**：例如：我们可以请求 V1 版本的服务和 V2 版本的服务，2 个服务具有相同的请求路径：POST /users；
+1. **同一个 Web 服务进程中，不同的路由：**例如：POST `/v1/users`、POST `/v2/users`，上述 2 个请求路径分别对应 2 个不同的路由函数；
+2. **不同 Web 服务进程，想通路由**：例如：我们可以请求 V1 版本的服务和 V2 版本的服务，2 个服务具有相同的请求路径：POST `/users`；
 
 在企业级应用开发中，方案 1 用的是最多的。
 
-Kubernetes 也支持不同的版本，例如：/apis/batch/v1beta1/cronjobs、/apis/batch/v1/cronjobs。但是 Kubernetes 相比于传统的 Web 服务，在版本管理上又更近了一层，支持版本转换：
+Kubernetes 也支持不同的版本，例如：`/apis/batch/v1beta1/cronjobs`、`/apis/batch/v1/cronjobs`。但是 Kubernetes 相比于传统的 Web 服务，在版本管理上又更近了一层，支持版本转换：
 
 ![img](image/FpCykvszQnHU6YOSSlMxqR8ECDk2)
 
