@@ -134,7 +134,7 @@ cmd/genconversion cmd/gendocs            cmd/genman              cmd/genutils
 
 对于 kubelet 组件，之前的命令行参数配置形式还额外有以下问题：kubelet 是部署在每个 Node 节点上的 agent，在更新 kubelet 配置时，往往需要集群管理员，通过 SSH（手动或通过脚本）登录到节点上，然后配置 kubelet 命令行参数，并重启 kubelet。这种方式更新 kubelet 的配置成本比较高。
 
-所以 kubelet 组件的配置更新，需要一种类似配置中心的配置机制，能够通过一个配置中心，触发配置文件的变更和 kubelet 组件的重启。要实现配置文件下发，你可以引入第三方配置中心组件，例如：Apollo、Nacos、Consul、Etcd 等。当然，也可以直接复用现有的 kubernetes 机制，增加一个配置类型的 API 资源，并 watch kube-apiserver，从而感知 API 资源的变更。kubelet 直接复用了 kubernetes 现有的机制。
+所以 kubelet 组件的配置更新，需要一种类似配置中心的配置机制，能够通过一个配置中心，触发配置文件的变更和 kubelet 组件的重启。要实现配置文件下发，你可以引入第三方配置中心组件，例如：Apollo、Nacos、Consul、Etcd 等。当然，也可以直接复用现有的 kubernetes 机制，增加一个配置类型的 API 资源，并 watch kube-apiserver，从而感知 API 资源的变更。kubelet 则是直接复用了 kubernetes 现有的机制。
 
 为此，kubernetes v1.2.0 版本，新增了一个 KubeletConfiguration 类型的 API 定义，见文件 [pkg/apis/componentconfig/types.go](https://github.com/kubernetes/kubernetes/blob/v1.2.0/pkg/apis/componentconfig/types.go#L100)，例如：
 
@@ -151,20 +151,20 @@ evictionHard:
     imagefs.available: "15%"
 ```
 
-上述配置会保存在 ConfigMap 资源的 data 字段中。kubelet 会 watch ConfigMap，当 ConfigMap 有变更时，kubelet 会将 ConfigMap data 字段的配置内容写到本地磁盘上，然后退出进程，之后由操作系统级别的进程管理服务自动重新拉起 kubelet 进程。kubelet watch 哪个 ConfigMap 是在 Node.Spec.ConfigSource.ConfigMap 中指定的。
+上述配置会保存在 ConfigMap 资源的 data 字段中。kubelet 会 watch ConfigMap，当 ConfigMap 有变更时，kubelet 会将 ConfigMap data 字段的配置内容写到本地磁盘上，然后退出进程，之后由操作系统级别的进程管理服务自动重新拉起 kubelet 进程。kubelet watch 哪个 ConfigMap 是在 `Node.Spec.ConfigSource.ConfigMap` 中指定的。
 
 更对关于 kubelet 动态配置的介绍，你可以参考以下 2 篇文章：
 
-1. [Dynamic Kubelet Configuration](https://kubernetes.io/blog/2018/07/11/dynamic-kubelet-configuration/); 
-2. [Set Kubelet Parameters Via A Configuration File](https://kubernetes.io/docs/tasks/administer-cluster/kubelet-config-file/). 
+- [Dynamic Kubelet Configuration](https://kubernetes.io/blog/2018/07/11/dynamic-kubelet-configuration/); 
+- [Set Kubelet Parameters Via A Configuration File](https://kubernetes.io/docs/tasks/administer-cluster/kubelet-config-file/). 
 
-将组件配置以 Kubernetes API 资源的形式进行加载，还会带来以下好处：
+将组件配置以 Kubernetes API 资源的形式进行管理，还会带来以下好处：
 
-1. 配置版本化转换：Kubernetes API 资源是有资源的，配置版本化，可以使得后续的版本转换成为可能，通过版本转换可以使配置兼容以前的版本；
+1. 内置的 API 版本转换与兼容性：利用 Kubernetes 资源的内置版本管理机制，可以实现新旧配置版本的自动转换，确保旧版配置的兼容性。
 2. 默认值：可以复用 Kubernetes 给资源设置默认值的机制，给配置资源设置默认值；
 3. 配置校验：可以直接复用 Kubernetes 资源的校验机制，对各个配置项进行校验。
 
-之后的 Kubernetes 版本中，kube-controller-manager、kube-proxy、kube-scheduler等组件，也将配置文件已 Kubernetes 资源的形式进行加载和设置。
+之后的 Kubernetes 版本中，kube-controller-manager、kube-proxy、kube-scheduler 等组件，也将配置文件已 Kubernetes 资源的形式进行管理。
 
 ## 阶段5：应用构建框架化（v1.10.0 ～ v1.28.3）
 
