@@ -1,21 +1,21 @@
-上一节课，我在介绍资源对象定义的过程中，提到了一些对象，例如：metav1.TypeMeta、metav1.ObjectMeta等。除了这些对象之外，还有一些其他对象，为方便你统一理解，本小节，我来统一介绍下这些对象。
+上一节课，我在介绍资源对象定义的过程中，提到了一些对象，例如：`metav1.TypeMeta`、`metav1.ObjectMeta` 等。除了这些对象之外还有一些其他对象，为方便你统一理解，本小节我来统一介绍下这些对象。
 
 ## Kubernetes 对象概览
 
-![img](image/Fln9Zif6DWp50Ea3GbK5dKYeo3_b)
+<img src="image/Fln9Zif6DWp50Ea3GbK5dKYeo3_b" alt="img" style="zoom: 35%;" />
 
-Kubernetes 对象都实现了 runtime.Object 接口，我们可以用 runtime.Object 指代所有的 Kubernetes 对象。runtime.Object 是个接口类型，可以有多个实现。在 Kubernetes 中，你可以根据需要实现多种不同的 Kubernetes 对象。当前 Kubernetes 中有以下 2 种对象类型：
+Kubernetes 对象都实现了 `runtime.Object` 接口，我们可以用 `runtime.Object` 指代所有的 Kubernetes 对象。`runtime.Object` 是接口类型，可以有多个实现。在 Kubernetes 中，你可以根据需要实现多种不同的 Kubernetes 对象。当前 Kubernetes 中有以下 2 种对象类型：
 
-1. 单个对象，例如 Pod；
-2. 列表对象，例如：PodList。
+- 单个对象，例如 Pod；
+- 列表对象，例如：PodList。
 
 每种对象类型，又包含了对象类型和对象属性。
 
-上图，包含了 Kubernetes 对象构建体系中的多个核心概念，例如：schema.ObjectKind、metav1.TypeMeta、metav1.ObjectMeta、metav1.Object 等，接下来，我一个一个给你讲解。
+上图，包含了 Kubernetes 对象构建体系中的多个核心概念，例如：`schema.ObjectKind`、`metav1.TypeMeta`、`metav1.ObjectMeta`、`metav1.Object` 等，接下来，我一个一个给你讲解。
 
 metav1、runtime、schema 包的导入路径如下：
 
-```
+```go
 metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 "k8s.io/apimachinery/pkg/runtime"
 "k8s.io/apimachinery/pkg/runtime/schema"
@@ -23,33 +23,33 @@ metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 ## Kubernetes 对象概念区分
 
-在 Kubernetes 相关的开发文章、书籍或者课程中，你可能会经常听到 Kubernetes 资源对象、Kubernetes 对象、Kubernetes 对象属性、Kubernetes 资源元数据这些概念。未来避免你混淆，本小节来统一说明。
+在 Kubernetes 相关的开发文章、书籍或者课程中，你可能会经常听到 Kubernetes 资源对象、Kubernetes 对象、Kubernetes 对象属性、Kubernetes 资源元数据这些概念。为了避免你混淆，本小节来统一说明。
 
 ### 资源对象（Resource Object）
 
-Kubernetes 中“一条记录”就是一个资源对象，代表集群期望或当前的某个实体状态：
+Kubernetes 中“一条记录”就是一个资源对象，代表集群期望或当前的状态：
 
-1. 会持久化到 etcd；
-2. API Server 为它暴露 REST 端点；
-3. 典型例子：Pod、Deployment、Service、ConfigMap、CustomResource 等。
+- 会持久化到 ETCD；
+- API Server 为它暴露 REST 端点；
+- 典型例子：Pod、Deployment、Service、ConfigMap 等。
 
 例如 Deployment 资源对象定义如下：
 
 ```go
 type Deployment struct {  
     metav1.TypeMeta   `json:",inline"` // apiVersion / kind  
-    metav1.ObjectMeta `json:"metadata,omitempty"` // 名称、标签等  
-    Spec   appsv1.DeploymentSpec   `json:"spec,omitempty"`   // 期望  
-    Status appsv1.DeploymentStatus `json:"status,omitempty"` // 当前  
+    metav1.ObjectMeta `json:"metadata,omitempty"` // 名称、标签、注解等  
+    Spec   DeploymentSpec   `json:"spec,omitempty"`   // 期望  
+    Status DeploymentStatus `json:"status,omitempty"` // 当前状态
 }
 ```
 
 ### 对象（Object）
 
- Kubernetes 对象与 Kubernetes资源对象基本等价，多指单个 API 资源实例：
+ Kubernetes 对象与 Kubernetes 资源对象基本等价，多指单个 API 资源实例：
 
-1. “对象”更侧重抽象概念，“资源对象”强调它通过 API 暴露且可持久化；
-2. 在代码层，二者都映射为某个 Go 结构体。
+- “对象”更侧重抽象概念，“资源对象”强调它通过 API 暴露且可持久化；
+- 在代码层，二者都映射为某个 Go 结构体。
 
 ### 对象属性（Object Field / Attribute）
 
@@ -60,7 +60,7 @@ type Deployment struct {
 
 示例如下：
 
-```
+```go
 spec.replicas           # 属性：副本数  
 spec.template.spec.containers[0].image  # 属性：容器镜像  
 status.observedGeneration              # 属性：已观测版本  
@@ -72,7 +72,7 @@ status.observedGeneration              # 属性：已观测版本
 
 1） TypeMeta（类型元数据）
 
-```
+```yaml
 apiVersion: apps/v1  
 kind: Deployment  
 ```
@@ -83,7 +83,7 @@ kind: Deployment
 
 介绍资源对象有哪些元数据的数据结构，典型字段如下：
 
-```
+```yaml
 metadata:  
   name: web-deploy  
   namespace: prod  
@@ -106,15 +106,15 @@ metadata:
 
 ### 小结对比
 
-![img](image/FvkOvDj05bme0Kd3kv1aiA8oJrwu)
+<img src="image/FvkOvDj05bme0Kd3kv1aiA8oJrwu" alt="img" style="zoom:50%;" />
 
 ## 核心结构源码位置
 
 Kubernetes 对象体系中涉及到多个核心结构，这些核心结构的源码位置和功能介绍如下表所示：
 
-> 提示：文件位置父路径统一为 k8s.io/apimachinery/pkg。
+> 提示：文件位置父路径统一为 k8s.io/apimachinery/pkg
 
-![img](image/FtnL2CvnH61sKHvoXGPuuzxnIvUG)
+<img src="image/FtnL2CvnH61sKHvoXGPuuzxnIvUG" alt="img" style="zoom:50%;" />
 
 接下来，我自顶向下的来给你介绍下涉及到的核心结构的功能和实现。
 
@@ -126,7 +126,7 @@ Kubernetes 对象体系中涉及到多个核心结构，这些核心结构的源
 
 下面是 runtime.Object 接口的定义：
 
-```
+```go
 // Object interface must be supported by all API types registered with Scheme. Since objects in a scheme are
 // expected to be serialized to the wire, the interface an Object must provide to the Scheme allows
 // serializers to set the kind, version, and group the object is represented as. An Object may choose
@@ -139,8 +139,8 @@ type Object interface {
 
 runtime.Object 接口中包含了两个方法：
 
-1. GetObjectKind() schema.ObjectKind：此方法返回对象的类型信息。schema.ObjectKind 是一个接口，用于描述 Kubernetes API 对象的类型和版本信息。
-2. DeepCopyObject() Object：此方法用于创建对象的深层副本。在 Kubernetes 中，对象的深层副本是一种常见的操作，用于确保对象的不可变性和避免引用共享。
+- `GetObjectKind() schema.ObjectKind`：此方法返回对象的类型信息。schema.ObjectKind 是一个接口，用于描述 Kubernetes API 对象的类型和版本信息。
+- `DeepCopyObject() Object`：此方法用于创建对象的深层副本。在 Kubernetes 中，对象的深层副本是一种常见的操作，用于确保对象的不可变性和避免引用共享。
 
 runtime.Object 位于 runtime 包中，说明 runtime.Object 是一个非常基础的接口。事实上，所有的 Kubernetes 对象都属于 runtime.Object。
 
@@ -148,7 +148,7 @@ runtime.Object 是一个接口类型，意味着，它可以有多个实现。�
 
 [schema.ObjectKind](https://github.com/kubernetes/kubernetes/blob/v1.30.4/staging/src/k8s.io/apimachinery/pkg/runtime/schema/interfaces.go#L22) 接口类型定义如下：
 
-```
+```go
 // 代码位于：staging/src/k8s.io/apimachinery/pkg/runtime/schema/interfaces.go
 
 // All objects that are serialized from a Scheme encode their type information. This interface is used
@@ -174,8 +174,8 @@ type GroupVersionKind struct {
 
 schema.ObjectKind 接口提供了 2 个核心方法用来设置和获取资源的核心信息：
 
-1. SetGroupVersionKind()：设置资源组、资源版本、资源类型。3 个核心信息以字符串的形式包含在 GroupVersionKind 结构体中；
-2. GroupVersionKind()：获取资源组、资源版本、资源类型。3 个核心信息以字符串的形式包含在GroupVersionKind 结构体中。
+- `SetGroupVersionKind()`：设置资源组、资源版本、资源类型。3 个核心信息以字符串的形式包含在 GroupVersionKind 结构体中；
+- `GroupVersionKind()`：获取资源组、资源版本、资源类型。3 个核心信息以字符串的形式包含在 GroupVersionKind 结构体中。
 
 也就是说，所有的 Kubernetes 对象，都可以使用 SetGroupVersionKind 方法设置 GKV 信息、使用GroupVersionKind 方法获取 GVK 信息，使用 DeepCopyObject 方法深拷贝该对象。
 
