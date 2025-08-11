@@ -6,7 +6,7 @@ kube-apiserver 是 Kubernetres 最核心的组件，也是其他 Kubernetes 组�
 
 ## 如何学习 kube-apiserver 源码？
 
-kube-apiserver 源码量很大，涉及到的概念也非常多，很难面面俱到的全部讲清楚。所以，在讲 kube-apiserver 的时候，我进行了一些取舍。首先，kube-apiserver 本质上是一个标准的 RESTful API 服务器，所以，我会按照 RESTful API 服务器的开发流程去给你讲解 kube-apiserver 具体是如何去实现一个 REST 服务器的。另外，kube-apiserver 中有很多核心的功能和概念，这些功能和概念，我会根据自己的理解来选择性讲解。
+kube-apiserver 源码量很大，涉及到的概念也非常多，很难面面俱到的全部讲清楚。所以，在讲 kube-apiserver 的时候，我进行了一些取舍。首先，**kube-apiserver 本质上是一个标准的 RESTful API 服务器，所以，我会按照 RESTful API 服务器的开发流程去给你讲解 kube-apiserver 具体是如何去实现一个 REST 服务器的。**另外，kube-apiserver 中有很多核心的功能和概念，这些功能和概念，我会根据自己的理解来选择性讲解。
 
 本套课程可能不会一下就把所有的核心功能都讲解完，但是 kube-apiserver 中的核心流程，在课程上线后仍然会不断补充、更新的。
 
@@ -28,7 +28,7 @@ kube-apiserver 本质上是一个提供了 REST 接口的 Web 服务，在开发
 
 - **默认值设置：**如果有些 HTTP 请求参数没有被指定，为了确保请求能够按预期执行，我们通常会评估这些参数，并设置适合的默认值；
 - **请求参数校验：**校验请求参数是否合法；
-- **逻辑处理：**编写代码，根据请求参数，完成既定的业务逻辑处理。
+- **逻辑处理：**编写代码，根据请求参数完成既定的业务逻辑处理。
 
 接着，如果有些数据需要持久化保存，还需要将数据保存在后端存储中。
 
@@ -36,7 +36,7 @@ kube-apiserver 本质上是一个提供了 REST 接口的 Web 服务，在开发
 
 在实际开发中，我们通常会先定义 API 接口，再开发应用，应用中包括了：路由设置、路由函数、数据存储、核心功能。先定义 API 接口是为了能够将接口约定提前提供给前端，实现前后端并行开发。
 
-在本套课程中，我会按着上述开发顺序，来讲解 kube-apiserver 的源码实现。本节课，我们先来从看下 kube-apiserver 是如何设计 REST API 接口的。
+在本套课程中，我会按着上述开发顺序来讲解 kube-apiserver 的源码实现。本节课我们先来从看下 kube-apiserver 是如何设计 REST API 接口的。
 
 ## Kubernetes 是如何设计 REST API 接口的？
 
@@ -52,11 +52,11 @@ $ kubectl api-resources |egrep 'k8s.io| v1| apps| autoscaling| batch'|wc -l
 那么，Kubernetes 具体是如何设计这些资源的呢？在回答这个问题之前，我们先来看下，一般的 Web 服务是如何设计 REST 资源的：
 
 1. 指定 REST 资源类型：根据项目功能，将这些功能抽象成一系列的 REST 资源，例如：user、secret 等；
-2. 指定 HTTP 方法：根据需要对资源进行的操作，指定 HTTP 方法，例如：GET、POST、PUT、DELETE等。不同的 HTTP 方法，完成不同的操作；
-3. 设计 API 版本的标识方法：通常将版本标识放在如下 3 个位置（第 1 个方法最常用）：
-   4. URL 中，比如 `/v1/users`；
-   2. HTTP Header 中，比如 `Accept: vnd.example-com.foo+json; version=1.0`；
-   3. Form 参数中，比如 `/users?version=v1`；
+2. 指定 HTTP 方法：根据需要对资源进行的操作，指定 HTTP 方法，例如：GET、POST、PUT、DELETE 等。不同的 HTTP 方法完成不同的操作；
+3. 设计 API 版本标识方法：通常将版本标识放在如下 3 个位置（第 1 个方法最常用）：
+   - URL 中，比如 `/v1/users`；
+   - HTTP Header 中，比如 `Accept: vnd.example-com.foo+json; version=1.0`；
+   - Form 参数中，比如 `/users?version=v1`；
 4. 指定请求参数和返回参数：给每一个 HTTP 请求指定参数，参数位置要匹配 HTTP 请求方法。
 
 上面是我们在设计 REST API 接口时，需要考虑的点。Kubernetes 作为一个超大型的分布式系统，其 kube-apiserver 组件中集成了 75 种 REST 资源及操作。其在设计时，除了上述我介绍的设计点之外，还做了更进一步的设计。
@@ -65,25 +65,23 @@ $ kubectl api-resources |egrep 'k8s.io| v1| apps| autoscaling| batch'|wc -l
 
 ## 标准的 RESTful API 定义
 
-REST 是一种 API 接口接口开发规范，有一系列的标准，从 HTTP 方法、请求路径、资源定义等方面给出了一些约束性规范，所有满足 REST 规范的 API 接口，我们称之为 RESTful API。详细的 REST 规范可参考：[REST 接口规范](https://konglingfei.com/onex/convention/rest.html)。
+REST 是一种 API 接口开发规范，有一系列的标准，从 HTTP 方法、请求路径、资源定义等方面给出了一些约束性规范，所有满足 REST 规范的 API 接口，我们称之为 RESTful API。详细的 REST 规范可参考：[REST 接口规范](https://konglingfei.com/onex/convention/rest.html)。
 
 在企业应用开发中，REST 规范通常由开发者自行遵循，大多数情况下开发者能够较好的遵守 REST 规范去设计 API 接口。但是，因为是软性约束，所以还是有些开发者因为对 REST 规范的不了解、开发能力较低等因素，导致设计出来的 API 接口并不满足 REST 规范。所以在一个 REST Web 服务器中，可能会出现有些接口不满足 REST 规范的情况。
 
-但是，在 Kubernetes 中不存在这种情况，因为 Kubernetes 会从代码层面来确保开发者的资源定义都是符合规范的，并且请求方法、请求路径等，都是基于规范化的资源来自动生成。不需要开发者手动指定。这种刚性的资源规范设计，以及基于规范的自动化 REST 接口生成，会确保 Kubernetes 中，所有 API 都是符合 REST 规范的。
+但是，**在 Kubernetes 中不存在这种情况，因为 Kubernetes 会从代码层面来确保开发者的资源定义都是符合规范的，并且请求方法、请求路径等，都是基于规范化的资源来自动生成，不需要开发者手动指定。**这种刚性的资源规范设计，以及基于规范的自动化 REST 接口生成，会确保 Kubernetes 中所有 API 都是符合 REST 规范的。
 
 ## Kubernetes 支持更多的资源操作类型
 
 在常见的 Web 服务中， 通常情况下只会用到 GET、PUT、POST、DELETE 四种 HTTP 请求方法，这些请求方法映射为 Go 函数名为：Get、List、Update、Create、Delete。在 Kubernetes 中，几乎所有的 REST 资源，除了支持以上 5 种操作方法之外，还支持以下 3 种操作类型：
 
-1. DeleteCollection：用于删除多个资源对象的操作方法。它允许用户一次性删除整个资源集合，而不需要逐个删除每个资源对象。这对于清理整个资源集合或者进行批量删除操作非常有用。例如，可以使用 deletecollection 来删除某个命名空间下的所有 Pod；
-2. Patch：用于对资源对象进行部分更新的操作方法。通过 patch 方法，可以只更新资源对象的部分字段或属性，而不需要提供完整的资源对象定义。这对于需要局部修改资源对象的场景非常有用，可以减少数据传输量和减小对资源对象的影响范围；
-3. Watch：用于监视资源对象变化的操作方法。通过 watch 方法，客户端可以与 API 服务器建立长连接，并实时地接收资源对象的变化通知，包括创建、更新、删除等操作。这对于需要实时监控资源对象状态变化的场景非常有用，比如实时监控 Pod 的状态变化。
+- DeleteCollection：用于删除多个资源对象的操作方法。它允许用户一次性删除整个资源集合，而不需要逐个删除每个资源对象。这对于清理整个资源集合或者进行批量删除操作非常有用。例如，可以使用 deletecollection 来删除某个命名空间下的所有 Pod；
+- Patch：用于对资源对象进行部分更新的操作方法。通过 patch 方法，可以只更新资源对象的部分字段或属性，而不需要提供完整的资源对象定义。这对于需要局部修改资源对象的场景非常有用，可以减少数据传输量和减小对资源对象的影响范围；
+- Watch：用于监视资源对象变化的操作方法。通过 watch 方法，客户端可以与 API 服务器建立长连接，并实时地接收资源对象的变化通知，包括创建、更新、删除等操作。这对于需要实时监控资源对象状态变化的场景非常有用，比如实时监控 Pod 的状态变化。
 
 ## Kubernetes 资源组支持更多的功能
 
-支持资源组（Group），在 Kubernetes APIServer 中也可称其为 APIGroup。资源组是对 REST 资源按其功能类别进行的逻辑划分。具有相同功能类别的 Kubernetes REST 资源会被划分到同一个资源组中，例如：Deployment、StatefulSet 资源因为都是用来创建一个工作负载，所以都归属以同一个 apps 资源组。
-
-在很多业务开发中，并不会抽象一个资源组的概念。因为普通的业务开发中，没有针对资源租的统一操作。但组件组，在业务开发中，也是一个值得借鉴的设计方式。
+支持资源组（Group），在 Kubernetes APIServer 中也可称其为 APIGroup。资源组是对 REST 资源按其功能类别进行的逻辑划分。具有相同功能类别的 Kubernetes REST 资源会被划分到同一个资源组中，例如：`deployments`、`statefulsets` 资源因为都是用来创建一个工作负载，所以都归属以同一个 `apps` 资源组。
 
 在开发 REST API 服务时，我们通常也会根据需要支持资源组，并且 Web 框架通常也都支持设置资源组，例如，下面是一个使用 Gin 框架设置资源组的代码示例：
 
@@ -130,13 +128,13 @@ func main() {
 
 执行以下命令运行上述代码：
 
-```
+```shell
 $ go run main.go
 ```
 
 打开一个新的 Linux 终端，执行以下 curl 命令来请求 RESTful API 接口：
 
-```
+```shell
 $ curl http://127.0.0.1:8080/api/users # api 是资源组名
 {"message":"Get users"}
 ```
