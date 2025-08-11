@@ -135,7 +135,7 @@ $ go run main.go
 打开一个新的 Linux 终端，执行以下 curl 命令来请求 RESTful API 接口：
 
 ```shell
-$ curl http://127.0.0.1:8080/api/users # api 是资源组名
+$ curl http://127.0.0.1:8080/api/users/xxx # api 是资源组名
 {"message":"Get users"}
 ```
 
@@ -145,15 +145,13 @@ $ curl http://127.0.0.1:8080/api/users # api 是资源组名
 
 ## 使用资源组、资源版本、资源类型构建 HTTP 请求路径
 
-在一般的 REST 服务开发中，HTTP 请求路径通常是直接指定的。但是在 Kubernetes 中，HTTP 请求路径很多时候，是由资源组、资源版本、资源类型共同构建的。kube-apiserver 会根据资源组、资源版本、资源类型自动构建出资源的请求路径。
+在一般的 REST 服务开发中，HTTP 请求路径通常是直接指定的。但是在 Kubernetes 中，HTTP 请求路径很多时候是由资源组、资源版本、资源类型共同构建的。kube-apiserver 会根据资源组、资源版本、资源类型自动构建出资源的请求路径。
 
-例如：创建 Pod 的 HTTP 请求方法和请求路径为 POST `/api/v1/namespaces/{namespace}/pods`，其中 api 是资源组，v1 是资源版本，pods 是资源类型。
-
-> 提示：namespaces是命名空间（其实就是一个租户））。
+例如：创建 Pod 的 HTTP 请求方法和请求路径为 POST `/api/v1/namespaces/{namespace}/pods`，其中 `api` 是资源组，`v1` 是资源版本，`pods` 是资源类型。
 
 ## 标准化的资源定义
 
-在一般的 REST 服务开发中，POST、PUT 请求的请求 Body 基本都是根据需要自行定义的，没有固定的格式。但是在 Kubernetes 中，请求 Body 也是有固定的格式的。这里，我们来看下 Kubernetes 中，Namespace 资源的定义：
+在一般的 REST 服务开发中，POST、PUT 请求的请求 Body 基本都是根据需要自行定义的，没有固定的格式。但是在 Kubernetes 中，请求 Body 也是有固定的格式的。这里我们来看下 Kubernetes 中，namespace 资源的定义：
 
 ```go
 type Namespace struct {
@@ -202,23 +200,23 @@ type NamespaceStatus struct {
 
 在 Namespace 结构体定义中包含以下 4 个字段：
 
-1. TypeMeta：
-2. 定义了资源使用的 API 版本，例如：v1、apps/v1 等；
-3. 定义了资源类型，如 Pod、Service、Deployment 等。
-4. ObjectMeta：存储资源的元数据，包括名称、命名空间、标签和注释；
-5. Spec： 定义资源的期望状态。每种类型的资源在 spec 中有特定的字段；
-6. Status：描述资源的当前状态，一般由 Kubernetes 系统自动管理，用户不需要手动设置。
+- TypeMeta：
+  - 定义了资源使用的 API 版本（APIVersion），例如：`v1`、`apps/v1` 等；
+  - 定义了资源类型（有些书籍称为资源类别，Kind），如 Pod、Service、Deployment 等。
+- ObjectMeta：存储资源的元数据，包括名称、命名空间、标签和注释；
+- Spec： 定义资源的期望状态。每种类型的资源在 Spec 中有特定的字段；
+- Status：描述资源的当前状态，一般由 Kubernetes 系统自动管理，用户不需要手动设置。
 
-通常情况下 Kubernetes 资源都会有上述 4 个字段，其中 TypeMeta、ObjectMeta、Spec字段都会有，Status字段根据情况选择具有。例如 ConfigMap、Secret 等资源就没有 Status字段。
+通常情况下 Kubernetes 资源都会有上述 4 个字段，其中 TypeMeta、ObjectMeta、Spec 字段都会有，Status 字段根据情况选择具有。例如 ConfigMap、Secret 等资源就没有 Status 字段。
 
-Kubernetes 资源定义的规范化、标准化，使得 Kubernetes 可以基于这些规范化的定义，做很多通用的处理。例如：根据 TypeMeta字段构建出资源的请求路径；根据 ObjectMeta字段中的OwnerReferences来对所有资源执行垃圾回收逻辑。根据 ResourceVersion字段对所有资源的更新，实行乐观锁机制。根据 Labels字段，对所有资源实行一致的基于标签过滤逻辑等。
+Kubernetes 资源定义的规范化、标准化，使得 Kubernetes 可以基于这些规范化的定义，做很多通用的处理。例如：根据 TypeMeta 字段构建出资源的请求路径；根据 ObjectMeta 字段中的 OwnerReferences 来对资源执行垃圾回收逻辑；根据 ResourceVersion 字段来对资源的更新实行乐观锁机制。根据 Labels 字段对资源实行一致的基于标签过滤逻辑等。
 
 ## 支持资源版本转换
 
-一个企业应用，随着功能的迭代，其 API 接口不可避免的要面临升级的可能。在企业应用开发中，我们通常有以下 2 种方式来支持 API 接口版本的升级：
+一个企业应用随着功能的迭代，其 API 接口不可避免的要面临升级的可能。在企业应用开发中，我们通常有以下 2 种方式来支持 API 接口版本的升级：
 
-1. **同一个 Web 服务进程中，不同的路由：**例如：POST `/v1/users`、POST `/v2/users`，上述 2 个请求路径分别对应 2 个不同的路由函数；
-2. **不同 Web 服务进程，想通路由**：例如：我们可以请求 V1 版本的服务和 V2 版本的服务，2 个服务具有相同的请求路径：POST `/users`；
+- 同一个 Web 服务进程中，不同的路由：例如：POST `/v1/users`、POST `/v2/users`，上述 2 个请求路径分别对应 2 个不同的路由函数；
+- 不同 Web 服务进程，相同路由：例如：我们可以请求 V1 版本的服务和 V2 版本的服务，2 个服务具有相同的请求路径：POST `/users`；
 
 在企业级应用开发中，方案 1 用的是最多的。
 
@@ -226,11 +224,11 @@ Kubernetes 也支持不同的版本，例如：`/apis/batch/v1beta1/cronjobs`、
 
 ![img](image/FpCykvszQnHU6YOSSlMxqR8ECDk2)
 
-例如，请求 POST /apis/batch/v1beta1/cronjobsRESTful API 时，资源的版本是 v1beta1，请求 POST /apis/batch/v1/cronjobs RESTful API 时，资源的版本是 v1。但是在 Kubernetes 内部，v1beta1版本和 v1版本的资源，都会被转换为内部版本（internal version）。Kubernetes 源码中的绝大部分源码处理资源时，其实处理的是内部版本。通过将不同版本都转换为内部版本再处理，可以大大简化 Kubernetes 内部源码处理逻辑，不用考虑多版本兼容的问题。否则 Kubernetes 源码可能充斥着大量的 if v1beta1 ... else if v1 ... else 这种语句。极大的提高了多版本维护的复杂度和成本。
+例如，请求 `POST /apis/batch/v1beta1/cronjobs` RESTful API 时，资源的版本是 `v1beta1`，请求 `POST /apis/batch/v1/cronjobs` RESTful API 时，资源的版本是 `v1`。但是在 Kubernetes 内部，`v1beta1` 版本和 `v1` 版本的资源，都会被转换为内部版本（internal version）。Kubernetes 源码中的绝大部分源码处理资源时，其实处理的是内部版本。通过将不同版本都转换为内部版本再处理，可以大大简化 Kubernetes 内部源码处理逻辑，不用考虑多版本兼容的问题。否则 Kubernetes 源码可能充斥着大量的 `if v1beta1 ... else if v1 ... else` 这种语句，极大的提高了多版本维护的复杂度和成本。
 
 kube-apiserver 在处理完资源之后，保存在 Etcd 中的是版本化的资源数据。Kubernetes 的这种版本转换机制，还会带来另外一种非常重要的能力。就是支持将旧版本的 API 资源数据，转换为新版本的 API 资源数据，转换逻辑为：
 
-![img](image/Fvo-yyKxEFwOeGPLlkp5rMUmAPTK)
+<img src="image/Fvo-yyKxEFwOeGPLlkp5rMUmAPTK" alt="img" style="zoom:67%;" />
 
 关于 Kubernetes 资源版本的转换，课程后面还会详细介绍。
 
@@ -238,9 +236,9 @@ kube-apiserver 在处理完资源之后，保存在 Etcd 中的是版本化的�
 
 在企业应用中，我们通常要对请求进行一些通用的逻辑处理，下面这些逻辑处理是最常见，或者通常都会涉及到的：
 
-1. **资源默认值设置：**用户的请求中会携带大量参数，为了提高用户传参的效率、灵活性和安全性，有些参数会有默认值，也就是用户默认可以不设置参数值。这种情况下，后台服务会检查参数值是否被设置，如果没有被设置，后台程序会在逻辑处理前设置上默认值，例如：
+**资源默认值设置：**用户的请求中会携带大量参数，为了提高用户传参的效率、灵活性和安全性，有些参数会有默认值，也就是用户默认可以不设置参数值。这种情况下，后台服务会检查参数值是否被设置，如果没有被设置，后台程序会在逻辑处理前设置上默认值，例如：
 
-```
+```go
 if req.Type == "" {
     req.Type = "User"
 }
@@ -248,9 +246,9 @@ if req.Type == "" {
 
 在普通的企业应用中，设置默认值的方式可能会因为不同团队、不同项目、不同开发者，各不相同。
 
-1. **资源校验：**对资源参数的合法性进行校验，例如：
+**资源校验：**对资源参数的合法性进行校验，例如：
 
-```
+```go
 if req.Type == "" {
     return fmt.Errorf("Type cannot be empty")
 }
@@ -266,12 +264,8 @@ if req.Type == "" {
 
 通过上面的介绍，你可以知道在 Kubernetes 中，资源定义、资源参数默认值设置、资源参数校验等，都是规范的、一致的。这种规范性和一致性，也使得很多操作都可以通过代码生成技术一键生成，代码生成工具只需要按照要求，来处理规范化、一致化的 API 资源即可，并生成需要的代码。
 
-例如，我们可以基于规范的资源定义和资源处理逻辑，通过 code-generator 来自定生成版本化的 Go SDK（client-go）、版本转换函数（统一存放在 zz_generated.conversion.go 文件中 ）、默认值设置函数（统一存放在 zz_generated.defaults.go 文件中 ）等。
+例如，我们可以基于规范的资源定义和资源处理逻辑，通过 code-generator 来自动生成版本化的 Go SDK（`client-go`）、版本转换函数（统一存放在 `zz_generated.conversion.go` 文件中）、默认值设置函数（统一存放在 `zz_generated.defaults.go` 文件中 ）等。
 
 ## 总结
 
-![img](image/Fr_3T7S129pl-6-s066ewSqXpF2e)
-
-本节课根据 Web 服务的开发流程，引入了学习 kube-apiserver 源码的思路：先学习 Kubernetes 是如何定义 API 接口的，再学习 Kubernetes 是如何设置路由的，再学习 Kubernetes 路由函数分发方法等。
-
-另外，本节课还从设计层面，介绍了 Kubernetes RESTful API 接口设计的特色地方。这些先进的 API 接口设计方法，也可以迁移到我们的业务应用开发中。可借鉴的设计方法有：支持更多的资源操作、通过资源组、资源版本、资源类型构建 RESTful 请求路径、规范化的资源定义、支持资源版本转换、大量使用代码生成技术等。
+本节课从设计层面，介绍了 Kubernetes RESTful API 接口设计的特色地方。这些先进的 API 接口设计方法，也可以迁移到我们的业务应用开发中。可借鉴的设计方法有：支持更多的资源操作、通过资源组、资源版本、资源类型构建 RESTful 请求路径、规范化的资源定义、支持资源版本转换、大量使用代码生成技术等。
