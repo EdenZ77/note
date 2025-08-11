@@ -4,7 +4,7 @@
 
 <img src="image/Fln9Zif6DWp50Ea3GbK5dKYeo3_b" alt="img" style="zoom: 35%;" />
 
-Kubernetes 对象都实现了 `runtime.Object` 接口，我们可以用 `runtime.Object` 指代所有的 Kubernetes 对象。`runtime.Object` 是接口类型，可以有多个实现。在 Kubernetes 中，你可以根据需要实现多种不同的 Kubernetes 对象。当前 Kubernetes 中有以下 2 种对象类型：
+Kubernetes 对象都实现了 `runtime.Object` 接口，我们可以用 `runtime.Object` 指代所有的 Kubernetes 对象。`runtime.Object` 是接口类型，可以有多个实现。当前 Kubernetes 中有以下 2 种对象类型：
 
 - 单个对象，例如 Pod；
 - 列表对象，例如：PodList。
@@ -17,8 +17,13 @@ metav1、runtime、schema 包的导入路径如下：
 
 ```go
 metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+// metav1.TypeMeta、metav1.ObjectMeta、metav1.ListMeta 位于 staging/src/k8s.io/apimachinery/pkg/apis/meta/v1/types.go
+// metav1.ListInterface 位于 staging/src/k8s.io/apimachinery/pkg/apis/meta/v1/meta.go
+// metav1.Object 位于 staging/src/k8s.io/apimachinery/pkg/apis/meta/v1/meta.go
 "k8s.io/apimachinery/pkg/runtime"
+// runtime.Object 位于 staging/src/k8s.io/apimachinery/pkg/runtime/interfaces.go 
 "k8s.io/apimachinery/pkg/runtime/schema"
+// schema.ObjectKind 位于 staging/src/k8s.io/apimachinery/pkg/runtime/schema/interfaces.go
 ```
 
 ## Kubernetes 对象概念区分
@@ -177,7 +182,7 @@ schema.ObjectKind 接口提供了 2 个核心方法用来设置和获取资源�
 - `SetGroupVersionKind()`：设置资源组、资源版本、资源类型。3 个核心信息以字符串的形式包含在 GroupVersionKind 结构体中；
 - `GroupVersionKind()`：获取资源组、资源版本、资源类型。3 个核心信息以字符串的形式包含在 GroupVersionKind 结构体中。
 
-也就是说，所有的 Kubernetes 对象，都可以使用 SetGroupVersionKind 方法设置 GKV 信息、使用GroupVersionKind 方法获取 GVK 信息，使用 DeepCopyObject 方法深拷贝该对象。
+也就是说，所有的 Kubernetes 对象，都可以使用 SetGroupVersionKind 方法设置 GKV 信息、使用 GroupVersionKind 方法获取 GVK 信息，使用 DeepCopyObject 方法深拷贝该对象。
 
 在 runtime.Object 的接口中，包含了一个函数 DeepCopyObject，用来实现 Kubernetes 对象的深度拷贝。那么， 为什么一定要生成 API 定义的深度拷贝方法呢？在 Kubernetes 中，深拷贝函数的存在是为了确保在处理 API 对象时能够正确地进行对象的复制，避免因浅拷贝而导致的数据共享和引用问题。以下是一些原因说明为什么 Kubernetes 需要深拷贝函数：
 
@@ -186,9 +191,9 @@ schema.ObjectKind 接口提供了 2 个核心方法用来设置和获取资源�
 
 所以，总结如上，我们可以知道一个 Kubernetes 一定实现了 runtime.Object 接口，一定具有以下 3 个核心方法：
 
-1. SetGroupVersionKind()：设置对象的 GVK（**G**roup、**V**ersion、**K**ind）；
-2. GroupVersionKind()：获取对象的 GVK；
-3. DeepCopyObject()：深度拷贝当前资源对象。
+1. `SetGroupVersionKind()`：设置对象的 GVK（**G**roup、**V**ersion、**K**ind）；
+2. `GroupVersionKind()`：获取对象的 GVK；
+3. `DeepCopyObject()`：深度拷贝当前资源对象。
 
 通过上面的介绍，你应该已经明白 runtime.Object 的实现和功能了。runtime.Object 代表任何 Kubernetes 对象，可能是一个 Kubernetes 资源对象，也可能只是一个 metav1.TypeMeta 结构体对象，但是无论如何，能直接从它那里得到的东西很少，因为它只有一个方法定义而已，所以拿到 runtime.Object 之后，还需要通过转换和判断，获取原始类型对象，从而获取更多的信息，执行更多的操作。
 
@@ -198,7 +203,7 @@ schema.ObjectKind 接口提供了 2 个核心方法用来设置和获取资源�
 
 metav1.TypeMeta 结构体定义如下：
 
-```
+```go
 // 位于 k8s.io/apimachinery/pkg/apis/meta/v1/types.go 文件中
 
 // TypeMeta describes an individual object in an API response or request
@@ -226,7 +231,7 @@ type TypeMeta struct {
 
 metav1.TypeMeta 结构体具有以下方法（[metav1.TypeMeta 方法列表](https://github.com/kubernetes/kubernetes/blob/v1.30.4/staging/src/k8s.io/apimachinery/pkg/apis/meta/v1/meta.go#L117)）：
 
-```
+```go
 func (obj *TypeMeta) GetObjectKind() schema.ObjectKind { return obj }
 
 // SetGroupVersionKind satisfies the ObjectKind interface for all objects that embed TypeMeta
@@ -240,13 +245,11 @@ func (obj *TypeMeta) GroupVersionKind() schema.GroupVersionKind {
 }
 ```
 
-可以看到 Kubernetes 对象通过内嵌 metav1.TypeMeta 结构体实现了 GetObjectKind() 方法。
+可以看到 Kubernetes 对象通过内嵌 metav1.TypeMeta 结构体实现了 `GetObjectKind()` 方法。
 
+那么 `DeepCopyObject() Object` 方法又是如何实现的呢？这里，我们来看下 Deployment 的具体定义：
 
-
-那么 DeepCopyObject() Object 方法又是如何实现的呢？这里，我们来看下 Deployment 的具体定义：
-
-```
+```go
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +k8s:prerelease-lifecycle-gen:introduced=1.6
@@ -273,9 +276,9 @@ type Deployment struct {
 }
 ```
 
-在 Deployment 结构体上面有一行 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object 注释，只是 Kubernetes 源码文件中，一种特殊的注释，Kubernetes 的 deepcopy-gen 代码生成工具会根据该注释生成资源结构体的 DeepCopyObject 方法（生成的代码保存在 [zz_generated.deepcopy.go](https://github.com/kubernetes/kubernetes/blob/v1.29.2/staging/src/k8s.io/api/apps/v1beta1/zz_generated.deepcopy.go#L112) 文件中）：
+在 Deployment 结构体上面有一行 `// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object` 注释，只是 Kubernetes 源码文件中，一种特殊的注释，Kubernetes 的 deepcopy-gen 代码生成工具会根据该注释生成资源结构体的 DeepCopyObject 方法（生成的代码保存在 [zz_generated.deepcopy.go](https://github.com/kubernetes/kubernetes/blob/v1.29.2/staging/src/k8s.io/api/apps/v1beta1/zz_generated.deepcopy.go#L112) 文件中）：
 
-```
+```go
 // DeepCopyObject is an autogenerated deepcopy function, copying the receiver, creating a new runtime.Object.
 func (in *Deployment) DeepCopyObject() runtime.Object {
     if c := in.DeepCopy(); c != nil {
@@ -288,7 +291,7 @@ func (in *Deployment) DeepCopyObject() runtime.Object {
 所以，在 Kubernetes 我们如果想实现一个 Kubernetes 对象，就要做以下 2 步：
 
 1. 定义的资源对象内嵌 metav1.TypeMeta 结构体；
-2. 结构体定义前面，添加 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object 注释，并调用 deepcopy-gen 工具生成 DeepCopyObject 方法。
+2. 结构体定义前面，添加 `// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object` 注释，并调用 deepcopy-gen 工具生成 DeepCopyObject 方法。
 
 Kubernetes 对象定义中，也会固定内嵌一个 metav1.ObjectMeta 结构体，那么该结构体的功能是什么呢？接下来，我再来给你介绍下。
 
@@ -300,7 +303,7 @@ https://cloud.tencent.com/developer/article/2064836
 
 首先，在资源对象目录下创建一个 doc.go文件（如果没有的话），并在 doc.go文件中添加 / +k8s:deepcopy-gen=package注释：
 
-```
+```go
 // Copyright 2022 Lingfei Kong <colin404@foxmail.com>. All rights reserved.
 // Use of this source code is governed by a MIT style
 // license that can be found in the LICENSE file. The original repo for
@@ -313,9 +316,9 @@ https://cloud.tencent.com/developer/article/2064836
 package v1beta1
 ```
 
-这里一定要注意 // +k8s:deepcopy-gen=package注释，要在 package v1beta1之上。
+这里一定要注意 `// +k8s:deepcopy-gen=package` 注释，要在 package v1beta1之上。
 
-接着，在你要生成的资源对象结构体定义之上添加 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object注释，例如：
+接着，在你要生成的资源对象结构体定义之上添加 `// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object` 注释，例如：
 
 ```go
 // +genclient
@@ -341,7 +344,7 @@ type XXX struct {
 }
 ```
 
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object注释告诉 deepcopy-gen工具生成 runtime.Object的接口实现。
+`// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object` 注释告诉 deepcopy-gen 工具生成 runtime.Object 的接口实现。
 
 ## metav1.ObjectMeta 实现
 
@@ -469,7 +472,7 @@ metav1.ObjectMeta 包含了很多资源对象的元数据信息，这些元数�
 
 ### metav1.ObjectMeta 字段详细介绍
 
-[metav1.ObjectMeta](https://github.com/kubernetes/kubernetes/blob/release-1.33/staging/src/k8s.io/apimachinery/pkg/apis/meta/v1/types.go#L111) 中包含了资源对象的标准元数据信息。以下是 metav1.ObjectMeta结构体中包含的元数据信息的解释：
+[metav1.ObjectMeta](https://github.com/kubernetes/kubernetes/blob/release-1.33/staging/src/k8s.io/apimachinery/pkg/apis/meta/v1/types.go#L111) 中包含了资源对象的标准元数据信息。以下是 metav1.ObjectMeta 结构体中包含的元数据信息的解释：
 
 ```go
 // ObjectMeta 保存所有持久化资源必须包含的元数据。  
@@ -573,7 +576,7 @@ type Object interface {
 
 在 Kubernetes 开发中，我们经常需要在代码中获取资源对象的 Namespace、Name、Labels、Annotations 等属性，如果操作对象是一个 Deployment/*Deployment 类型的对象，我们可以直接引用其字段值即可，例如：
 
-```
+```go
 obj := &Deployment{}
 namespace := obj.ObjectMeta.Namespace
 name := obj.ObjectMeta.Name
@@ -581,7 +584,7 @@ name := obj.ObjectMeta.Name
 
 但， 如果操作对象是 runtime.Object 类型的类型呢？在 Kubernetes 开发中，我们可以使用 [meta.Accessor](https://github.com/kubernetes/kubernetes/blob/v1.29.2/staging/src/k8s.io/apimachinery/pkg/api/meta/meta.go#L96) 方法来从 runtime.Object 类型对象中，获取 metav1.Object 接口对象，例如：
 
-```
+```go
 deploy := &Deployment{}
 var obj runtime.Object = deploy
 
@@ -610,7 +613,7 @@ func Accessor(obj interface{}) (metav1.Object, error) {
 
 可以 meta.Accessor 函数其实是借助了 Go 的类型断言来获取具体类型的。
 
-提示：可以看到很多 Kubernetes 的核心结构都是在 k8s.io/apimachinery 定义的，所以，我们也可以称apimachinery 包为“API 类型构建的基础设施”
+提示：可以看到很多 Kubernetes 的核心结构都是在 `k8s.io/apimachinery` 定义的，所以，我们也可以称 apimachinery 包为“API 类型构建的基础设施”
 
 ## 总结
 
