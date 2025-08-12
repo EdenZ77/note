@@ -1,18 +1,12 @@
 前面几节课，我从一般企业应用的 RESTful API 接口设计、开发流程和思路上，为你详细介绍了 Kubernetes 中的核心概念和资源定义方式。
 
- 
-
 接下来，我们从源码层面看下 Kubernetes 具体是如何构建一个 RESTful API 接口的。为了方便你理解，我会花三节课来讲解：
 
 1. Kubernetes 支持哪些 RESTful API 接口？
 2. 如何使用 go-restful 开发一个 Web 服务器？
 3. Kubernetes 路由构建源码剖析
 
- 
-
 这节课，我们先来讲 Kubernetes 支持的 RESTful API 接口。
-
-
 
 ## Kubernetes 中支持哪些 HTTP 接口？
 
@@ -29,7 +23,7 @@ Kubernetes 中除了支持上述 API 接口操作之外，还支持更多的接�
 Kubernetes 中 HTTP 路由的构建，其实分为客户端 HTTP 路由构建和服务端 HTTP 路由指定两种方式。
 
 - **客户端 HTTP 路由构建**：指 client-go 根据 SDK 提供的接口，在最终发送 HTTP 请求时，指定 HTTP 路由。
-- **服务端 HTTP 路由指定**：指 kube-apiserver 在服务启动时设置 HTTP 路由，类似于 r.GET这种形式。
+- **服务端 HTTP 路由指定**：指 kube-apiserver 在服务启动时设置 HTTP 路由，类似于 `r.GET` 这种形式。
 
 接下来，我们分别来说。
 
@@ -37,7 +31,7 @@ Kubernetes 中 HTTP 路由的构建，其实分为客户端 HTTP 路由构建和
 
 通常通过 SDK 来访问 kube-apiserver。Kubernetes 提供 [client-go](https://github.com/kubernetes/client-go) 包供 Go 开发者高效访问 kube-apiserver。
 
-client-go 是由 client-gen工具自动生成的。在使用 client-gen生成 client-go 代码时，我们可以指定需要给资源生成的 API 操作。
+client-go 是由 `client-gen` 工具自动生成的。在使用 `client-gen` 生成 client-go 代码时，我们可以指定需要给资源生成的 API 操作。
 
 例如，我们新增加了一个 XXX资源，资源定义如下（见 [xxx_types.go](https://github.com/superproj/k8sdemo/blob/master/resourcedefinition/apps/v1beta1/xxx_types.go#L22) 文件）：
 
@@ -149,30 +143,30 @@ type XXXList struct {
 }
 ```
 
-我们可以执行以下 client-gen命令来给 XXX生成 SDK 方法：
+我们可以执行以下 client-gen 命令来给 XXX 生成 SDK 方法：
 
-```
+```shell
 $ git clone https://github.com/superproj/k8sdemo.git
 $ cd resourcedefinition/
 $ go mod tidy
 $ client-gen -v 10 --go-header-file ./boilerplate.go.txt --output-dir ./generated/clientset --output-pkg=github.com/superproj/k8sdemo/resourcedefinition/generated/clientset --clientset-name=versioned --input-base= --input $PWD/apps/v1beta1
 ```
 
-上述命令会生成 apps/v1beta1目录中指定资源的客户端方法，用到的命令行参数释义如下：
+上述命令会生成 `apps/v1beta1` 目录中指定资源的客户端方法，用到的命令行参数释义如下：
 
-- -v 10：设置日志级别，数值越高，输出的日志信息越详细。
-- --go-header-file ./boilerplate.go.txt：指定一个 Go 文件头的模板（boilerplate），通常用于添加版权信息、作者信息等。这会被添加到生成的每个文件的顶部。
-- --output-dir ./generated/clientset：指定生成代码的输出目录。在这个例子中，生成的客户端代码将存放在 ./generated/clientset 目录下。
-- --output-pkg=github.com/superproj/k8sdemo/resourcedefinition/generated/clientset：设置生成代码的包名称。
-- --clientset-name=versioned：指定生成的客户端集的名称。此处定义的 versioned 客户端集将用于封装 API 资源的访问。
-- --input-base=：该参数用于设置输入基础路径。如果不设置，会默认使用当前工作目录作为基础路径。一般来说，留空表示从输入路径开始。
-- --input \$PWD/apps/v1beta1：指定要生成客户端代码的 API 资源的目录。$PWD/apps/v1beta1 表示当前工作目录下的 apps/v1beta1 文件夹，通常这个文件夹包含了 API 的定义文件和类型定义。
+- `-v 10`：设置日志级别，数值越高，输出的日志信息越详细。
+- `--go-header-file ./boilerplate.go.txt`：指定一个 Go 文件头的模板（boilerplate），通常用于添加版权信息、作者信息等。这会被添加到生成的每个文件的顶部。
+- `--output-dir ./generated/clientset`：指定生成代码的输出目录。在这个例子中，生成的客户端代码将存放在 `./generated/clientset` 目录下。
+- `--output-pkg=github.com/superproj/k8sdemo/resourcedefinition/generated/clientset`：设置生成代码的包名称。
+- `--clientset-name=versioned`：指定生成的客户端集的名称。此处定义的 versioned 客户端集将用于封装 API 资源的访问。
+- `--input-base=`：该参数用于设置输入基础路径。如果不设置，会默认使用当前工作目录作为基础路径。一般来说，留空表示从输入路径开始。
+- `--input $PWD/apps/v1beta1`：指定要生成客户端代码的 API 资源的目录。`$PWD/apps/v1beta1` 表示当前工作目录下的 `apps/v1beta1` 文件夹，通常这个文件夹包含了 API 的定义文件和类型定义。
 
 client-gen工具生成的 XXX 资源方法见：[generated/clientset/versioned/typed/apps/v1beta1/xxx.go](https://github.com/onexstack/kubernetes-examples/blob/master/resourcedefinition/generated/clientset/versioned/typed/apps/v1beta1/xxx.go)。
 
-这里要注意，apps/v1beta1目录中可能定义了很多个 Kubernetes 资源对象，client-gen工具会根据资源定义之上有无 // +genclient注释，来判断是否要为该资源生成 SDK 方法。如果有 // +genclient则生成，没有 // +genclient则不生成，例如：
+这里要注意，`apps/v1beta1` 目录中可能定义了很多个 Kubernetes 资源对象，client-gen 工具会根据资源定义的上方有无 `// +genclient` 注释，来判断是否要为该资源生成 SDK 方法。如果有 `// +genclient` 则生成，没有 `// +genclient` 则不生成，例如：
 
-```
+```go
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
@@ -199,9 +193,9 @@ type XXX struct {
 }
 ```
 
-client-gen工具在生成接口方法时，默认会生成 Create、Update、UpdateStatus、Delete、DeleteCollection、Get、List、Watch、Patch，例如：
+client-gen 工具在生成接口方法时，默认会生成 Create、Update、UpdateStatus、Delete、DeleteCollection、Get、List、Watch、Patch，例如：
 
-```
+```go
 // XXXInterface has methods to work with XXX resources.
 type XXXInterface interface {
     Create(ctx context.Context, xXX *v1beta1.XXX, opts v1.CreateOptions) (*v1beta1.XXX, error)
@@ -217,9 +211,9 @@ type XXXInterface interface {
 }
 ```
 
-我们可以通过 // +genclient:method=...注释指定要生成的 API 接口方法、对应的 HTTP 方法、入参和回参等。例如，OneX 项目中 MinerSet资源定义文件 [minerset_types.go](https://github.com/superproj/onex/blob/v0.1.1/pkg/apis/apps/v1beta1/minerset_types.go#L25)：
+我们可以通过 `// +genclient:method=...` 注释指定要生成的 API 接口方法、对应的 HTTP 方法、入参和回参等。例如，OneX 项目中 MinerSet 资源定义文件 [minerset_types.go](https://github.com/superproj/onex/blob/v0.1.1/pkg/apis/apps/v1beta1/minerset_types.go#L25)：
 
-```
+```go
 // +genclient
 // +genclient:method=GetScale,verb=get,subresource=scale,result=k8s.io/api/autoscaling/v1.Scale
 // +genclient:method=UpdateScale,verb=update,subresource=scale,input=k8s.io/api/autoscaling/v1.Scale,result=k8s.io/api/autoscaling/v1.Scale
@@ -256,19 +250,19 @@ type MinerSet struct {
 }
 ```
 
-+genclient:method=GetScale,verb=get,subresource=scale,result=k8s.io/api/autoscaling/v1.Scale注释释义如下：
+`// +genclient:method=GetScale,verb=get,subresource=scale,result=k8s.io/api/autoscaling/v1.Scale` 注释释义如下：
 
-- method: 指定要生成的方法名称。
-- verb: HTTP 动词，用于指定该方法的行为，如 get、update。
-- subresource: 指定这个方法是针对子资源的操作，通常用于扩展资源的 API，如缩放。
-- input: 指定该方法的输入类型。
-- result: 指定该方法的返回类型。
+- method：指定要生成的方法名称。
+- verb：HTTP 动词，用于指定该方法的行为，如 get、update。
+- subresource：指定这个方法是针对子资源的操作，通常用于扩展资源的 API，如缩放。
+- input：指定该方法的输入类型。
+- result：指定该方法的返回类型。
 
 ### 服务端 HTTP 路由指定
 
 服务端的 HTTP 路由是由 kube-apiserver 在启动时，用静态代码的方式添加的。添加方法你可以查看 [registerResourceHandlers](https://github.com/kubernetes/apiserver/blob/v0.30.4/pkg/endpoints/installer.go#L523) 方法，添加 HTTP 路由的核心逻辑代码如下：
 
-```
+```go
         // Handler for standard REST verbs (GET, PUT, POST and DELETE).
         // Add actions at the resource path: /api/apiVersion/resource
         actions = appendIf(actions, action{"LIST", resourcePath, resourceParams, namer, false}, isLister)
@@ -295,6 +289,6 @@ type MinerSet struct {
 
 ## 课程总结
 
-Kubernetes 的 RESTful API 不仅支持常规的 CRUD 操作（如 Create、Update、Delete），还扩展了状态更新、批量操作和实时监听等高级接口。例如，UpdateStatus 允许单独更新资源状态字段，Watch 通过长连接实时推送资源变更事件，Patch 支持部分字段更新。这些接口的路径构建由资源组（Group）、版本（Version）、资源类型（Kind）共同决定，如 /apis/apps/v1/namespaces/{namespace}/deployments/{name}/status。
+Kubernetes 的 RESTful API 不仅支持常规的 CRUD 操作（如 Create、Update、Delete），还扩展了状态更新、批量操作和实时监听等高级接口。例如，UpdateStatus 允许单独更新资源状态字段，Watch 通过长连接实时推送资源变更事件，Patch 支持部分字段更新。这些接口的路径构建由资源组（Group）、版本（Version）、资源类型（Kind）共同决定，如 `/apis/apps/v1/namespaces/{namespace}/deployments/{name}/status`。
 
-客户端路由生成依赖于 client-gen 工具，它通过资源定义文件中的 // +genclient 注释自动生成 SDK 方法（如 List()、Watch()），并支持通过 // +genclient:method 扩展自定义子资源操作（如 GetScale）。服务端路由则由 kube-apiserver 在启动时静态注册，通过 registerResourceHandlers 方法将 HTTP 动词（GET/PUT 等）与资源路径绑定，确保每个操作映射到正确的 REST 端点。
+客户端路由生成依赖于 client-gen 工具，它通过资源定义文件中的 `// +genclient` 注释自动生成 SDK 方法（如 List()、Watch()），并支持通过 `// +genclient:method` 扩展自定义子资源操作（如 GetScale）。服务端路由则由 kube-apiserver 在启动时静态注册，通过 registerResourceHandlers 方法将 HTTP 动词（GET/PUT 等）与资源路径绑定，确保每个操作映射到正确的 REST 端点。

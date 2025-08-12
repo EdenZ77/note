@@ -8,9 +8,9 @@
 
 ### 资源（Resource）
 
-我们讲过，在 Kubernetes 中，资源指的是集群中可被管理和调度的任何实体，如 Pod、Service、Deployment 等。资源可以是用户定义的，也可以是 Kubernetes 自身定义的。在 API 层面，这些资源本质上就是一个 REST 资源。Kubernetes 的资源又分为父资源和子资源，例如：/api/v1/namespaces/default/pods 资源就包含了子资源 /api/v1/namespaces/default/pods/status。我们可以将父资源和子资源视为同一类资源。
+我们讲过，在 Kubernetes 中，资源指的是集群中可被管理和调度的任何实体，如 Pod、Service、Deployment 等。资源可以是用户定义的，也可以是 Kubernetes 自身定义的。在 API 层面，这些资源本质上就是一个 REST 资源。Kubernetes 的资源又分为父资源和子资源，例如：`/api/v1/namespaces/default/pods` 资源就包含了子资源 `/api/v1/namespaces/default/pods/status`。我们可以将父资源和子资源视为同一类资源。
 
-在 Kubernetes API Server 使用 [APIResource](https://github.com/kubernetes/kubernetes/blob/v1.29.1/staging/src/k8s.io/apimachinery/pkg/apis/meta/v1/types.go#L1116) 结构体来代表一个资源组，APIResource 结构体定义如下：
+在 Kubernetes API Server 使用 [APIResource](https://github.com/kubernetes/kubernetes/blob/v1.29.1/staging/src/k8s.io/apimachinery/pkg/apis/meta/v1/types.go#L1116) 结构体来代表一个资源，APIResource 结构体定义如下：
 
 ```go
 // APIResource specifies the name of a resource and whether it is namespaced.
@@ -39,11 +39,11 @@ type APIResource struct {
 }
 ```
 
-Categories 是一个列表，用来指定资源所属的资源分组。注意，这里的资源分组不是资源组。例如，我们可以将自定义资源指定到 all 资源分组中，当执行kubectl get all时，就能看到创建的自定义资源。
+Categories 是一个列表，用来指定资源所属的资源分组。注意，这里的资源分组不是资源组。例如，我们可以将自定义资源指定到 `all` 资源分组中，当执行 `kubectl get all` 时，就能看到创建的自定义资源。
 
 ### 资源类型（Kind）
 
-Kubernetes 中每一个资源都归属于某一个类型，这个类型就是 Kind。通常情况下一个资源归属于一个资源类型，但有时候，某个资源的子资源可能归属于不同的资源类型。例如，/api/v1/namespaces/default/deployment 资源的 /api/v1/namespaces/default/deployment/scale 子资源的资源类型为 Scale，而不是 Deployument。
+Kubernetes 中每一个资源都归属于某一个类型，这个类型就是 Kind。通常情况下一个资源归属于一个资源类型，但有时候，某个资源的子资源可能归属于不同的资源类型。例如，`/api/v1/namespaces/default/deployment` 资源的 `/api/v1/namespaces/default/deployment/scale` 子资源的资源类型为 Scale，而不是 Deployment。
 
 kube-apiserver 内置了很多资源类型（如 v1.27.3 版本中内置了 55 个资源类型），这些资源类型又可以分为以下 5 类：
 
@@ -51,7 +51,7 @@ kube-apiserver 内置了很多资源类型（如 v1.27.3 版本中内置了 55 �
 
 为了方便你了解，这里列出每一类别中比较常见的资源类型：
 
-![img](image/Fs24vli5Y_zrWFF1e9xEpd_eN5GF)
+<img src="image/Fs24vli5Y_zrWFF1e9xEpd_eN5GF" alt="img" style="zoom: 30%;" />
 
 很多人容易混淆 Resource 和 Kind 的概念，这里我再来解释下。Kind 其实可以类比为面向对象编程中的类，用来指代某一个资源类型。Resource 可以类比为面向对象编程中的对象，是类实例化后的产物，用来指代具体的某个资源。
 
@@ -88,9 +88,9 @@ type GroupVersionForDiscovery struct {
 
 当前的 Kubernetes 版本支持两类资源组，分别是**拥有组名的资源组和没有组名的资源组**。
 
-在**有组名的资源组**中，HTTP 请求路径以 /apis 为前缀，其表现形式为 /apis/<group>/<version>/<resource>，如/apis/apps/v1/namespaces/{namespace}/deployments。核心组并不作为 apiVersion 字段的一部分，例如：
+在**有组名的资源组**中，HTTP 请求路径以 `/apis` 为前缀，其表现形式为 `/apis/<group>/<version>/<resource>`，如 `/apis/apps/v1/namespaces/{namespace}/deployments`。核心组并不作为 apiVersion 字段的一部分，例如：
 
-```
+```yaml
 apiVersion: v1
 kind: Pod
 metadata:
@@ -105,18 +105,18 @@ spec:
     - containerPort: 80
 ```
 
-没有组名的资源组被称为 Core Group（核心资源组）或 Legacy Group，也可被称为 GroupLess（无组）。HTTP 请求路径以 /api 为前缀，其表现形式为 /api/\<version>/\<resource>，如/api/v1/namespaces/{namespace}/pods。
+没有组名的资源组被称为 Core Group（核心资源组）或 Legacy Group，也可被称为 GroupLess（无组）。HTTP 请求路径以 `/api` 为前缀，其表现形式为 `/api/<version>/<resource>`，如 `/api/v1/namespaces/{namespace}/pods`。
 
 #### /api 和/apis 路径分组
 
-我们看到，在有组名的资源组和没有组名的资源组中，HTTP 请求路径的前缀分别是/apis和/api。在 Kubernetes 中，/api 和 /apis 是两个不同的 API 路径，它们分别用于访问核心 API 组和自定义 API 组。这两个路径的区别主要是由 Kubernetes API 的演进历史和设计考虑所决定的：
+我们看到，在有组名的资源组和没有组名的资源组中，HTTP 请求路径的前缀分别是 `/apis` 和 `/api`。在 Kubernetes 中，`/api` 和 `/apis` 是两个不同的 API 路径，它们分别用于访问核心 API 组和自定义 API 组。这两个路径的区别主要是由 Kubernetes API 的演进历史和设计考虑所决定的：
 
-- /api被用来访问 Kubernetes 的核心 API 组（Legacy API Group），包括 v1 版本的核心 API 对象，比如 Pod、Service、Namespace 等。在较早的 Kubernetes 版本中，这是唯一的 API 组路径。
-- /apis用于访问自定义 API 组，它提供了一种更加灵活的方式来扩展 Kubernetes API。自定义 API 组允许用户定义自己的 API 资源类型，并将其添加到 Kubernetes 中，以满足特定的业务需求。自定义 API 组通常以 \<group>/\<version> 的形式进行访问。这种方式使得用户能够创建和管理自己的 API 资源，而不仅仅局限于 Kubernetes 核心 API 中提供的对象类型。
+- `/api` 被用来访问 Kubernetes 的核心 API 组（Legacy API Group），包括 v1 版本的核心 API 对象，比如 Pod、Service、Namespace 等。在较早的 Kubernetes 版本中，这是唯一的 API 组路径。
+- `/apis` 用于访问自定义 API 组，它提供了一种更加灵活的方式来扩展 Kubernetes API。自定义 API 组允许用户定义自己的 API 资源类型，并将其添加到 Kubernetes 中，以满足特定的业务需求。自定义 API 组通常以 `<group>/<version>` 的形式进行访问。这种方式使得用户能够创建和管理自己的 API 资源，而不仅仅局限于 Kubernetes 核心 API 中提供的对象类型。
 
-从历史的角度看，/api 是 Kubernetes 初始版本中唯一的 API 组路径，用于访问核心 API 对象。但随着 Kubernetes 的发展和用户需求的增加，后续的 Kubernetes 版本引入了更多的 API 组，因此 /api 逐渐被 /apis 所取代。
+从历史的角度看，`/api` 是 Kubernetes 初始版本中唯一的 API 组路径，用于访问核心 API 对象。但随着 Kubernetes 的发展和用户需求的增加，后续的 Kubernetes 版本引入了更多的 API 组，因此 `/api` 逐渐被 `/apis` 所取代。
 
-在 APIGroup 的定义中，有一个匿名结构体 TypeMeta，其定义如下：
+在 APIGroup 的定义中，有一个嵌入结构体 TypeMeta，其定义如下：
 
 ```go
 // TypeMeta 结构体用于描述 REST 资源的类型和版本信息
@@ -130,19 +130,17 @@ type TypeMeta struct {
 }
 ```
 
-TypeMeta 结构体用于描述 REST 资源的类型和版本信息，所有的 Kubernetes 资源都以匿名的方式包含该结构体。
-
-你可以在 [Kubernetes API 参考文档](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.29/#api-groups) 中查看 Kubernetes 支持的全部资源组。
+TypeMeta 结构体用于描述 REST 资源的类型和版本信息，所有的 Kubernetes 资源都以嵌入的方式包含该结构体。
 
 #### 启用或禁用资源组
 
 知道了什么是资源组，我们再来讲讲 Kubernetes 是如何启用/禁用资源组的。
 
-资源和资源组是在默认情况下被启用的，可以通过给 kube-apiserver 设置 --runtime-config 参数来启用或禁用它们。--runtime-config 参数接受逗号分隔的 \<key>[=\<value>] 键值对来指定 kube-apiserver 的配置。如果省略了 =\<value> 部分，就视其指定为 =true。
+资源和资源组是在默认情况下被启用的，可以通过给 kube-apiserver 设置 `--runtime-config` 参数来启用或禁用它们。`--runtime-config` 参数接受逗号分隔的 `<key>[=<value>]` 键值对来指定 kube-apiserver 的配置。如果省略了 `=<value>` 部分，就视其指定为 `=true`。
 
-总的来说，禁用 batch/v1，对应参数设置为 --runtime-config=batch/v1=false。启用 batch/v2alpha1，对应参数设置为 --runtime-config=batch/v2alpha1。如果要启用特定版本的资源，如 storage.k8s.io/v1beta1/csistoragecapacities，可以设置 --runtime-config=storage.k8s.io/v1beta1/csistoragecapacities。
+总的来说，禁用 `batch/v1`，对应参数设置为 `--runtime-config=batch/v1=false`。启用 `batch/v2alpha1`，对应参数设置为 `--runtime-config=batch/v2alpha1`。如果要启用特定版本的资源，如 `storage.k8s.io/v1beta1/csistoragecapacities`，可以设置 `--runtime-config=storage.k8s.io/v1beta1/csistoragecapacities`。
 
-值得注意的是，我们在启用或禁用资源组或资源时，需要重启 kube-apiserver 和 controller 来使 --runtime-config 生效。
+值得注意的是，我们在启用或禁用资源组或资源时，需要重启 kube-apiserver 和 controller 来使 `--runtime-config` 生效。
 
 ### 资源版本（Version）
 
@@ -169,7 +167,7 @@ type APIVersions struct {
 
 Kubernetes 的资源版本控制可分为 3 种，分别是 Alpha、Beta 和 Stable。它们之间的迭代顺序为：Alpha -> Beta -> Stable，不同的资源版本代表着不同的稳定性和支持级别，我们一一来看。
 
-首先，Alpha 的版本名称包含 alpha（如 v1alpha1）：
+首先，Alpha 的版本名称包含 alpha（如 `v1alpha1`）：
 
 - 内置的 Alpha API 版本默认被禁用且必须在 kube-apiserver 配置中显式启用才能使用。
 - 因为特性较新，可能没有经过完整的端到端测试，功能可能会有 Bug。例如，控制循环中的错误可能迅速创建过多的对象，耗尽 etcd 存储。
@@ -198,19 +196,19 @@ Alpha 级别的功能主要提供给那些想提前体验功能的开发者，�
 
 下面，我就以 apps 资源组为例，给你展示下该资源组下的资源版本和资源：
 
-<img src="image/Fq26q-UBRMYSGJU-0wNXAfCwutyY" alt="img" style="zoom: 50%;" />
+<img src="image/Fq26q-UBRMYSGJU-0wNXAfCwutyY" alt="img" style="zoom: 40%;" />
 
 你可以在 [staging/src/k8s.io/api/apps](https://github.com/kubernetes/kubernetes/tree/v1.29.1/staging/src/k8s.io/api/apps) 目录下，找到上述资源的定义。
 
-这里还想再补充一点，Kubernetes 在转换版本时，所有具名版本都会先转换为内部版本，再由内部版本转换为其他具名版本。所以，在 Kuberntes 中，资源版本又分为：内部版本和外部版本。外部版本会暴露给用户，用户在创建 Kubernetes 资源时，必须指定一个资源版本。内部版本不对外暴露，仅在 Kubernetes API Server 内部使用。
+这里还想再补充一点，Kubernetes 在转换版本时，所有具名版本都会先转换为内部版本，再由内部版本转换为其他具名版本。所以，在 Kuberntes 中资源版本又分为：内部版本和外部版本。外部版本会暴露给用户，用户在创建 Kubernetes 资源时，必须指定一个资源版本。内部版本不对外暴露，仅在 Kubernetes API Server 内部使用。
 
-**总的来说，Kubernetes 中支持多个资源组（Group），每个资源组中又包含多个版本（Version），每个版本中又包含多个资源类型（Kind），每个资源类型又包含多个具体的资源（Resource），部分资源类型又可以拥有子资源（SubResource），如 Deployment 资源类型就拥有 Status、Scale 子资源。**
+总的来说，Kubernetes 中支持多个资源组（Group），每个资源组中又包含多个版本（Version），每个版本中又包含多个资源类型（Kind），每个资源类型又包含多个具体的资源（Resource），部分资源类型又可以拥有子资源（SubResource），如 Deployment 资源类型就拥有 Status、Scale 子资源。
 
 这些核心概念之间的关系如下图所示：
 
 <img src="image/FoHcco1L4VI8CTBJNnB7tRw0fC7y" alt="img" style="zoom:50%;" />
 
-资源组、资源版本、资源、子资源的完整表现形式为：\<group>/\<version>/\<resource>/\<subresource>。例如，Deployment 资源的完整表现形式为：apps/v1/deployments/status。资源实例化后为一个资源对象，拥有资源组、资源版本、资源类型，表现形式为：\<group>/\<version>，Kind=\<kind>。例如，Deployment 的完整表现形式为 apps/v1，Kind=Deployment。
+资源组、资源版本、资源、子资源的完整表现形式为：`<group>/<version>/<resource>/<subresource>`。例如，Deployment 资源的完整表现形式为：`apps/v1/deployments/status`。资源实例化后为一个资源对象，拥有资源组、资源版本、资源类型，表现形式为：`<group>/<version>, Kind=<kind>`。例如，Deployment 的完整表现形式为 `apps/v1, Kind=Deployment`。
 
 每个资源类型又支持不同的 HTTP 方法（Verbs），几乎所有的资源类型都支持 create、delete、deletecollection、get、list、patch、update、watch 方法。
 
@@ -220,7 +218,7 @@ Alpha 级别的功能主要提供给那些想提前体验功能的开发者，�
 
 ### 指定 HTTP 请求路径
 
-首先，我们指定创建 Deployment 的各项参数。为此，我们创建一个名为 deployment.yaml 的 YAML 文件：
+首先，我们指定创建 Deployment 的各项参数。为此，我们创建一个名为 `deployment.yaml` 的 YAML 文件：
 
 ```yaml
 apiVersion: apps/v1
@@ -246,22 +244,22 @@ spec:
         - containerPort: 80
 ```
 
-接下来，我们执行以下命令来创建名为 nginx-deployment 的资源：
+接下来，我们执行以下命令来创建名为 `nginx-deployment` 的资源：
 
-```
+```shell
 $ kubectl create --raw /apis/apps/v1/namespaces/default/deployments -f deployment.yaml
 $ kubectl get deployment nginx-deployment
 NAME               READY   UP-TO-DATE   AVAILABLE   AGE
 nginx-deployment   3/3     3            3           16s
 ```
 
-在创建 Deployment 资源时，我们指定了 URL /apis/apps/v1/namespaces/default/deployments，URL 中包含了资源组、资源版本、资源等信息：
+在创建 Deployment 资源时，我们指定了 URL `/apis/apps/v1/namespaces/default/deployments`，URL 中包含了资源组、资源版本、资源等信息：
 
 <img src="image/FuOYCErKhw76HtLZxCT3GVqoTtFE" alt="img" style="zoom: 33%;" />
 
 ### 通过资源定义参数构建 HTTP 请求路径
 
-前面，我们通过 --raw 命令行参数来指定 HTTP 请求的完整路径 /apis/apps/v1/namespaces/default/deployments。在 Kubernetes 中，我们还可以通过以下方式来创建一个资源：
+前面，我们通过 `--raw` 命令行参数来指定 HTTP 请求的完整路径 `/apis/apps/v1/namespaces/default/deployments`。在 Kubernetes 中，我们还可以通过以下方式来创建一个资源：
 
 ```shell
 $ tee -a deployment.yaml  <<'EOF'
@@ -294,17 +292,17 @@ $ kubectl create -f deployment.yaml
 
 <img src="image/Fub8MSc2Yg3av1hZ7dd2DngUGKPk" alt="img" style="zoom: 33%;" />
 
-在创建 Deployment 资源的 YAML 格式的参数定义中，我们通过 apiVersion 参数指定了<group>/<version>，通过 kind 指定了资源类型。kubectl 命令行工具会从 YAML 文件中解析出 apiVersion 和 kind 参数，并使用其值来构建出 HTTP 请求路径：/apis/apps/v1/namespaces/default/deployments。
+在创建 Deployment 资源的 YAML 格式的参数定义中，我们通过 apiVersion 参数指定了 `<group>/<version>`，通过 kind 指定了资源类型。kubectl 命令行工具会从 YAML 文件中解析出 apiVersion 和 kind 参数，并使用其值来构建出 HTTP 请求路径：`/apis/apps/v1/namespaces/default/deployments`。
 
 ## **GV & GVK & GVR 概念介绍**
 
 通过上面的介绍，我们知道，Kubernetes 中可以通过资源组、资源版本、资源类型来构建一个 REST 请求路径。为了方便描述和记忆，这些概念被组合为各种简称，如 GV、GVK、GVR。接下来，我们介绍下常见的简称。
 
-**GV（Group Version）指的是 API 资源的组和版本。**例如，v1 表示 Kubernetes 核心 API 资源的版本，而 apps/v1 表示 apps 组的 API 资源的版本。GV 用于标识和区分不同组和版本的 API 资源。
+**GV（Group Version）指的是 API 资源的组和版本。**例如，`v1` 表示 Kubernetes 核心 API 资源的版本，而 `apps/v1` 表示 apps 组的 API 资源的版本。GV 用于标识和区分不同组和版本的 API 资源。
 
-**GVK（Group Version Kind）是 API 资源的组、版本和类型的组合。**例如，apps/v1/Deployment 表示 apps 组中版本为 v1 的 Deployment 资源。GVK 用于唯一标识和定位一个具体的 API 资源。
+**GVK（Group Version Kind）是 API 资源的组、版本和类型的组合。**例如，`apps/v1/Deployment` 表示 apps 组中版本为 v1 的 Deployment 资源。GVK 用于唯一标识和定位一个具体的 API 资源。
 
-**GVR（Group Version Resource）是 API 资源的组、版本和资源名称的组合。**例如，apps/v1/deployments 表示 apps 组中版本为 v1 的所有 Deployment 资源。GVR 用于在代码中动态地构建和操作 API 资源的 URL 路径。
+**GVR（Group Version Resource）是 API 资源的组、版本和资源名称的组合。**例如，`apps/v1/deployments` 表示 apps 组中版本为 v1 的所有 Deployment 资源。GVR 用于在代码中动态地构建和操作 API 资源的 URL 路径。
 
 这些概念在 Kubernetes 中非常重要，特别是在编写自定义控制器、操作 CRD（Custom Resource Definition）等场景下，开发人员需要理解和使用这些概念来操作和管理 Kubernetes 的 API 资源。通过 GV、GVK 和 GVR，开发人员可以准确定位和操作集群中的各种 API 资源。
 
