@@ -10,7 +10,7 @@ Kubernetes 的基石是声明式编程。Kubernetes 的声明式编程模式如�
 
 kube-controller-manager 是 Kubernetes 主控节点（Master Node）上的一个关键组件，它负责运行核心控制循环，这些控制循环处理集群范围内的各种功能。kube-controller-manager 通过监听 API Server 的变化来触发相应的控制器逻辑，从而实现对整个集群的管理和自动化操作。
 
-kube-controller-manager 中聚合了多个控制器，这些控制器可以在 [names](https://github.com/kubernetes/kubernetes/blob/release-1.33/cmd/kube-controller-manager/names/controller_names.go#L45) 包中找到。控制器的具体实现位于 pkg/controller/目录下。
+kube-controller-manager 中聚合了多个控制器，这些控制器可以在 [names](https://github.com/kubernetes/kubernetes/blob/release-1.33/cmd/kube-controller-manager/names/controller_names.go#L45) 包中找到。控制器的具体实现位于 `pkg/controller/` 目录下。
 
 ## kube-controller-manager 启动源码解析
 
@@ -120,10 +120,8 @@ func CreateControllerContext(ctx context.Context, s *config.CompletedConfig, roo
     versionedClient := rootClientBuilder.ClientOrDie("shared-informers")
     sharedInformers := informers.NewSharedInformerFactoryWithOptions(versionedClient, ResyncPeriod(s)(), informers.WithTransform(trim))
 
-
     metadataClient := metadata.NewForConfigOrDie(rootClientBuilder.ConfigOrDie("metadata-informers"))
     metadataInformers := metadatainformer.NewSharedInformerFactoryWithOptions(metadataClient, ResyncPeriod(s)(), metadatainformer.WithTransform(trim))
-
 
     // If apiserver is not running we should wait for some time and fail only then. This is particularly
     // important when we start apiserver and controller manager at the same time.
@@ -152,7 +150,6 @@ func CreateControllerContext(ctx context.Context, s *config.CompletedConfig, roo
         ControllerManagerMetrics:        controllersmetrics.NewControllerManagerMetrics(kubeControllerManager),
     }
 
-
     if controllerContext.ComponentConfig.GarbageCollectorController.EnableGarbageCollector &&
         controllerContext.IsControllerEnabled(NewControllerDescriptors()[names.GarbageCollectorController]) {
         ignoredResources := make(map[schema.GroupResource]struct{})
@@ -171,15 +168,14 @@ func CreateControllerContext(ctx context.Context, s *config.CompletedConfig, roo
         )
     }
 
-
     controllersmetrics.Register()
     return controllerContext, nil
 }
 ```
 
-上述代码首先定义了一个 trim函数，trim函数从资源对象中获取资源的 metav1.ObjectMeta信息，返回的是 metav1.Object接口类型，接下来调用 metav1.Object接口的 SetManagedFields方法将ManagedFields 设为 nil，这可以帮助减少内存占用，因为 ManagedFields 信息是不必要的。
+上述代码首先定义了一个 trim 函数，trim 函数从资源对象中获取资源的 metav1.ObjectMeta 信息，返回的是 metav1.Object接口类型，接下来调用 metav1.Object 接口的 SetManagedFields 方法将 ManagedFields 设为 nil，这可以帮助减少内存占用，因为 ManagedFields 信息是不必要的。
 
-接下来，分别创建版本化客户端和共享 informer 和创建元数据客户端和元数据 informer，并调用 WaitForAPIServer函数，等待 kube-apiserver 成功运行。WaitForAPIServer函数中通过轮询的方式调用 kube-apiserver 的 /healthz接口，来判断 kube-apiserver 是否健康。
+接下来，分别创建版本化客户端和共享 informer 和创建元数据客户端和元数据 informer，并调用 WaitForAPIServer 函数，等待 kube-apiserver 成功运行。WaitForAPIServer 函数中通过轮询的方式调用 kube-apiserver 的 `/healthz` 接口，来判断 kube-apiserver 是否健康。
 
 接下来，创建动态 RESTMapper，用来构建动态资源的 REST 请求路径。
 
@@ -198,7 +194,6 @@ func NewControllerDescriptors() map[string]*ControllerDescriptor {
     controllers := map[string]*ControllerDescriptor{}
     aliases := sets.NewString()
 
-
     // All the controllers must fulfil common constraints, or else we will explode.
     register := func(controllerDesc *ControllerDescriptor) {
         if controllerDesc == nil {
@@ -215,7 +210,6 @@ func NewControllerDescriptors() map[string]*ControllerDescriptor {
             panic(fmt.Sprintf("controller %q does not have an init function", name))
         }
 
-
         for _, alias := range controllerDesc.GetAliases() {
             if aliases.Has(alias) {
                 panic(fmt.Sprintf("controller %q has a duplicate alias %q", name, alias))
@@ -226,7 +220,6 @@ func NewControllerDescriptors() map[string]*ControllerDescriptor {
 
         controllers[name] = controllerDesc
     }
-
 
     // First add "special" controllers that aren't initialized normally. These controllers cannot be initialized
     // in the main controller loop initialization, so we add them here only for the metadata and duplication detection.
@@ -244,12 +237,11 @@ func NewControllerDescriptors() map[string]*ControllerDescriptor {
         }
     }
 
-
     return controllers
 }
 ```
 
-上述代码，先定义了一个 register函数，用来注册一系列控制器。该函数接收一个 *ControllerDescriptor类型的参数。ControllerDescriptor 结构体定义如下：
+上述代码，先定义了一个 register函数，用来注册一系列控制器。该函数接收一个 `*ControllerDescriptor` 类型的参数。ControllerDescriptor 结构体定义如下：
 
 ```go
 type ControllerDescriptor struct {                                 
@@ -268,13 +260,13 @@ NewControllerDescriptors函数，接下来对 *ControllerDescriptor结构体集�
 - 字段不能为空：name、initFunc 字段不能为空。如果为空，控制器无法正常启动；
 - 不能重复：NewControllerDescriptors函数中会注册多个控制器，这些控制器不能重名，并且也不能有重复的 alias。
 
-register方法中校验 ControllerDescriptor通过后，会将控制器注册到 map[string]*ControllerDescriptor{}类型的变量 controllers中。
+register方法中校验 ControllerDescriptor通过后，会将控制器注册到 `map[string]*ControllerDescriptor{}` 类型的变量 controllers中。
 
 NewControllerDescriptors方法中会多次调用 register函数，用来注册多个控制器。这些控制器都会以 key-value 的形式保存在 controllersmap 类型的变量中，并返回。
 
 注册的控制器，有很多，详细请参考 [register(newServiceAccountTokenControllerDescriptor(nil))](https://github.com/kubernetes/kubernetes/blob/release-1.33/cmd/kube-controller-manager/app/controllermanager.go#L543) 部分代码块。
 
-可以看到，在调用 register函数注册控制器时，*ControllerDescriptor类型的实例是通过 newXXXControllerDescriptor函数来创建的。我们来看其中一个 newXXXControllerDescriptor 实现：
+可以看到，在调用 register 函数注册控制器时，`*ControllerDescriptor` 类型的实例是通过 `newXXXControllerDescriptor` 函数来创建的。我们来看其中一个 `newXXXControllerDescriptor` 实现：
 
 ```go
 func newDaemonSetControllerDescriptor() *ControllerDescriptor {
@@ -286,7 +278,7 @@ func newDaemonSetControllerDescriptor() *ControllerDescriptor {
 }
 ```
 
-在 newDaemonSetControllerDescriptor函数中，指定了控制器的名称 names.DaemonSetController。kube-controller-mananger 中有很多控制器，为了方便统一维护，将所有的控制器名称统一定义在 k8s.io/kubernetes/cmd/kube-controller-manager/names包中。所以，如果我们想知道 kube-controller-manager 支持哪些控制器，直接查看 [names](https://github.com/kubernetes/kubernetes/blob/release-1.33/cmd/kube-controller-manager/names/controller_names.go#L45) 包即可。
+在 newDaemonSetControllerDescriptor 函数中，指定了控制器的名称 `names.DaemonSetController`。kube-controller-mananger 中有很多控制器，为了方便统一维护，将所有的控制器名称统一定义在 `k8s.io/kubernetes/cmd/kube-controller-manager/names` 包中。所以，如果我们想知道 kube-controller-manager 支持哪些控制器，直接查看 [names](https://github.com/kubernetes/kubernetes/blob/release-1.33/cmd/kube-controller-manager/names/controller_names.go#L45) 包即可。
 
 newDaemonSetControllerDescriptor函数通过 startDaemonSetController函数来创建并启动一个控制器。startDaemonSetController代码如下：
 
@@ -315,9 +307,9 @@ func startDaemonSetController(ctx context.Context, controllerContext ControllerC
 
 ### 启动控制器
 
-在有了控制器上下文和控制器集合之后，就可以启动这些控制器了。run函数中，是通过 [StartControllers](https://github.com/kubernetes/kubernetes/blob/release-1.33/cmd/kube-controller-manager/app/controllermanager.go#L675) 函数来启动这些控制器的。
+在有了控制器上下文和控制器集合之后，就可以启动这些控制器了。run 函数中，是通过 [StartControllers](https://github.com/kubernetes/kubernetes/blob/release-1.33/cmd/kube-controller-manager/app/controllermanager.go#L675) 函数来启动这些控制器的。
 
-StartControllers函数是 kube-controller-manager 中的一个非常重要的函数，其代码实现如下：
+StartControllers 函数是 kube-controller-manager 中的一个非常重要的函数，其代码实现如下：
 
 ```go
 func StartControllers(ctx context.Context, controllerCtx ControllerContext, controllerDescriptors map[string]*ControllerDescriptor,
@@ -338,7 +330,6 @@ func StartControllers(ctx context.Context, controllerCtx ControllerContext, cont
         }
     }
 
-
     // Each controller is passed a context where the logger has the name of
     // the controller set through WithName. That name then becomes the prefix of
     // of all log messages emitted by that controller.
@@ -353,7 +344,6 @@ func StartControllers(ctx context.Context, controllerCtx ControllerContext, cont
             continue
         }
 
-
         check, err := StartController(ctx, controllerCtx, controllerDesc, unsecuredMux)
         if err != nil {
             return err
@@ -364,9 +354,7 @@ func StartControllers(ctx context.Context, controllerCtx ControllerContext, cont
         }
     }
 
-
     healthzHandler.AddHealthChecker(controllerChecks...)
-
 
     return nil
 }
@@ -374,7 +362,7 @@ func StartControllers(ctx context.Context, controllerCtx ControllerContext, cont
 
 上述代码，其实是遍历控制器集合 controllerDescriptors，获取其中的每个控制器，并根据该控制器 ControllerDescriptor中的字段值，来启动控制器。
 
-启动控制器，是通过 StartController函数来启动的，StartController函数中会执行以下核心操作，来启动控制器：
+启动控制器，是通过 StartController 函数来启动的，StartController 函数中会执行以下核心操作，来启动控制器：
 
 1. 检查控制器是否通过 FeatureGate 开启，如果禁止启动，则跳过该控制器的启动；
 2. 判断该控制器是否是云提供商相关的控制器。在 Kubernetes 中，云提供商控制器负责与底层云基础设施进行交互，例如管理负载均衡器、路由规则等。如果是，则忽略；
@@ -384,7 +372,7 @@ func StartControllers(ctx context.Context, controllerCtx ControllerContext, cont
 
 ### 启动 Informer
 
-kube-controller-manager 在 CreateControllerContext函数中分别创建了共享 informer 和元数据 informer。接下来还需要通过以下代码来启动上述 2 个 informer：
+kube-controller-manager 在 CreateControllerContext 函数中分别创建了共享 informer 和元数据 informer。接下来还需要通过以下代码来启动上述 2 个 informer：
 
 ```go
         controllerContext.InformerFactory.Start(stopCh)    
@@ -392,7 +380,7 @@ kube-controller-manager 在 CreateControllerContext函数中分别创建了共�
         close(controllerContext.InformersStarted)    
 ```
 
-启动完成之后，通过 close(controllerContext.InformersStarted)来告知 Informer 已经启动成功。
+启动完成之后，通过 `close(controllerContext.InformersStarted)` 来告知 Informer 已经启动成功。
 
 ## 启动领导者选举
 
