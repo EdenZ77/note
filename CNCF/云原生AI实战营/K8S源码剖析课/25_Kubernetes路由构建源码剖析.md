@@ -678,7 +678,7 @@ if err != nil {
 
 ### 路由构建流程总结
 
-最后，我们再通过一张图，来回顾下 kube-apiserver 中资源路由的构建流程：
+最后，我们再通过一张图，来回顾下 kube-apiserver 中资源的路由构建流程：
 
 ![img](image/FvtEhHreof70HGn_GTFsplGrv689)
 

@@ -2,17 +2,17 @@
 
 ## Kubernetes HTTP 请求逻辑核心功能点详解
 
-我们再定义一个资源的存储层代码时，分别创建了以下 3 个核心源码文件（这里以 apps资源组的 Deployment为例来介绍）：
+我们再定义一个资源的存储层代码时，分别创建了以下 3 个核心源码文件（这里以 apps 资源组的 Deployment 为例来介绍）：
 
-1. pkg/registry/apps/rest/storage_apps.go：提供了创建 APIGroupInfo类型实例的方法，APIGroupInfo类型中的各个字段，用来安装 apps资源组下，所有版本、所有资源的 REST 路由；
-2. pkg/registry/apps/deployment/strategy.go：定义了 deploymentStrategy结构体，该结构体中的方法，可以在更新资源的时候被调用。也就是说，deploymentStrategy结构体中的方法，主要负责定义与 Kubernetes 的 Deployment 相关的更新策略；
-3. pkg/registry/apps/deployment/storage/storage.go：该文件主要用于实现与 Deployment 资源相关的存储层的功能。这个文件定义了如何将 Deployment 对象持久化到存储后端（例如 etcd）。
+1. `pkg/registry/apps/rest/storage_apps.go`：提供了创建 APIGroupInfo 类型实例的方法，APIGroupInfo 类型中的各个字段，用来安装 apps 资源组下，所有版本、所有资源的 REST 路由；
+2. `pkg/registry/apps/deployment/strategy.go`：定义了 deploymentStrategy 结构体，该结构体中的方法，可以在更新资源的时候被调用。也就是说，deploymentStrategy 结构体中的方法，主要负责定义与 Kubernetes 的 Deployment 相关的更新策略；
+3. `pkg/registry/apps/deployment/storage/storage.go`：该文件主要用于实现与 Deployment 资源相关的存储层的功能。这个文件定义了如何将 Deployment 对象持久化到存储后端（例如 etcd）。
 
 上述 3 个文件，都包含了大量的请求处理方法，本小节，我来详细介绍下。
 
 ## 如何创建资源组的 REST Storage
 
-资源组的 REST Storage 创建逻辑位于 pkg/registry/apps/rest/storage_apps.go 文件中，其创建逻辑如下：
+资源组的 REST Storage 创建逻辑位于 `pkg/registry/apps/rest/storage_apps.go` 文件中，其创建逻辑如下：
 
 ```go
 // NewRESTStorage returns APIGroupInfo object.
@@ -65,9 +65,7 @@ func (p StorageProvider) v1Storage(apiResourceConfigSource serverstorage.APIReso
 
 上述创建逻辑比较简单，在 storage := map[string]rest.Storage{}中保存每个资源的 Storage，map 的 key 为资源名，例如：deployments、deployments//status、deployments/scale。
 
- 
-
-之后在 NewRESTStorage 方法中，将这些 storage保存在 APIGroupInfo的 VersionedResourcesStorageMap字段中，VersionedResourcesStorageMap类型为 map[string]map[string]rest.Storag。其中最外层 map 的 key 为资源的版本。所以资源组的 REST Storage 格式为：
+之后在 NewRESTStorage 方法中，将这些 storage保存在 APIGroupInfo的 VersionedResourcesStorageMap字段中，VersionedResourcesStorageMap 类型为 `map[string]map[string]rest.Storage`。其中最外层 map 的 key 为资源的版本。所以资源组的 REST Storage 格式为：
 
 ```json
 {
@@ -88,7 +86,7 @@ func (p StorageProvider) v1Storage(apiResourceConfigSource serverstorage.APIReso
 
 ## Kubernetes 包含了哪些请求处理策略（以资源创建请求为例）
 
-我们先来看下 Strategy 在哪里被调用。前面，我介绍了 HTTP 的创建请求是在e.create方法中实现的。在 e.create方法中，有以下一行 3 行代码：
+我们先来看下 Strategy 在哪里被调用。前面，我介绍了 HTTP 的创建请求是在 e.create 方法中实现的。在 e.create 方法中，有以下一行 3 行代码：
 
 ```go
     // 执行创建前处理，执行与创建相关的前置验证或处理。
@@ -97,7 +95,7 @@ func (p StorageProvider) v1Storage(apiResourceConfigSource serverstorage.APIReso
     }
 ```
 
-rest.BeforeCreate函数调用会执行资源创建时的策略执行，创建时可以执行的策略方法定义在 rest.RESTCreateStrategy接口中，接口定义如下：
+rest.BeforeCreate 函数调用会执行资源创建时的策略执行，创建时可以执行的策略方法定义在 rest.RESTCreateStrategy 接口中，接口定义如下：
 
 ```go
 // RESTCreateStrategy defines the minimum validation, accepted input, and  
@@ -139,7 +137,7 @@ type RESTCreateStrategy interface {
 }
 ```
 
-接口中提供的方法在 rest.BeforeCreate函数中被调用，rest.BeforeCreate函数代码如下：
+接口中提供的方法在 rest.BeforeCreate 函数中被调用，rest.BeforeCreate 函数代码如下：
 
 ```go
 // BeforeCreate ensures that common operations for all resources are performed on creation. It only returns
@@ -202,7 +200,7 @@ func BeforeCreate(strategy RESTCreateStrategy, ctx context.Context, obj runtime.
 }
 ```
 
-rest.BeforeCreate(e.CreateStrategy, ctx, obj)函数的入参 e.CreateStrategy是在创建 Deployment REST 结构体实例时被创建的：
+`rest.BeforeCreate(e.CreateStrategy, ctx, obj)` 函数的入参 `e.CreateStrategy` 是在创建 Deployment REST 结构体实例时被创建的：
 
 ```go
 // NewREST returns a RESTStorage object that will work against deployments.
@@ -249,7 +247,6 @@ import (
     genericregistry "k8s.io/apiserver/pkg/registry/generic/registry"    
 )
 
-
 type REST struct {
     *genericregistry.Store
 }
@@ -266,8 +263,8 @@ func (r *REST) Create(ctx context.Context, obj runtime.Object, createValidation 
 
 ## 总结
 
-本节通过 Deployment 资源的「创建」请求为例，拆解了 kube-apiserver 从接收 HTTP 请求到数据最终落盘 etcd 的完整链路。首先说明 StorageProvider 如何为 apps 资源组生成 VersionedResourcesStorageMap，使不同版本、不同资源均能找到各自的 REST 实现；随后聚焦 RESTCreateStrategy，剖析 rest.BeforeCreate 函数在对象持久化前所做的 PrepareForCreate、Validate、Canonicalize 等通用校验与规范化处理。
+本节通过 Deployment 资源的「创建」请求为例，拆解了 kube-apiserver 从接收 HTTP 请求到数据最终落盘 etcd 的完整链路。首先说明 StorageProvider 如何为 apps 资源组生成 VersionedResourcesStorageMap，使不同版本、不同资源均能找到各自的 REST 实现；随后聚焦 RESTCreateStrategy，剖析 `rest.BeforeCreate` 函数在对象持久化前所做的 PrepareForCreate、Validate、Canonicalize 等通用校验与规范化处理。
 
-接着展示 genericregistry.Store 如何为 Deployment 绑定 Create／Update／Delete 等多种 Strategy，保证各类操作的一致行为。
+接着展示 `genericregistry.Store` 如何为 Deployment 绑定 Create／Update／Delete 等多种 Strategy，保证各类操作的一致行为。
 
 最后指出在真实业务场景下可通过嵌入式组合与方法覆写，为特定资源自定义增删改查逻辑。整体思路：用分层解耦实现「策略可插拔、存储可扩展、版本可多态」，体现了 Kubernetes API 服务器的高度模块化能力。

@@ -168,8 +168,6 @@ func restfulCreateNamedResource(r rest.NamedCreater, scope handlers.RequestScope
 }
 
 
-
-
 // 位于 staging/src/k8s.io/apiserver/pkg/endpoints/handlers/create.go 文件中
 // CreateNamedResource returns a function that will handle a resource creation with name.
 func CreateNamedResource(r rest.NamedCreater, scope *RequestScope, admission admission.Interface) http.HandlerFunc {
@@ -267,7 +265,7 @@ func createHandler(r rest.NamedCreater, scope *RequestScope, admit admission.Int
 }
 ```
 
-registerResourceHandlers方法中的 route := ws.POST(action.Path).To(handler).语句调用，安装具体的路由，例如：CREATE /apis/apps/v1/namespaces/default/daemonsets接口的路由函数为 handler，handler 实现为：
+registerResourceHandlers方法中的 route := ws.POST(action.Path).To(handler).语句调用，安装具体的路由，例如：`CREATE /apis/apps/v1/namespaces/default/daemonsets` 接口的路由函数为 handler，handler 实现为：
 
 ```go
 func restfulCreateNamedResource(r rest.NamedCreater, scope handlers.RequestScope, admit admission.Interface) restful.RouteFunction {
@@ -275,7 +273,6 @@ func restfulCreateNamedResource(r rest.NamedCreater, scope handlers.RequestScope
         handlers.CreateNamedResource(r, &scope, admit)(res.ResponseWriter, req.Request)
     }
 }
-
 
 func (a *APIInstaller) registerResourceHandlers(path string, storage rest.Storage, ws *restful.WebService) (*metav1.APIResource, *storageversion.ResourceInfo, error) {
     ...
@@ -296,7 +293,7 @@ func (a *APIInstaller) registerResourceHandlers(path string, storage rest.Storag
 
 阅读代码可知，请求到来时执行的函数路径如下：
 
-1. 执行 handler 也即restfulCreateNamedResource(namedCreater, reqScope, admit)函数。其中 namedCreater是一个接口定义，接口定义为：
+1. 执行 handler 也即 `restfulCreateNamedResource(namedCreater, reqScope, admit)` 函数。其中 namedCreater 是一个接口定义，接口定义为：
 
 ```go
 // NamedCreater is an object that can create an instance of a RESTful object using a name parameter.
@@ -324,11 +321,11 @@ type REST struct {
 }
 ```
 
-DeploymentStorage结构体中的 Deployment字段是一个 *REST类型，REST类型内嵌了 *genericregistry.Store类型的字段，实现了NamedCreater接口中的 Create方法。*REST实现了NamedCreater接口中的 New方法。
+DeploymentStorage 结构体中的 Deployment 字段是一个 `*REST` 类型，REST 类型内嵌了 `*genericregistry.Store` 类型的字段，实现了 NamedCreater 接口中的 Create方法。`*REST` 实现了 NamedCreater 接口中的 New方法。
 
-1. restfulCreateNamedResource方法中执行 handlers.CreateNamedResource方法；
-2. handlers.CreateNamedResource方法执行 createHandler方法；
-3. 从上述 createHandler方法的代码实现中，我们可以知道，createHandler方法具体执行了以下核心逻辑错里：
+1. restfulCreateNamedResource 方法中执行 `handlers.CreateNamedResource` 方法；
+2. handlers.CreateNamedResource 方法执行 createHandler 方法；
+3. 从上述 createHandler 方法的代码实现中，我们可以知道，createHandler 方法具体执行了以下核心逻辑错里：
    1. 初始化调用链 Span 节点；
    2. 从请求中获取资源的命名空间和名词；
    3. 解析请求的 Query 参数，讲参数解析到 CreateOptions 类型的变量中；
@@ -361,11 +358,11 @@ type REST struct {
 }
 ```
 
-REST结构体内嵌了*genericregistry.Store类型的匿名字段。*genericregistry.Store类型自带了一些跟 ETCD 操作相关的方法，例如：Create、Update、Delete等，我们可以通过给 *REST结构体添加 Create、Update等方法来重写默认的方法。
+REST结构体内嵌了 `*genericregistry.Store` 类型的匿名字段。`*genericregistry.Store` 类型自带了一些跟 ETCD 操作相关的方法，例如：Create、Update、Delete 等，我们可以通过给 `*REST` 结构体添加 Create、Update 等方法来重写默认的方法。
 
 ### genericregistry.Store 实例初始化
 
-genericregistry.Store结构体定义如下：
+genericregistry.Store 结构体定义如下：
 
 ```go
 type Store struct {  
@@ -509,7 +506,7 @@ type Store struct {
 }
 ```
 
-*genericregistry.Store 字段是在 [NewREST](https://github.com/kubernetes/kubernetes/blob/v1.30.4/pkg/registry/apps/deployment/storage/storage.go#L93) 中初始化，并被设置的。NewREST函数实现如下：
+*genericregistry.Store 字段是在 [NewREST](https://github.com/kubernetes/kubernetes/blob/v1.30.4/pkg/registry/apps/deployment/storage/storage.go#L93) 中初始化，并被设置的。NewREST 函数实现如下：
 
 ```go
 // NewREST returns a RESTStorage object that will work against deployments.
@@ -542,7 +539,7 @@ func NewREST(optsGetter generic.RESTOptionsGetter) (*REST, *StatusREST, *Rollbac
 }
 ```
 
-genericregistry.Store类型中，包含了一个非常重要的字段：Storage。Storage类型为 DryRunnableStorage：
+genericregistry.Store 类型中，包含了一个非常重要的字段：Storage。Storage 类型为 DryRunnableStorage：
 
 ```go
 type DryRunnableStorage struct {
@@ -551,9 +548,9 @@ type DryRunnableStorage struct {
 } 
 ```
 
-DryRunnableStorage结构体包含了一系列方法，这些方法用来执行 ETCD 操作。DryRunnableStorage结构体中的 Storage字段是一个结构体类型，代表一个存储实现。由此可知，kube-apiserver 底层除了支持 Etcd 存储外，其实还可以支持其他存储，例如：MySQL、Elasticsearch 等。当然，kube-apiserver 使用的是 Etcd，也建议使用 Etcd。
+DryRunnableStorage 结构体包含了一系列方法，这些方法用来执行 ETCD 操作。DryRunnableStorage 结构体中的 Storage 字段是一个结构体类型，代表一个存储实现。由此可知，kube-apiserver 底层除了支持 Etcd 存储外，其实还可以支持其他存储，例如：MySQL、Elasticsearch 等。当然，kube-apiserver 使用的是 Etcd，也建议使用 Etcd。
 
-genericregistry.Store结构体中的Storage字段是在 store.CompleteWithOptions函数调用中被初始化的，初始化代码段如下：
+genericregistry.Store 结构体中的 Storage 字段是在 `store.CompleteWithOptions` 函数调用中被初始化的，初始化代码段如下：
 
 ```go
         e.Storage.Storage, e.DestroyFunc, err = opts.Decorator(
@@ -568,7 +565,7 @@ genericregistry.Store结构体中的Storage字段是在 store.CompleteWithOption
         )
 ```
 
-opts.Decorator函数的实现初始化和实现代码如下：
+opts.Decorator 函数的实现初始化和实现代码如下：
 
 ```go
 // 位于 staging/src/k8s.io/apiserver/pkg/server/options/etcd.go 文件中  
@@ -705,7 +702,7 @@ func Create(c storagebackend.ConfigForResource, newFunc, newListFunc func() runt
 }
 ```
 
-上面的代码有点多，大概意思就是，在初始化  genericregistry.Store类型的实例，初始化DryRunnableStorage结构体类型 Storage实例时，底层最终会调用 go.etcd.io/etcd/client/v3包创建一个 Etcd 实例。然后，在 DryRunnableStorage结构体的 Create、Get、Update等方法中，调用 Etcd V3 的客户端方法，完成数据从 Etcd 中的读写。可以理解为，DryRunnableStorage是底层 Etcd 客户端的一个代理，用来将资源数据保存到 Etcd 存储中，或者从 Etcd 存储中查询资源数据。
+上面的代码有点多，大概意思就是，在初始化 genericregistry.Store 类型的实例，初始化 DryRunnableStorage 结构体类型 Storage实例时，底层最终会调用 `go.etcd.io/etcd/client/v3` 包创建一个 Etcd 实例。然后，在 DryRunnableStorage 结构体的 Create、Get、Update 等方法中，调用 Etcd V3 的客户端方法，完成数据从 Etcd 中的读写。可以理解为，DryRunnableStorage 是底层 Etcd 客户端的一个代理，用来将资源数据保存到 Etcd 存储中，或者从 Etcd 存储中查询资源数据。
 
 <img src="image/FhUerWdU0X3_cBXa4K9lYmMiD2Ws" alt="img" style="zoom:50%;" />
 
