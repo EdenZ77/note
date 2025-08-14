@@ -1,6 +1,4 @@
-
-
-# 为什么写作本书
+为什么写作本书
 
 时间回到2022年，那一年底中国再为世界奉上一部基建杰作：白鹤滩水电站全部机组投产发电，这一当时世界技术难度最高的水电工程被中国人成功完成。港珠澳大桥、南水北调、中国高铁、空间站建设、探月工程等重大工程一次次证明中国工程师的勤劳与智慧。同样是在2022年底，美国硅谷一家几百人的公司OpenAPI以其AI产品ChatGPT震惊科技界，在AI领域领先了包括国内科技大厂在内的全球IT巨头们至少一代。如果说我国在基建领域独步全球，则在科技领域与国际顶尖水平还有距离。
 
@@ -40,13 +38,13 @@ API Server所应用的诸多设计实现为开发者提供了有益参考。例�
 
 **4.Go语言的使用者**
 
-Go语言的使用者完全可以利用Kubernetes项目来快速提升自己的工程能力。作为Kubernetes中最核心也是最复杂的组件，API Server的源码充分体现Go的多种最佳实践。读者会看到管道（channel）如何编织出复杂的Server状态转换网，会看到优雅应用协程（goroutine）的方式，也会学习到如何利用函数对象，以及诸多技术的应用方式。通过阅读API Server源码来提升自身Go水平一举多得。
+Go语言的使用者完全可以利用 Kubernetes 项目来快速提升自己的工程能力。作为Kubernetes中最核心也是最复杂的组件，API Server 的源码充分体现Go的多种最佳实践。读者会看到管道（channel）如何编织出复杂的 Server 状态转换网，会看到优雅应用协程（goroutine）的方式，也会学习到如何利用函数对象，以及诸多技术的应用方式。通过阅读 API Server 源码来提升自身Go水平一举多得。
 
 **5.期望了解开源项目的开发者**
 
-开源在过去30年里极大加速了软件行业的繁荣，在主要的应用领域开源产品都起到顶梁柱的作用，例如Linux，安卓，Kubernetes，Cloud Foundry，Eclipse，PostgreSQL等等。软件开源早已超出代码共享的范畴，成为一种无私、共同进步的精神象征。众多软件从业者都以参与开源项目为荣。
+开源在过去30年里极大加速了软件行业的繁荣，在主要的应用领域开源产品都起到顶梁柱的作用，例如 Linux，安卓，Kubernetes，Cloud Foundry，Eclipse，PostgreSQL 等等。软件开源早已超出代码共享的范畴，成为一种无私、共同进步的精神象征。众多软件从业者都以参与开源项目为荣。
 
-本书在介绍源码的同时也展示了Kubernetes的社区治理，读者会看到这样一个百万人级别的社区角色如何设定，任务怎么划分，代码提交流程，质量保证手段。通过这些简要介绍，读者可以获得对开源项目管理的基本知识，为参与其中打下基础。如果聚焦API Server这一较小领域，读者在本书的帮助下将掌握项目结构和核心代码逻辑，辅以一定量的自我学习便可参与其中。
+本书在介绍源码的同时也展示了 Kubernetes 的社区治理，读者会看到这样一个百万人级别的社区角色如何设定，任务怎么划分，代码提交流程，质量保证手段。通过这些简要介绍，读者可以获得对开源项目管理的基本知识，为参与其中打下基础。如果聚焦 API Server 这一较小领域，读者在本书的帮助下将掌握项目结构和核心代码逻辑，辅以一定量的自我学习便可参与其中。
 
 # 第一篇 基础
 
@@ -72,13 +70,11 @@ Kubernetes 集群本质上是一个普通的分布式系统，本身并没有难
 
 ### 1.1.1 控制面上组件
 
-控制面承载了服务于整个集群的组件，包括 API Server、控制器管理器（Controller Manager）、计划器（一般称为调度器，Scheduler）以及和 API Server 密切配合的数据库——ETCD。API Server 是一个 Web Server，用于管理系统中的 API 及其对象，它利用 ETCD 来存储这些 API 实例；控制器管理器可以说是 Kubernetes 集群的灵魂所在，它所管理的诸多控制器负责调整系统，从而达到 API 对象所指定的目标状态，1.4 节将要介绍的声明式 API 和控制器模式就是由控制器具体落实的，而控制器管理器汇集了控制面上大部分内置管理器；计划器负责选择节点去运行容器从而完成工作负载，它观测 API Server 中 API 对象的变化，为它们所代表的工作负载安排节点，然后把安排结果写回 API 对象，以便节点上的 Kubelet 组件消费。
+控制面承载了服务于整个集群的组件，包括 API Server、控制器管理器（Controller Manager）、计划器（一般称为调度器，Scheduler）以及和 API Server 密切配合的数据库——ETCD。API Server 是一个 Web Server，用于管理系统中的 API 及其对象，它利用 ETCD 来存储这些 API 实例；控制器管理器可以说是 Kubernetes 集群的灵魂所在，它所管理的诸多控制器负责调整系统，从而达到 API 对象所指定的目标状态，1.4 节将要介绍的声明式 API 和控制器模式就是由控制器具体落实的；计划器负责选择节点去运行容器从而完成工作负载，它观测 API Server 中 API 对象的变化，为它们所代表的工作负载安排节点，然后把安排结果写回 API 对象，以便节点上的 Kubelet 组件消费。
 
 **1. API Server**
 
-API Server 是整个集群的记忆中枢。Kubernetes 采用声明式 API 模式，系统的运作基于来自各方的 API 对象，每个对象描述了一个对系统的期望，由不同控制器获取对象并实现其期望。这些对象的存储和获取均发生在 API Server 上，这就奠定了 API Server 的核心地位，如图 1- 2 所示。1.3 小节会进一步展开讨论。
-
-<img src="image/image-20250814070509729.png" alt="image-20250814070509729" style="zoom:40%;" />
+API Server 是整个集群的记忆中枢。
 
 **2. 控制器管理器**
 
@@ -87,529 +83,181 @@ API Server 是整个集群的记忆中枢。Kubernetes 采用声明式 API 模�
 如下代码给出一个 CronJob API 对象的定义：
 
 ```yaml
-apiVersion: batch/v1 
-kind: CronJob 
-metadata: 
-    name: busybox-cron 
-spec: 
-    schedule: "*/1 * * * *" 
-    jobTemplate: 
-        spec: 
-          template: 
-            spec: 
-              containers: 
-                - name: busybox 
-                  image: busybox:latest 
-              command: ["/bin/sh", "-c”, "echo 'Hello World'"] 
-              restartPolicy: OnFailure
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: busybox-cron
+spec:
+  schedule: "*/1 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: busybox
+              image: busybox:latest
+              command: ["/bin/sh", "-c", "echo 'Hello World'"]
+          restartPolicy: OnFailure
 ```
 
-这个API对象在 spec 中指出作业运行周期、运行的镜像以及容器启动后需要执行的命令，这便形成了用户的期望；当该资源文件提交至 API Server 后，一直不断观察 CronJob 实例变化的 CronJob 控制器就会多一条工作条目，在处理完先行到达的其它条目后，控制器就会按照这个实例的 spec 创建 Pod 并执行指明的命令。
+这个 API 对象在 spec 中指出作业运行周期、运行的镜像以及容器启动后需要执行的命令，这便形成了用户的期望；当该资源文件提交至 API Server 后，一直不断观察 CronJob 实例变化的 CronJob 控制器就会多一条工作条目，在处理完先行到达的其它条目后，控制器就会按照这个实例的 spec 创建 Pod 并执行指明的命令。
 
-注意：资源的创建和控制器对其处理二者是异步的。控制器内具有一个队列数据结构，发生变化的API对象会作为其条目入列，等待控制器在下一次控制循环中处理。
+注意：资源的创建和控制器对其处理二者是异步的。控制器内具有一个队列数据结构，发生变化的 API 对象会作为其条目入列，等待控制器在下一次控制循环中处理。
 
-系统中存在着大量控制器，显而易见，它们的稳定运行对系统顺利运转举足轻重，Kubernetes需要特别关注它们，以便异常出现时做恢复的动作，这部分工作中控制器管理器承担。控制器管理器是一个单独的可执行程序，Kubernetes把绝大部分内建控制器包含其中，有它管理。逻辑上看，该管理器应该包含一个守护进程（Daemon）和众多控制器进程，守护进程监控控制器进程的健康；但实践中利用了Go语言的协程（goroutine）机制，管理器和控制器代码被编译成单一可执行文件，运行在同一个进程内，每一个控制器以协程的形式运行于该进程中。
+系统中存在着大量控制器，显而易见，它们的稳定运行对系统顺利运转举足轻重，Kubernetes 需要特别关注它们，以便异常出现时做恢复的动作，这部分工作中控制器管理器承担。控制器管理器是一个单独的可执行程序，Kubernetes 把绝大部分内建控制器包含其中，由它管理。逻辑上看，该管理器应该包含一个守护进程（Daemon）和众多控制器进程，守护进程监控控制器进程的健康；但实践中利用了 Go 语言的协程（goroutine）机制，管理器和控制器代码被编译成单一可执行文件，运行在同一个进程内，每一个控制器以协程的形式运行于该进程中。
 
 **3.云控制器管理器**
 
-云控制器管理器又有何用呢？它在Kubernetes集群和云平台之间架起桥梁。技术上看，一个Kubernetes集群需要的资源可以来自集群所处的云平台，例如公网IP这个资源便是如此。云平台以API的形式提供服务，而针对同样资源不同平台的API肯定是有差异的，为了屏蔽这种差异，云控制器管理器被开发出来。它将集群中所有需要与云平台API交互的组件集中起来由自己管理，从而将这方面的复杂性隔离出来；同时，制定插件机制来统一资源操作接口，允许各大平台实现插件与Kubernetes集群对接。云控制器管理器管理着多个云控制器，它们是云平台API的直接调用者。
+云控制器管理器又有何用呢？云控制器管理器是一个 Kubernetes 系统组件，它在 Kubernetes 集群和其运行的云平台之间提供中介功能。简单来说，它的核心目的是**屏蔽底层云平台的差异性**，让 Kubernetes 集群能无缝使用云服务资源（如公网IP、服务器、网络路由等），而无需集群其他部分（如API Server、Kubelet）直接处理云平台API 的细节。
 
-云平台最基本的服务是提供算力——也就是提供服务器，如何将一台从平台买来的服务器挂到一个Kubernetes集群呢，云控制器管理器内运行着一个节点云控制器，它会对接所在云平台，来获取当前客户的租户内服务器信息，形成种类为节点（Node）的Kubernetes API对象并存入API Server中，这样所有云服务器就可以为集群所用了。
+云控制器管理器不是单一模块，而是由多个专用“子控制器”组成，每个控制器负责一个关键功能。这些控制器直接与云平台 API 交互，并将结果同步到 Kubernetes API Server。以下是主要组件：
 
-此外，Kubernetes集群中的容器必须彼此之间可达，这需要路由云控制器进行配置，该控制器也是云控制器管理器的一部分。
+- 节点云控制器 (Node Controller)：
+  - 作用：处理云服务器的集成。当从云平台购买服务器后，该控制器会自动从云 API 获取服务器信息（如IP、主机名），并创建或更新 Kubernetes 的 Node 对象。
+  - 结果：这些 Node 对象被存储到 API Server，使云服务器能被集群识别和使用（例如，Pod 可以调度到这些服务器上）。
+- 路由云控制器 (Route Controller)：
+  - 作用：管理容器网络的可达性。它配置云平台的网络规则（如VPC路由或防火墙），确保不同节点上的容器能相互通信（例如，跨服务器的 Pod 间流量能被正确路由）。
+  - 结果：Kubernetes 无需手动设置复杂网络规则，路由控制器自动处理底层平台的路由策略。
+- 服务云控制器 (Service Controller)：
+  - 作用：处理 LoadBalancer 类型的服务。当用户创建 LoadBalancer 服务时，该控制器调用云平台 API 分配公网 IP 地址（或负载均衡器实例），使服务可从集群外部访问。
+  - 结果：例如，一个 Web 应用暴露给公网时，服务控制器会自动完成 IP 分配和 DNS 配置。
 
-除此之外，服务云控制器同样是云控制器管理器的一部分：有一种服务类型是LoadBalancer，该类型的服务要求云平台为其分配一个集群外可达的IP地址，地址的获取就是由服务云控制器来完成的。
+这些子控制器在 CCM 内部协同工作：节点控制器确保服务器资源可用，路由控制器保证内部通信，服务控制器处理外部暴露。
 
 **4.计划器**
 
-API对象的本质是描述使用者期望系统处于的状态，一般来说这会伴有工作负载，最终落实到具体Pod去执行。而集群中有大量节点，系统如何选取某个节点来运行Pod呢？这一过程其实并不简单。影响节点选取的因素有很多，包括但不限于：
+API 对象的本质是描述使用者期望系统处于的状态，一般是使用工作负载但最终落实到具体 Pod 去执行。而集群中有大量节点，系统如何选取某个节点来运行 Pod 呢？这一过程其实并不简单。影响节点选取的因素有很多，包括但不限于：
 
-（1）执行任务必备的系统资源，例如算力，内存，显卡需求。(2）各个节点的可用软硬件资源(3）系统中存在的资源分配策略、使用限制等。(4）资源定义指明的亲和、反亲和规则。（5）各节点间工作负载的平衡。
+- 执行任务必备的系统资源，例如算力，内存，显卡需求。
+- 各个节点的可用软硬件资源。
+- 亲和、反亲和规则。
+- 各节点间工作负载的平衡。
+- ......
 
-可见节点的选择是件复杂精细的工作。为了处理好它，Kubernetes开发计划器模块来专门应对，计划器通盘考虑各种因素来做出选择。计划器对使用者是透明的。
+可见节点的选择是件复杂精细的工作。为了处理好它，Kubernetes 开发计划器模块来专门应对，计划器通盘考虑各种因素来做出选择。计划器对使用者是透明的。
 
-### 1.1.2节点上组件
+### 1.1.2 节点上组件
 
 节点代表提供算力等资源的服务器，容器就是在这里被创建、运行并随后销毁的，实际的工作都在这里完成。节点需要按照控制面的要求进行配置并完成工作，这就需要 Kubelet 组件和 KubeProxy 组件，前者主要任务是对接节点上的容器环境完成管理任务，后者负责达成容器网络的连通性。节点上组件并不是本书写作目标，但为了读者能有一个整体概念，下面对 Kubelet 和 KubeProxy 做简单介绍，感兴趣的读者可以自行查阅相关资料。
 
-1.Kubelet
+**1.Kubelet**
 
-Agent 在分布式系统中比较常见，它们分布在集群的各个成员上，像粘合剂一样关联整个系统，Kubelet 就类似这样的一个 Agent。每个节点都会有一个Kubelet，它连接控制面和节点，准确地说是API Server与节点，使得API Server与所有节点构成一个星型结构。它的任务繁重，最核心的有：
+Agent 在分布式系统中比较常见，它们分布在集群的各个成员上，像粘合剂一样关联整个系统，Kubelet 就类似这样的一个 Agent。每个节点都会有一个 Kubelet，它连接控制面和节点，准确地说是 API Server 与节点，使得 API Server 与所有节点构成一个星型结构。它的任务繁重，最核心的有：
 
-（1）向Kubernetes集群注册当前节点。
+- 向 Kubernetes 集群注册当前节点。
 
-（2）观测系统需要当前节点运行的Pod，并在当前节点运行之。
+- 观测系统需要当前节点运行的 Pod，并在当前节点运行之。
 
-节点的注册是指告知 API Server 当前节点的具体信息，如IP地址、CPU和内存情况。在API Server中，万物皆是资源节点也不例外，Kubelet 的注册动作最终会在API Server上创建一个节点资源，关于这个节点的所有信息都记录在其内。值得一提的是，Kubelet 能和 API Server 交互的前提是能通过控制面的登录和鉴权流程，这就需要在启动 Kubelet 时为其指定合法并权限足够的 ServiceAccount。
 
-和注册节点到 API Server 相比，启动并观测 Pod 更为关键。在 Kubernetes 系统中，工作负载的最终执行一定是在 Pod 所包含的容器中完成，整个过程为：首先用户通过资源定义给出任务的描述；然后相应控制器分析资源定义，并进行丰富，这时需要什么镜像、跑几个容器等已经明确；接下来计划器为这些 Pod 选取节点，并把这些信息写入 Pod 的定义；最后 Kubelet 登场，它及时发现那些需要自己所在节点创建的 Pod，把它们的定义读回来，通知节点上的容器运行时创建出之，之后持续关注容器健康状况并上报 API Server。可见，缺少了 Kubelet 的工作将导致 Pod 无法最终创建。
+节点的注册是指告知 API Server 当前节点的具体信息，如IP地址、CPU和内存情况。在 API Server 中，万物皆是资源，节点也不例外，Kubelet 的注册动作最终会在API Server上创建一个节点资源，关于这个节点的所有信息都记录在其内。值得一提的是，Kubelet 能和 API Server 交互的前提是能通过控制面的登录和鉴权流程，这就需要在启动 Kubelet 时为其指定合法并权限足够的 ServiceAccount。
 
-2. Kube Proxy
+和注册节点到 API Server 相比，启动与观测 Pod 更为关键。在 Kubernetes 系统中，工作负载的最终执行一定是在 Pod 所包含的容器中完成，整个过程为：首先用户通过资源定义给出任务的描述；然后相应控制器分析资源定义，并进行丰富，这时需要什么镜像、跑几个容器等已经明确；接下来计划器为这些 Pod 选取节点，并把这些信息写入 Pod 的定义；最后 Kubelet 登场，它及时发现那些需要自己所在节点创建的 Pod，把它们的定义读回来，通知节点上的容器运行时创建出来，之后持续关注容器健康状况并上报 API Server。可见，缺少了 Kubelet 的工作将导致 Pod 无法最终创建。
 
-Kubernetes 集群中所有 Pod 需要相互联通，彼此可达，这并不容易实现，网络一直是 Kubernetes 中较复杂的话题。对于同一个节点上的两个 Pod 来说，借助 Kubelet 创建的 CNI 网桥就可以联通它们，过程如下：每个 Pod 和网桥之间都通过一个 veth 对（veth pair）连接，从 veth 对一端进入的数据包会到达另一端，两个相互通信的 Pod 会先把给对方的消息交给网桥，经网桥进行转发，这样连通性就达成了。
+**2.Kube Proxy**
 
-对于跨主机通信，两个 Pod 分处在不同的节点上，过程就会坎坷一点。各路网络插件各显神通，有的建立跨节点的覆盖网络，如 Flannel；有的把底层 OS 作为路由器转发流量，如 Calico。网络插件在 Kubernetes 集群网络构建过程中起到了重要作用，它们均建立在 CNI 规范基础上，是它的不同实现。网络插件会被容器运行时在创建 Pod 过程中调用。
+Kubernetes 集群中所有 Pod 需要相互联通，彼此可达，这并不容易实现，网络一直是 Kubernetes 中较复杂的话题。
 
-由此可见网络相关工作是繁琐的，涉及到它的工作也需要专业知识。有一类资源非常依赖网络的支持，它就是服务（Service）。服务把一个应用在集群内和/或集群外暴露，使得其它的应用可以消费它。建立服务的主要工作集中在网络配置上，要能把流量转发到服务后台应用所在的 Pod 上，Kubernetes 引入 Kube Proxy 专门负责服务的网络配置。
-
-Kube Proxy 并不直接负责集群网络的建立，如上所述这活儿主要由网络插件干，但 Kube Proxy 隔离出利用网络插件配置 Service API 对象网络的所有工作，从而屏蔽这方面的复杂性。当一个服务对象创建出来后，系统会根据其类型为它做网络配置：
-
-（1）对于类型为 ClusterIP 的服务，为其分配一个虚的 IP，并保证集群内部对该虚 IP 的特定端口的访问能够到达相应 Pod。集群外部访问不到该 IP。
-
-（2）对于类型为 NodePort 的服务，除了像 ClusterIP 类型一样为其分配虚 IP 并保证流量能到达背后 Pod 外，在集群的每一个节点上，开放一个特定端口给外部，所有对该端口的访问都会被路由到这个服务的 Pod。
-
-（3）对于类型为 LoadBalancer 的服务，外部 IP 提供者会把一个 IP 分配给该服务，对该服务的访问会被转给 Kubernetes 集群，集群保证请求到达背后 Pod，而一种方式也利用了 ClusterIP。
-
-不难看出，ClusterIP 类型的服务是 NodePort 和 LoadBalancer 的基础，它能得以实现的要点是：对该虚 IP 的特定端口的访问能到达对应的 Pod，Kube Proxy 包揽了这部分工作。它通过多种方式达到目的：用户空间（UserSpace）模式，iptables 模式和 IPVS 模式，这里不做展开。
+......
 
 ## 1.2 KubernetesAPI基本概念
 
-1.2 Kubernetes API 基本概念Kubernetes 中频繁使用一些基本概念，不加以区分将极易造成混淆，这一小节来明确它们的含义。Kubernetes API 的重要概念体系如图 1- 3 所示。
-
-<img src="image/image-20250813212441417.png" alt="image-20250813212441417" style="zoom:50%;" />
-
- 
+Kubernetes 中频繁使用一些基本概念，不加以区分将极易造成混淆，这一小节来明确它们的含义。
 
 
-### 1.2.1 API和API对象
+### 1.2.1 API对象
 
-Kubernetes中的API并不完全等同于编程世界中一般意义上的 ApplicationProgrammingInterface。一般意义上的API是一种当前程序接收外部指令的技术手段，这非常像一个出入口所以形象地称它们为接口。而KubernetesAPI不仅仅有接口这一层次的含义，还代表了指令本身，这确实有些特立独行。可以类比生活中“快递”一词的含义：它在一些场景下代表了一种物流手段，而在另外一些场景下又代表被递送的货物本身。
+Kubernetes 系统内各个模块之间的交互是以 APIServer 为中心的松耦合交互，请求发起模块把自己对系统状况的期望描述出来，形成 API 对象，并把它交给 APIServer；响应方则从 APIServer 获取 API 对象并依其所期望状态尽力满足。在这个过程中，API 对象起到了关键的解耦作用。（用户可以建立许多具体 Deployment 实例，这些实例就是 API 对象。）
 
-Kubernetes系统内各个模块之间的交互是以APIServer为中心的松耦合交互，请求发起模块把自己对系统状况的期望描述出来，形成API对象，并把它交给APIServer；响应方则从APIServer获取API对象并依其所期望状态尽力满足。在这个过程中，API对象起到了关键的解耦作用。这样的API对象可以分为很多种类，例如apps/v1中的Deployment，用户可以建立许多具体Deployment实例，这些实例就是API对象。
-
-KubernetesAPI对象被用来指代对系统状态的期望，是一个个具体的实例，也称为API实例；而API是对象的类型，它代表的是元数据层面内容。社区的很多讨论中，在不造成混淆的情况下经常混用API对象和API，但本书行文中将严格区分。
+Kubernetes API 对象被用来指代对系统状态的期望，是一个个具体的实例，也称为 API 实例。
 
 ### 1.2.2 API种类
 
-1.2.2 API 种类种类的英文原文是 Kind，直译成中文的话是种类，类型的意思。显而易见在计算机技术领域“种类”或“类型”一词指代过于宽泛，容易和其它事物冲突，所以在本书中谈到
+种类的英文原文是 Kind，直译成中文的话是种类、类型的意思。显而易见在计算机技术领域“种类”或“类型”一词指代过于宽泛，容易和其它事物冲突，所以在本书中谈到 API Kind 时，一律直接用 API Kind 或用 “API 种类” 来表述，这样既保留了概念本意，又尽量与其它概念区分。
 
-API Kind 时，一律直接用 API Kind 或用“API 种类”来表述，这样既保留了概念本意，又尽量与其它概念区分。
+API 种类从事物所具有的属性角度描述 API，而不是属性的值。根据 Kubernetes API 规约，API 种类可分成三大类：
 
-API 种类从事物所具有的属性角度描述 API，而不是属性的值；它代表了一类资源的共有属性集合。根据 Kubernetes API 规约<sup>3</sup>，API 种类可分成三大类：
+**1.对象类型Object**
 
-**1.对象类型**
+对象类型定义出的实体会持久化在系统中。用户通过创建一个对象类型的实例来描述某一意图。例如 Pod、Service 都是对象类型，人们可以用它们创建出具体的 Pod 和 Service 实例。对象类型的属性 metadata 下必须有 name，uid，namespace 等属性。用户所接触的 API 资源大多数都是对象类型的实例；用户所撰写的资源定义文件，绝大部分用于创建对象类型的实例。
 
-对象类型定义出的实体会持久化在系统中。用户通过创建一个对象类型的实例来描述某一意图。用户可通过 get、delete 等 HTTP 方法操作这些实体。例如 Pod、Service 都是对象类型，人们可以用它们创建出具体的 pod 和 service 实例。对象类型的属性‘metadata’下必须有‘name’，‘uid’，‘namespace’属性。用户所接触的 API 资源大多数都是对象类型的实例；用户所撰写的资源定义文件，绝大部分用于创建对象类型的实例。
+**2.列表类型List**
 
-**2.列表类型**
+对象类型用于定义单个实体，而列表类型定义一组实体。例如 PodList，ServiceList，NodeList。列表类型在命名时必须以 List 结尾，在列表类型内必须定义有属性 items，这个属性用于容纳被列表实例所包含的 API 实例。列表类型最常用于 API Server 给客户端的返回值，用户不会单独去为列表类型实例写资源定义文件。例如，当执行命令从 API Server 读取某一命名空间内所有 Pod 时，得到的返回值也是一个 Kubernetes API 实例，它的 API Kind 将是 PodList。
 
-对象类型用于定义单个实体，而列表类型定义一组实体。例如 PodList，ServiceList，NodeList。列表类型在命名时必须以‘List’结尾，在列表类型内必须定义有属性‘items’，这个属性用于容纳被列表实例所包含的 API 实例。列表类型最常用于 API Server 给客户端的返回值，用户不会单独去为列表类型实例写资源定义文件。例如，当执行命令从 API Server 读取某一命名空间内所有 Pod 时，得到的返回值也是一个 Kubernetes API 实例，它的 API Kind 将是 PodList，PodList 的类型便是列表类型。
+**3.简单类型Simple**
 
-**3.简单类型**
-
-简单类型用于定义非独立持久化的实体，即它们的实例不会单独保存在系统内，但可以作为对象类型实例的附属信息持久化到数据库。简单类型的存在是为支持一些操作，例如 Status 就是一个简单类型，它会被控制器用来在 API 实例上记录现实状况。简单类型常常被用于子资源的定义，Status 和 Scale 是 Kubernetes 广泛支持的子资源。子资源也会有 RESTful 端点（Endpoint），/status 和 /scale 分别是 Status 和 Scale 子资源的端点。
+简单类型用于定义非独立持久化的实体，即它们的实例不会单独保存在系统内，但可以作为对象类型实例的附属信息持久化到数据库。简单类型的存在是为支持一些操作，例如 Status 就是一个简单类型，它会被控制器用来在 API 实例上记录现实状况。简单类型常常被用于子资源的定义，Status 和 Scale 是 Kubernetes 广泛支持的子资源。子资源也会有 RESTful 端点（Endpoint），`/status` 和 `/scale` 分别是 Status 和 Scale 子资源的端点。
 
 Kubernetes 项目约定 API 种类在命名时使用英文单数驼峰式，例如 ReplicaSet。
 
-### 1.2.3 API 组和版本
+### 1.2.3 API组和版本
 
 如果说 API 种类是从事物具有的属性角度去对 API 进行归类的话，组(Group)和版本 (Version) 就是从隶属关系与时间顺序两个维度去划分 API。API 组、版本和种类——也被称为 GVK——共同刻画了 API。
 
 Kubernetes 的贡献者来自五湖四海，每个贡献者都有可能单独设计和贡献 API，那么如何避免彼此资源的冲突呢？引入 API 组便是来回答这一问题。它借用了命名空间的理念，每个贡献者都在自己的空间内定义自己的 API，这也是为什么很多 API 组都与域名有关的原因。API 组是后来概念，项目初期并不存在，初期参与者较少根本不需要这样的区分。为了向后兼容，引入组概念前就已存在的 API 都被归入核心组，该组内 API 资源的 RESTful 端点将不包含组名，介绍 API 端点时会再提及。
 
-聚焦单独一个API组，同一个API也会有不断迭代的需求，如何避免这种迭代影响到使用了已发布版本的用户呢？版本的概念被引入来应对这一问题。同一个API可以存在于不同版本中，新老版本技术上被看作不同API，当新版本最终成熟时老版本用户会被要求升级替换。
+聚焦单独一个 API 组，同一个 API 也会有不断迭代的需求，如何避免这种迭代影响到使用了已发布版本的用户呢？版本的概念被引入来应对这一问题。
 
-由于API Group和Version在Kubernetes社区被广泛使用，本书有时会直接使用其英文名称。
+由于 API Group 和 Version 在 Kubernetes 社区被广泛使用，本书有时会直接使用其英文名称。
 
 ### 1.2.4 API资源
 
-资源一词来源于REST，API Server通过RESTful的形式对外提供服务接口，而在RESTful的概念中，服务所针对的对象是资源。所谓API资源，就是API Server中的API在REST背景下的名称，系统以RESTful的形式对外暴露针对Kubernetes API的服务接口。API资源在命名时使用英文复数全小写，例如replicasets。
+资源一词来源于 REST，API Server 通过 RESTful 的形式对外提供服务接口，而在 RESTful 的概念中，服务所针对的对象是资源。所谓 API 资源，就是 API Server 中的 API 在 REST 背景下的名称。API 资源在命名时使用英文复数全小写，例如 replicasets。
 
-注意：API资源这个概念在很多场景下常被用于指代其它概念，如果不加以说明容易引起困惑：
-
-（1）指代API资源实例。它是某类API资源的具体实例，是通过向API资源的Endpoint发送CREATE HTTP请求创建出来的实体。在RESTful服务的概念体系里，资源和资源实例实际上是不怎么区分的，统称为资源，而在URL层面二者是有不同：如果在URL最后有给出id，则代表资源实例，而如果没有给出id，则代表这类资源。在不引起混淆的情况下，本书同样使用API资源指代API资源实例。
-
-(2）指代API或API对象。API资源是Kubernetes API在RESTful下的表述，所以很多时候人们会用API资源来表达API，不严谨的场景下也无伤大雅；API对象想表达的意思更多是一个具体的API实例，所以它和API资源实例相对应，但由于人们常常混用API资源和API资源实例，导致也不怎么区分API资源和API对象。本书中将避免用API资源指代API或API对象。
-
-读者在文档阅读时也要意识到以上混用的存在，利用上下文去理解区分一个名词所表述的具体含义，并在自己的表达过程中尽量不混用名词。
-
-用户通过向API资源的端点发送RESTful请求来操作该资源，端点对API资源来说是常用的信息。一个API资源在API Server上的端点具有固定模式：
-
-<server地址与端口>/apis（或api）/<API组>/<版本>/namespaces/<命名空间>/<资源名>
-
-通过kubectl api- resources命令可以查看集群中存在的API资源，一个Minikube单节点本地系统内的部分API资源如图1- 4所示。
-
-<table><tr><td>NAME</td><td>SHORTNAMES</td><td>APIVERSTON</td><td>NAME SPACED</td><td>KIND</td></tr><tr><td>bindings</td><td></td><td>v1</td><td>true</td><td>Binding</td></tr><tr><td>componentstatus</td><td>cs</td><td>v1</td><td>false</td><td>ComponentStatus</td></tr><tr><td>configmaps</td><td>cm</td><td>v1</td><td>true</td><td>ConfigMap</td></tr><tr><td>epipoints</td><td>ep</td><td>v1</td><td>none</td><td>Sequence</td></tr><tr><td>events</td><td>ev</td><td>v1</td><td>true</td><td>Event</td></tr><tr><td>lmintranges</td><td>limits</td><td>v1</td><td>true</td><td>Minitrange</td></tr><tr><td>namespaces</td><td>ns</td><td>v1</td><td>false</td><td>Namespace</td></tr><tr><td>nodes</td><td>no</td><td>v1</td><td>false</td><td>Node</td></tr><tr><td>persistentvolumeclaims</td><td>pc</td><td>v1</td><td>true</td><td>PersistentVolumeClaim</td></tr><tr><td>persistentvolumes</td><td>pv</td><td>v1</td><td>false</td><td>PersistentVolume</td></tr><tr><td>pods</td><td>po</td><td>v1</td><td>true</td><td>Pod</td></tr><tr><td>podtemplates</td><td>po</td><td>v1</td><td>true</td><td>PodTemplate</td></tr><tr><td>replicationcontrollers</td><td>rc</td><td>v1</td><td>true</td><td>ReplicationController</td></tr><tr><td>resourcequotas</td><td>quota</td><td>v1</td><td>true</td><td>ResourceQuota</td></tr><tr><td>secrets</td><td>sa</td><td>v1</td><td>true</td><td>Secret</td></tr><tr><td>serviceaccounts</td><td>sa</td><td>v1</td><td>true</td><td>ServiceAccount</td></tr><tr><td>services</td><td>svc</td><td>v1</td><td>true</td><td>Service</td></tr><tr><td>challenges</td><td></td><td>acme.cert-manager.io/v1</td><td>true</td><td>Challenge</td></tr><tr><td>orders</td><td></td><td>acme.cert-manager.io/v1</td><td>true</td><td>Order</td></tr></table>
+用户通过向 API 资源的端点发送 RESTful 请求来操作该资源，端点对 API 资源来说是常用的信息。一个 API 资源在API Server 上的端点具有固定模式：`<server地址与端口>/apis(或api)/<API组>/<版本>/namespaces/<命名空间>/<资源名>`。
 
 ## 1.3 API Server
 
-Kubernetes 的大脑在控制面，而控制面的核心是 API Server。它是一个 Web Server，整个系统的信息以不同 API 对象的形式存储在 API Server 中，它对外提供查询、创建、修改和删除等 RESTful 接口访问这些 API 对象，众所周知，Kubernetes 中有大量开箱即用的内置 API，用户也可以通过扩展来引入客制化 API，为它们提供访问接口是非常繁杂的工作。同时，控制面外的节点、外围控制器等都会向 API Server 请求数据，访问量还是非常庞大且频率非常高的，这就要求 Server 足够健壮。Kubernetes API Server 出色地满足了这些要求，其内部结构如图 1- 5 所示。
-
-![](image/911721229edfc14f8a9904d907aca04e64ef68327005fcfbfc8cc944cde4be06.jpg)  
-图 1-4 Minikube 内 API 资源 图 1-5 API Server 要素
-
-### 1.3.1 一个 Web Server
+Kubernetes 的大脑在控制面，而控制面的核心是 API Server。它是一个 Web Server，整个系统的信息以不同 API 对象的形式存储在 API Server 中，它对外提供查询、创建、修改和删除等 RESTful 接口访问这些 API 对象。同时，控制面外的节点、外围控制器等都会向 API Server 请求数据，访问量还是非常庞大且频率非常高的，这就要求 Server 足够健壮。
 
 API Server 的底层是一个安全、完整、高可用的 Web Server，在构建这个 Web Server 时，API Server 主要利用了 Go 的 http 库和 go- restful 框架。http 库是 Go 的基础库之一，非常之强大：用它只需几十行代码便可写出一个高效可用的 Server。
 
 **1.基本功能**
 
-如Tomcat等其它Web服务器一样，APIServer具有与客户端建立基于证书的安全连接、对请求进行分发等标准功能。不仅如此，在支持HTTP/HTTPS协议外，APIServer还支持HTTP2协议和基于HTTP2的Protobuf。
+如 Tomcat 等其它 Web 服务器一样，APIServer 具有与客户端建立基于证书的安全连接、对请求进行分发等标准功能。不仅如此，在支持 HTTP/HTTPS 协议外，APIServer 还支持 HTTP2 协议和基于 HTTP2 的 Protobuf。
 
-（1）APIServer在HTTP(S)基础上对外提供RESTful服务，客户端可以针对Server上的资源发起GET，CREATE，UPDATE，PATCH，DELETE等操作。客户端和Server之间的交互信息以符合OpenAPI规范的JSON格式表述。APIServer的RESTful能力来自于开源框架go-restful，该框架将一个RESTful服务定义为一些列角色协作的结果，在该框架下开发者实现了各个角色从而实现服务。
+- APIServer 在 HTTP(S) 基础上对外提供 RESTful 服务。客户端和 Server 之间的交互信息以符合 OpenAPI 规范的 JSON 格式表述。APIServer 的 RESTful 能力来自于开源框架 go-restful，该框架将一个 RESTful 服务定义为一系列角色协作的结果，在该框架下通过开发者实现各个角色从而来实现服务。
 
-(2）基于HTTP2，利用gRPC远程调用框架，APIServer可以响应客户端发来的远程过程调用（RPC）请求。Kubernetes集群内部，其它组件与APIServer的交互首选基于gRPC，组件和组件之间交互首选也是  $\mathtt{gRPC}_0$  gRPC客户端和Server之间的交互信息是以Protocolbuffer的协议格式表述的，效率更高。
+- 基于 HTTP2，利用 gRPC 远程调用框架，APIServer 可以响应客户端发来的远程过程调用请求。Kubernetes 集群内部，其它组件与 APIServer 的交互首选基于 gRPC，组件和组件之间交互首选也是 gRPC。 gRPC 客户端和 Server 之间的交互信息是以 ProtocolBuffer 的协议格式表述的，效率更高。
 
-**2.gRPC远程系统调用框架**
 
-gRPC起源于谷歌内部的Stubby项目，Stubby目标是对谷歌各个数据中心上的微服务进行高效连接。到2015年谷歌将其开源，并更名为  $\mathtt{gRPC}_0$  gRPC是基于HTTP2协议设计的一个开源高性能RPC框架。借助gRPC机制，跨数据中心的服务可实现高效交互，它还能以可插拔的方式去支持负载均衡、跟踪、健康监控和登录操作。gRPC具有如下特点：
+**2.gRPC远程过程调用框架**
 
-1）简化服务的定义
-
-1）简化服务的定义服务定义用于描述服务器对外提供哪些远程过程，这是任何RPC框架都需要通过某种方式给出的。gRPC默认选用ProtocolBuffer（简称Protobuf）作为基础协议，它的好处之一是默认提供了接口定义语言（IDL），当然也允许用其它接口定义语言来代替它。有了IDL，就可以以语言无关的方式定义出消息以及过程：消息是客户端与过程交互时信息的结构，可以简单理解为调用参数和返回值；而过程是对被调用方法的描述。
-
-2）跨平台，跨语言
-
-2）跨平台，跨语言服务的定义会最终落实为一个或几个.proto文件，你可以用它去生成不同编程语言下的实现。目前主流编程语言的代码生成插件都已经有了，例如Go、C++、Java、Python等等。利用这些插件，就可以基于.proto文件生成gRPC的服务端和客户端代码框架，这些都是几条命令的工作无需消耗开发人员太多精力。之后，开发人员需要增强服务端代码去实现定义出的过程，这部分是编码的主要工作；而客户端代码基本不用更改，可直接用于调用远程过程。
-
-3）高效的交互
-
-3）高效的交互除了提供接口定义语言，Protobuf也定义了一种紧凑的信息序列化格式，在这种格式下，信息的压缩率更高，从而提高传输效率节约带宽。各个主流语言下数据与Protobuf格
-
-式之间相互转换的 API 都已经提供，开发者可以直接使用。例如在 Go 中这种序列化/反序列化能力是由 google.go.org/grpc/codes 包提供的。同时考虑到上述代码生成能力，gRPC 和 Protobuf 插件使开发人员在主流编程语言下的编码工作大为简化。
-
-4）支持双向流模式
-
-在普通的 Web 服务中单向数据流较常见：客户端向服务端发起一个请求，连接建立后被请求数据由客户端流向服务端，客户端进入等待模式；服务端进行响应并通过同一个连接发送结果给客户端，整个过程结束。单向数据流以一种串行的方式进行，总有一方处于等待状态。双向数据流与此不同，客户端与服务端可以同时向对方发起请求或发送数据，逻辑上可以理解为有两个流（连接）存在，一个用于支持客户端发起的通讯请求，一个用于支持服务端发起的，这样站在任何一端，任何时刻都可能接收到对方的数据，也可以向对方发送数据。双向数据流为应用提供了更高的灵活性，但也带来复杂性，通讯双方必须制定好交互规则。
-
-gRPC 的前身 Stubby 立足于微服务之间通信，作为继承者，gRPC 在这方面自然青出于蓝。时至今日，微服务早已大行其道，其间通信很多简单基于 HTTP1.1，与 gRPC 所使用的 Protobuf 相比效率上还是有较大的差距的，在巨量微服务体系内这种浪费是巨大的，开发人员应该尽量采用 gRPC 与 Protobuf 或类似方案。
-
-### 1.3.2 服务于 API
-
-顾名思义，API Server 的主要内涵是 API，API Server 为 API 提供的服务可以分为两个方面：
-
-**1. 将 Kubernetes API 暴露为端点**
-
-先要讲解 API 端点所起到的作用。API Server 以 RESTful 的方式对外暴露 API 从而形成 API 资源，用户可以使用的每个 Kubernetes API 都对应着 RESTful 端点。客户端针对 API 资源的创建、修改、删除等请求均是透过端点进入 API Server，最后由请求处理器将请求的内容落实到对应的 API 资源实例上。
-
-注意：从 URL 组成上来看 API 的端点可被分为两大类，分别以/api/和/apis/作为上层路径。路径/api/下包含核心 API 组内的 API 资源；而/apis/下包含其它 API 组下的资源。
-
-API Server 的客户端有很多种，例如 Kubelet、Kube- Proxy、计划器等等都是 API Server 的客户端，它们中的一部分就选用 RESTful 端点与 API Server 交互。用户命令行工具 Kubectl 便是如此，通过在命令行加入 “- v=8” 标志，用户可以看到其和 API Server 交互的全部内容，一个命令触发了对哪些端点的访问都可以看到。基于 API 资源端点，开发者完全可以自己写一个客户端，如果用 Go 写的话，Kubernetes 项目的 client- go 库为这部分工作提供了工具集，用起来很是便利。部分资源端点如图 1- 6 所示。
-
-![](https://cdn-mineru.openxlab.org.cn/result/2025-08-13/4aa1311a-0bdc-4b39-a1ff-4b5fdde9caae/c6c73d18b06bf65ee7e2609e5ca4e58a7504fee323bff5e43b344ac2ca42a004.jpg)  
-图1-6部分KubernetesAPI端点
-
-技术上说，为一个API资源制作端点需要遵从go- restful框架的设计，实现各个角色如container、webservice和route，并将对该API资源URL的GET，CREATE，UPDATE以及DELETE等请求映射到相应的响应函数上。问题是Kubernetes有很多内置API，由来自不同公司的不同开发人员贡献，如果每个API都独立开发上述内容，则重复逻辑太多了，而且质量、代码风格一定迥异。APIServer将端点生成统一化，开发人员只需用Go定义出API，然后通过APIServer提供的InstallAPIs()函数把该定义提交便可，go- restful框架对API的开发者来说甚至是透明的。APIServer的端点生成机制是其设计上的一个亮点，在第二篇中会看到这是怎么达成的。
-
-**2.支持对API实例的高效存取**
-
-API Server存储了整个集群的API实例，周边组件都是它的客户端对其进行高频访问，所以APIServer必须有高效存取能力，这就不得不提APIServer选用的数据存储解决方案ETCD。
-
-注意：有没有觉得ETCD这个名字比较眼熟？其实它受到Linux系统中的/etc目录的启发，后面加个d用于表示分布式（英文distributed的首字母），这就是ETCD这个名字的由来。
-
-绝大多数分布式系统都需要分布式协同解决方案去存储全系统共享的信息，正是这些信息把分布式系统的各个部分粘合在一起共同工作，Kubernetes也不例外，它选择了ETCD。ETCD是一个高可用键值对数据库，它追求简单，快速和可靠。对于分布式数据存储服务来说，数据的一致性极为关键，ETCD可以达到很高的数据一致性。它还对外提供了信息变更监测服务，使得客户端能及时响应某个键值对的变化。Kubernetes API Server正是利用了这一功能去服务客户端对自己发起的WATCH请求。
-
-值得指出的是，ETCD的Version2和Version3并不兼容，不同点非常多，其中它们在数据的存储方式上完全不同。在ETCDVersion2中，数据以树形层级结构存储在内存中，当需要存至硬盘时会被转化为Json格式存储。数据的键构成层级结构，它以类似数据结构
-
-中的字典树（Trie）的形式存储数据，Version2中数据节点（node）所使用的数据结构代码如下：
-
-//https://github.com/etcd- io/etcd/server/etcdserver/api/v2store/node.go type node struct{ Path string CreatedIndex uint64 ModifiedIndex uint64 Parent \*nodejson:"- "// ExpireTime time.Time Value string // Children map[string]\*node// //一个指向本节点所使用的store的指针 store \*store }
-
-注意该结构的Parent属性和Children属性，基于它们所有数据节点构成树形结构。而到了ETCDVersion3，这种结构被扁平化，上述node结构体也不再使用了。为了保持兼容性，ETCD3会通过键的前缀部分大概模拟出一个数据在树中位置，从而支持老API。
-
-详细描述ETCD超出了本书写作范畴，最后用如下例子简单展示APIServer与ETCD的协作过程：
-
-（1）Deployment控制器利用Informer和APIServer建立连接，来观测Deployment实例的变化。（2）用户通过命令行创建一个Deployment。（3）kubectl把用户输入的Yaml转化为Json，作为请求Payload传送至APIServer。（4）APIServer把收到的Deployment从外部版本转化为内部版本，把它分解为一组键值对，交给ETCD。（5）ETCD存储之。（6）ETCD（间接）通知Informer有Deployment实例的创建，这会在控制器的工作队列中插入新条目。（7）Deployment控制器的下一次控制循环会考虑新建出的实例，为它建立ReplicaSet实例等。
-
-### 1.3.3 请求过滤链与准入控制
-
-1.3.3 请求过滤链与准入控制发往 Web Server 的请求最终会被交予该请求对应的响应函数处理。众所周知，请求无关的处理步骤广泛存在：登录鉴权、流量控制、安全检测等等都是不需要区分请求的。既然如此，何不在业务逻辑处理开始前将这些步骤集中逐个做一遍？既然 API Server 有能力统一所有 API 的端点生成，做到这点并不困难。这就形成了过滤链，如图 1- 7 所示。
-
-![](https://cdn-mineru.openxlab.org.cn/result/2025-08-13/4aa1311a-0bdc-4b39-a1ff-4b5fdde9caae/a5b2c869c2567b6799ca276474a9380dae6e9c0e6ecf64cdca2e342c9b9aff87.jpg)  
-图1-7请求处理过程
-
-API Server对响应函数内部逻辑进行了进一步划分，大致分为两个部分：过滤和准入控制，这两步完成后就可操作ETCD存取数据。过滤部分顺次执行多个过滤器，只要有过滤器叫停那么处理流程立即结束，过滤过程无论是查询还是修改操作都需要执行。设置准入控制部分更多考量是规范请求中所传递的内容，使其逻辑上合理，只有创建，修改和删除类请求会经过准入控制过程。同时这也是信息安全机制的一部分。准入控制分两个阶段，分别是修改和校验，在修改阶段可以对请求内容进行改写，例如向为Pod添加边车；校验阶段则是检验将要持久化到ETCD的API实例逻辑上具有一致性。准入控制机制构建了插件机制，一个插件可以参与修改和校验的一个或两个阶段。
-
-准入控制是可扩展的，开发者可以将自有逻辑做到一个Server中，然后通过动态准入控制机制在修改和校验阶段调用之，这称为准入控制Webhook。第三篇中会演示创建准入控制Webhook。
-
-## 1.4 声明式API和控制器模式
-
-Kubernetes系统设计上一个大胆的决定是采用声明式API。声明式API以及其在Kubernetes中的落地方式——控制器模式深刻影响了API Server的总体设计。本节从一个例子开始认识它们。
-
-### 1.4.1 声明式API
-
-假设用户在购物网站上购买了一本书，但第二天反悔了，希望取消订单并退款，这时应该如何操作呢？首先用户需要到购物网站打开该订单查看其状态，如果是已经发货甚至已经到货了，则需要点击“售后服务”，联系客服安排退货退款；如果卖家还没有发货，则可以直接点击退款，等待一段时间后退款过程就可以完成。用伪代码来描述这一过程，伪代码如下：
-
-if（订单状态为已发货或其后续状态）{联系客服；如已收件，联系快递上门取件；}else{点击退款；确认退款完成；}
-
-以上这个过程代表了当今程序处理的典型过程，用户作为购物网站的使用者需要根据订单状态作出判断，采取正确的操作进行退款。为了正常拿到退款，用户需要具有工作流程的知识，这是一种负担。这个购物网站的设计不是一种声明式的设计。
-
-作为购物者，对购物网站制定的退款操作规则不感兴趣，想做的只是把订单改为申请退款的状态，希望能购物网站能根据订单当前状态来自我调整，尽一切可能来满足用户要求。也就是说，理想的过程如下：
-
-要改订单状态为“申请退款”；离开网站；...接收到系统操作结果的通知；...
-
-能够实现以上过程的设计就是一种声明式的设计。声明式设计产生一种对使用者极为友善的系统，使得使用者摆脱了根据系统现状和流程设计采取不同操作的要求，只需申明希望系统达到的最终状态即可。
-
-与非声明式设计相比，声明式设计在减轻使用者脑力负担的同时，也有其自身的弊端：在复杂系统中一般不会保证使用者即刻获得反馈，其所期望达到的状态也不是当时就可以达到，何时能到完全依赖系统，也就是说使用者已经不能完全控制后续的执行了，所以说采用声明式设计是Kubernetes最大胆的决定。商用系统对于错误和延迟的容忍度一般较低，错误往往意味着损失，延迟代表着低效，都是非常负面的事情。商业软件对于精确和高效十分在意，针对用户的一个操作，系统最好马上给出明确的反馈。
-
-精确高效、使用者低负担和复杂的系统状态转换三者间存在潜在的冲突，可同时取其二但很难三者皆得，如图1- 8所示。例如，我门可以选择精确高效+复杂的系统状态转换，牺牲掉使用者低负担，也就是说通过让使用者明确指出执行过程来克服复杂性带来的处理延迟；也可以选择精确高效+使用者低负担，这时就要把你的系统状态转换设计得简单明了一些，从而减少系统在转换状态时的巨大开销。声明式设计选择了使用者低负担+复杂的系统状态转换，而牺牲掉精确高效。
-
-<img src="image/07ecce6178ee4e3477deecce582ce940cfb84b72c694db8d6b66bf1be4f3768d.jpg" style="zoom:40%;" />
-
-图1- 8因素的相互牵制Kubernetes用户使用系统的主要媒介是API资源实例，系统用户通过创建、调整API实例来提出自身需求，Kubernetes系统以异步方式，按照既定逻辑，逐一响应这些需求，过程中无需用户参与。这种请求与响应的模式符合声明式设计，称为声明式API。下面通过Kubernetes滚动更新机制来体验声明式API带给使用者的优秀体验。
-
-**1.滚动更新**
-
-应用程序提供者希望部署在Kubernetes集群中的应用  $7*24$  可用，这样业务就可以不间断从而避免任何损失。但程序可能由于各种客观原因停机，典型的是升级，新版年本替换老版本。在Kubernetes出现前，这是一个老大难问题，需要操作人员大量的精心准备。以容器为基础的云原生架构从容地解决了这个问题，因为云原生应用支持多实例并不是什么难事，底层平台可以通过逐步替换实例到新版本的方式，在不停止服务的前提下完成升级。Kubernetes平台上这种机制是滚动更新。
-
-设想有如下微服务，其核心业务代码放在镜像M中，PodA、B、C运行该镜像来输出服务，由于所运行镜像一致，ABC三者服务也完全一致，互相可替代，它们都由一个Deployment资源实例来管理，而Deployment又是通过一个ReplicaSet实际管理Pod的；系统通过ServiceS把这个微服务在集群内暴露，供其它服务调用。各元素相互关系如图1- 9所示。
-
-![](https://cdn-mineru.openxlab.org.cn/result/2025-08-13/4aa1311a-0bdc-4b39-a1ff-4b5fdde9caae/4161b9f0a754aea089e51336fb77212bdf7b5106ac3c6228bc7eb1dd0b6c9bbe.jpg)  
-图1-9 示例应用结构
-
-初始时镜像M的版本是v1，管理容器A，B，C的Deployment资源定义文件如下：
-
-api version:apps/v1 kind:Deployment metadata: name:my- deployment labels: app:my- service spec: replicas:3 selector: matchLabels: app:my- service template: metadata: labels: app:my- service spec:
-
-<table><tr><td>containers:
-- name: service-s
-  image: M:v1
-  ports:
-- containerPort: 80</td></tr></table>
-
-现在把镜像M的版本升级到v2，管理员将Deployment的资源定义文件做如下修改，提交给API Server即可：
-
-<table><tr><td>apiVersion: apps/v1</td></tr><tr><td>kind: Deployment</td></tr><tr><td>metadata:</td></tr><tr><td>name: my-deployment</td></tr><tr><td>labels:</td></tr><tr><td>app: my-service</td></tr><tr><td>spec:</td></tr><tr><td>replicas: 3</td></tr><tr><td>selector:</td></tr><tr><td>matchLabels:</td></tr><tr><td>app: my-service</td></tr><tr><td>template:</td></tr><tr><td>metadata:</td></tr><tr><td>labels:</td></tr><tr><td>app: my-service</td></tr><tr><td>spec:</td></tr><tr><td>containers:</td></tr><tr><td>- name: service-s</td></tr><tr><td>image: M:v2</td></tr><tr><td>ports:</td></tr><tr><td>- containerPort: 80</td></tr></table>
-
-正常情况下，这是管理员所有需要做的操作！只需指出新版本镜像，不必描述新老版本的替换步骤，该过程完全由系统自主决定。以上修改触发了Kubernetes滚动更新机制，该机制分多次关停现有PodA，B，C，保证时刻有容器对外提供服务，再启动相同数量的运行M:v2镜像的容器，并划归原Deployment管理，直到全部Pod被更新至v2。
-
-注意：这里略去了滚动更新的配置和执行细节，每次最多停掉多少Pod、最少保证有多少Pod存在等，都可以通过配置指定。
-
-在以上例子中，Kubernetes不要求用户手动关停Deployment中各个Pod，然后启动新Pod去更新，也不要求用户指定是先关后启还是反之，诸如此类细节都交给系统处理了，使用者只需通过变更API实例（Deployment)的定义文件阐明期望的状态。这充分体现了声明式设计带来的卓越用户体验。
-
-### 1.4.2 控制器和控制器模式
-
-声明式API非常酷，但实现它却需要一番考量。Kubernetes设计出控制器模式来实现它，该模式执行过程如图1- 10所示。
-
-<img src="image/abb8753faa1c361734acdc4430aa4d3675179d6d0785a5f8e95388aded22d4ea.jpg" style="zoom:50%;" />
-
-
-一个API背后有一个叫做控制器（Controller）的对象，控制器可以被理解为一段无限循环程序，除非被人为终止它会一直运行。这个永不停止的循环被称为控制循环。控制循环的第一项工作是查看自上次循环运行完毕后，有哪些该种类API实例被创建、修改或删除，这是借助一个工作队列来完成的：工作队列会记录这些定义发生变动的实例，为控制循环提供工作目标。
-
-控制循环从队列中取出待处理API实例，读出该API实例的期望状态和当前实际状态，它们分别记录在资源描述的spec和status部分，根据二者的差异得出需要的操作并执行。如果成功变更到目标状态，控制循环会更新实例的状态描述，并从工作队列中移除这个该实例；相反如果操作无法完成，则控制器会保留资源实例在工作队列中，以待下次循环再次尝试处理。
-
-上述描述的整个过程被称为控制器模式。为了更深入理解控制器和控制器模式，下面小节来解析Kubernetes的Job控制器源码，这部分需要读者具有Go的基本知识。
-
-**1.Job控制器**
-
-Job代表可由系统在无人值守的情况下自主一次性完成的工作，具体的工作事项可以由一个或多个Pod去执行。Job控制器的主要工作内容：
-
-（1）为新Job创建Pod。（2）跟踪Pod的状态，对成功和失败进行计数，并据此更新Job的状态。
-
-这里忽略了控制器中非核心的工作，只关注重点。下面到 Job 控制器源码文件看一下控制器基座结构体，代码如下所示：
-
-![](https://cdn-mineru.openxlab.org.cn/result/2025-08-13/4aa1311a-0bdc-4b39-a1ff-4b5fdde9caae/26bac3d493640f4215cdadf9dfb46c0be1f120135a5c998c74904206d4adc070.jpg)
-
-<table><tr><td>podUpdateBatchPeriod time.Duration</td></tr><tr><td>clock clock.WithTicker</td></tr><tr><td>backoffRecordStore *backoffStore</td></tr><tr><td>}</td></tr></table>
-
-要点  $①$  和  $(2)$  处定义了两个重要结构体字段：syncHandler和queue，它们在控制循环中起到如下作用：
-
-（1）queue：这是控制循环的工作队列，内含待处理的Job资源实例的ID，包括待创建、已修改和未完成的Job，一次循环的启动是从检测队列内容开始的。（2）syncHandler：一个方法，控制循环的核心业务逻辑，每次运行最终会跑这个方法。
-
-虽然Kubernetes的控制器多种多样，但它们的实现思路极为类似，以上两个属性几乎在任何控制器内都可以找到，这样的设计安排使得代码更易阅读。除了字段，基座结构体还具有诸多方法，其中Run()，processNextWorkItem()，syncJob()，worker()，manageJob()和trackJobStatusAndRemoveFinalizers()方法对理解Job控制器及其工作机制至关重要，它们之间的调用关系如图1- 11(a)所示；Controller全部方法如图1- 11(b)所示。
-
-![](https://cdn-mineru.openxlab.org.cn/result/2025-08-13/4aa1311a-0bdc-4b39-a1ff-4b5fdde9caae/2d21a52a676ad66badfabab2a6579c89cc7c12e0292c9aac50da583aae87247e.jpg)
-
-（a）关键方法调用关系
-
-![](https://cdn-mineru.openxlab.org.cn/result/2025-08-13/4aa1311a-0bdc-4b39-a1ff-4b5fdde9caae/f1b7446ae45b9e1a2bded2b9709cab339212fd94342fbe17d5b94f8fff84477f.jpg)  
-（b）基座结构体的全部方法图1-11 Job控制器
-
-1）Run()方法
-
-Run()方法是控制器的启动方法。它首先启动工作队列，然后启动指定数量的协程，如有协程中途退出，1秒后再次启动之；每个协程不断运行worker方法去处理queue中的Job资源，体现在以下代码的要点  $①$  处。当控制器停止运行时会做一些错误处理和清理工作，由defer关键字修饰的语句完成。
-
-//代码1- 2 Run方法实现 func (jm \*Controller) Run(ctx context.Context, workers int）{ defer utiluntime.handtecrash() //启动事件处理pipeline. jm.broadcaster.StartStructuredLogging(0) jm.broadcaster.StartRecordingToSink(&v1core.EventSinkImpl{ Interface: jm.kubeClient.CoreV1().Events("")}) defer jm.broadcaster.Shutdown() defer jm.queue.ShutDown() defer jm.orphanQueue.ShutDown() klog.Infof("Starting job controller") defer klog.Infof("Shutting down job controller") if !cache.WaitForNamedCacheSync("job",ctx.Done(), jm.podStoreSynced, jm.jobStoreSynced）{ return } //要点  $(1)$  for i  $\coloneqq 0$  ；i  $<$  workers;  $\dot{1} ++$  { go wait.UntilwithContext(ctx, jm.worker, time.Second) } go wait.UntilwithContext(ctx, jm.orphanWorker, time.Second) <-ctx.Done() }
-
-2）worker()方法和processNextWorkItem()方法
-
-由上述代码要点  $①$  处循环体可知，jm.worker()方法会被Run()方法中启动的协程调用。在每个协程中，worker方法每次退出1秒后会被再次启动，如此往复。worker()方法内部直接调用processNextWorkItem()方法，该方法核心功能是从工作队列queue拿出一个待处理的Job实例的key，然后启动控制循环的主逻辑——syncHandler字段所指代的方法进行处理，如以下代码1- 3的要点  $①$  所示。syncHandler是基座结构体第一个字段，在构造控制器对象时被指向syncJob()方法，所以控制器主逻辑实际是在syncJob()方法内。
-
-//代码1- 3worker方法与processNextworkItem方法实现 func （jm \*Controller) worker(ctx context.Context）{ for jm.processNextworkItem(ctx）{ 1 1 func （jm \*Controller) processNextworkItem(ctx context.Context) bool{ key,quit:  $=$  jm.queue.Get（) if quit{ return false 1 defer jm.queue.Done(key) //要点  $(1)$  err :  $=$  jm.syncHandler(ctx, key.(string)) if err  $= =$  nil{ jm.queue.Forget(key) return true 1 utilruntime.HandleError(fmt.Errorf("syncing job:%w err)) jm.queue.AdhRateLimited(key) return true 1
-
-3）syncJob()方法
-
-syncJob()方法是控制循环的主逻辑，代码比较长不在这里全部罗列，简述一下其内部处理的过程。首先程序用传入的Job key在本地缓存中找到该Job实例，深拷贝从而生成一个新的Job资源实例，后续控制循环对Job信息的更新是在这个新实例上进行的，不能直接更新缓存中的资源实例。
-
-接下来控制循环读取该Job的当前状态信息，例如上次成功运行了多少Pod、失败了多少、上次循环后又有多少Pod成功和失败，从而得到最新数字。据此判断Job的当前状态：
-
-（1）如果Job完全符合完成要求，则更新Job状态并退出，这时它也从工作队列退出。（2）如果当前Job实例被暂停了，则把这个Job实例重新放入工作队列，等待下次控制循环的运行。（3）这个Job还没有运行完毕，控制循环计算还需要多少Pod去执行什么任务，并且指定其他参数，例如最大并行处理数。这部分工作是在方法manageJob()中进行，在以下环节介绍。
-
-以上处理均结束后，需要检验 Job 实例有关的 Pod，统计系统跑完的 Pod，决定是否符合结束条件，并将最新状态信息写回数据库。这些是在方法 trackJobStatusAndRemoveFinalizer()中进行。
-
-4) manageJob()方法
-
-manageJob()方法比较 Job 实例的目标和当前状态，从而作出操作。每个 API 的控制器都会有类似先比较再处理的逻辑，这部分代码是最具资源类型特色的。
-
-对于 Job 资源来说，它主要的状态就是与其有关的 Pod 实例信息：多少 Pod 正在运行；最大可并行运行数量；共需运行多少次，与目标次数相比还需要跑几次。根据比较结果调整系统，向目标状态前进。方法核心代码如下所示：
-
-//代码1- 4 manageJob方法实现节选 podsToDelete := activePodsForRemoval(job, activePods, int(rmAtLeast)) if len(podsToDelete) > MaxPodCreateDeletePerSync { podsToDelete = podsToDelete[:MaxPodCreateDeletePerSync] } if len(podsToDelete) > 0 { //要点① jm.expectations.ExpectDeletions(jobKey, len(podsToDelete)) klog.V(4).InfoS("Too many pods running for job", ...) removed, err := jm.deleteJobPods(ctx, job, jobKey, podsToDelete) active = removed // job 需要同时创建和删除 Pod 最有可能的 return active, metrics.JobSyncActionPodsDeleted, err } if active < wantActive { //要点② remainingTime := backoff.getRemainingTime( ... ) if remainingTime > 0 { jm.enqueueControllerDelayed(job, true, remainingTime) return 0, metrics.JobSyncActionPodsCreated, nil } diff := wantActive - active if diff > int32(MaxPodCreateDeletePerSync) { diff = int32(MaxPodCreateDeletePerSync) } jm.expectations.ExpectCreations(jobKey, int(diff)) errCh := make(chan error, diff) klog.V(4).InfoS("Too few pods running job %q, ... ) wait := sync.WaitGroup{} var indexesToAdd []int if isIndexedJob(job) {
-
-```javascriptindexesToAdd = firstPendingIndexes(activePods, succeededIndexes, int(diff), int(*job.Spec.Completions))diff = int32(len(indexesToAdd))}active += diffpodTemplate := job.Spec.Template.DeepCopy()if isIndexedJob(job) {    addCompletionIndexEnvariables(podTemplate)}podTemplate.Finalizers = appendJobCompletionFinalizerIfNotFound (podTemplate.Finalizers)```
-
-在上述代码中看到，比较的结果有两种可能：
-
-（1）目前运行次数超出了剩余运行次数，则程序需要停止一定数量的Pod。这与代码中要点①对应。(2）目前运行次数没有达到要求的运行次数，则控制循环会为这个Job资源实例启动一定数目的Pod。代码中要点②对应这种检测结果。
-
-5）trackJobStatusAndRemoveFinalizer()方法
-
-经过以上处理，控制器启动或关停了一些Pod满足该Job的期望，接下来对Pod的状态进行一次检验和再统计，统计结果会决定Job是否已完成工作。这些信息会作为状态写入job.status中。这里不再展开，请读者自行查阅源码。
-
-本节以Job控制器代码为例，介绍了控制器的基本结构，着重展示一个控制循环内所包含的逻辑。所有控制器都具有类似的代码结构，读者可以自行浏览Kubernetes工程的pkg/controller包查看其它内置API的控制器源代码。
-
-通过这些控制器，Kubernetes实现了声明式API。内置API的控制器和客制化API的控制器共同构成控制器集合，支撑起Kubernetes系统的运转流程，前者Kubernetes项目开发，由控制面集中运行它们并监控其健康状况。客制化API的控制器由用户编程实现，对它们的监控同样需由用户实现。客制化API及其控制器的引入可以通过开发操作器（Operator）达成，第三篇将讲解如何开发操作器。
-
-## 1.5 本章小结
-
-作为本书的首章，本书首先介绍了Kubernetes的基本组件，然后对Kubernetes API的名词、概念做了集中定义，这为本书的后续讨论打下基础；紧接着聚焦在API Server，从多个角度阐述API Server的作用，介绍它的特点。
-
-声明式 API 是 Kubernetes 的一大特色，Kubernetes 通过控制器实现了声明式 API，理解控制器和控制循环对理解 Kubernetes 源代码就很有帮助。本章花费了大量篇幅介绍声明式设计、控制器、控制循环，希望对读者进一步阅读源码起到加速作用。
+gRPC 起源于谷歌内部的 Stubby 项目，Stubby 目标是对谷歌数据中心上的微服务进行高效连接。到2015年谷歌将其开源，并更名为 gRPC。gRPC 是基于 HTTP2 协议设计的一个开源高性能 RPC 框架。借助 gRPC 机制，跨数据中心的服务可实现高效交互。
 
 # 第二章 Kubernetes项目
 
-毫无疑问，开源早已经成为软件工程的一道亮丽风景。特别是过去的十年，开源工程数量急剧增长，单谷歌一家就贡献了众多知名项目，有代表性的如Android系统和Go语言，以及与本书主题密切相关的Kubernetes系统。包括贡献者和使用者在内，Kubernetes社区成员数量在2020年就已经突破三百万，没有官方的统计其中贡献者的占比，但相信总数不会低于一家中等规模软件公司的雇员总数。如此规模的项目其维护难度可想而知。笔者认为，开源项目的成功严重依赖一个周密的规划与组织，如果你希望来自五湖四海的贡献者形成合力，必然要把行为准则定义好，项目活动规划好。
-
-理解Kubernetes项目治理也是理解源码的重要一环。软件工程领域有一个知名法则，称为康威定律（Conway'sLaw）：一个组织所做的系统设计将复制其内部机构交流结构。笔者认为这是一条易被忽视的至理名言。
-
-本章会对Kubernetes项目的组织进行介绍
+理解Kubernetes项目治理也是理解源码的重要一环。软件工程领域有一个知名法则，称为康威定律（Conway's Law）：一个组织所做的系统设计将复制其内部机构交流结构。笔者认为这是一条易被忽视的至理名言。
 
 ## 2.1 Kubernetes社区治理
 
-2.1 Kubernetes 社区治理Kubernetes 项目有几大组织机构，它们是：指导委员会（Steering Committee），特别兴趣组（Special Interest Group），工作组(Working Group)以及用户组(User Group)，其中特别兴趣组下又设有子项目组（Sub Project）。这几大组织是从行政机构角度对项目人员进行划分，就像国家有环保局、工商局、警察局各自负责国家治理的不同方面。项目机构与任务如图 2- 1 所示。
+Kubernetes 项目有几大组织机构，它们是：指导委员会（Steering Committee），特别兴趣组（Special Interest Group），工作组（Working Group）以及用户组(User Group)，其中特别兴趣组下又设有子项目组（Sub Project）。项目机构如图所示。
 
-![](https://cdn-mineru.openxlab.org.cn/result/2025-08-13/4aa1311a-0bdc-4b39-a1ff-4b5fdde9caae/dc6957c245fb42ca0344526fd40c24c9dfef8c1bddb3f0fe7a2d4d43d23d29c3.jpg)  
-Kubernetes
-
-![](https://cdn-mineru.openxlab.org.cn/result/2025-08-13/4aa1311a-0bdc-4b39-a1ff-4b5fdde9caae/f1824bef41b9646d1a93e0a107bd8ffdbea156ebf74b1c81e6506f949911715b.jpg)  
-图2-1 Kubernetes社区模式
-
-社区设有多种交流渠道将成员联系在一起，主要有：
-
-（1）Slack。Slack是本项目一般性讨论交流的主要渠道，其中有众多Kubernetes社区的官方Channel，如果想加入，需要获得邀请4。（2）论坛和邮件列表。Kubernetes论坛https://discuss.kubernetes.io热度较低，但总归是个交流渠道。每个SIG和工作组都会有一个邮件列表，目前主要用于在开发人员特别是核心项目成员之间发布信息。（3）Github的PullRequest和Issue。一般用户发现Bug可以在项目的Github主页上提交Issue给社区；而贡献代码、文档等都是通过PullRequest的形式走审核流程的。（4）在线会议。每个SIG都会有定期会议，所有感兴趣的人都可以旁听；除此之外，定期会有全社区层面的交流会议，与会者可以自行注册参加。希望第一时间获知Kubernetes最新动向的读者需要多关注上述渠道中的信息，Kubernetes项目目前依然高度活跃，一日千里，不断更新自己的知识是必要的。
+<img src="image/image-20250814163047118.png" alt="image-20250814163047118" style="zoom: 50%;" />
 
 ### 2.1.1 特别兴趣组
 
-2.1.1 特别兴趣组特别兴趣组（SIG）是份量很重的机构，因为具体的功能发起、蓝图设计与实现都是在各个SIG的主导下进行的。Kubernetes中有众多的SIG，一个SIG的职责可以是纵向包揽某一类事物的所有方面，例如Network，Storage，Node等；或是横向跨越多个模块去处理共同问题，例如Architecture，Scalability；亦或是为整个项目服务，例如测试、文档等均有单独的SIG存在。SIG内设置有主席，技术领导等角色。当前Kubernetes的所有SIG如图2- 2所示。
-
-![](https://cdn-mineru.openxlab.org.cn/result/2025-08-13/4aa1311a-0bdc-4b39-a1ff-4b5fdde9caae/48363ace9d3b1bd4749b4d085257beeb6ada255bbe44d0c80c73eaa2fb3d3a2e.jpg)  
-图2-2KubernetesSIG
-
-所有SIG都有其存在的必要性，以下介绍与重要功能关系紧密的几个。
-
-（1）API Machinery。该SIG负责API Server的方方面面：API注册与发现、API增删改查通用语义、准入控制、编解码、版本转换、默认值设定、OpenAPI、CustomResourceDefinition、垃圾收集以及客户端库等等。
-
-（2）Architecture。负责维护和演化Kubernetes设计原则，提供保持一致的专家意见来确保体系结构随着时间推移仍保持一致。
-
-（3）Network。该SIG全权负责Kubernetes网络相关功能。
-
-（4）Storage。本SIG负责确保无论容器被计划到哪里运行文件或块存储均可用、提供存储能力管理、计划容器时考虑存储能力、以及针对存储的一般性操作。
-
-(5) ETCD。负责 ETCD 的开发组织，让它不仅可作为 Kubernetes 的一部分，同时可被独立应用于其它云原生应用。
-
-(6) Scheduling。本 SIG 负责计划器模块。计划器用于决定 Pod 运行的节点。
-
-(7) Apps。API 组 apps 下含有支持部署与运维应用程序在 Kubernetes 上运行的功能，本 SIG 负责组织该 API 组内容的开发。它关注 Developer 和运维人员的使用需求，将之转化为功能进行发布。
-
-(8) Testing。本 SIG 聚焦高效测试 Kubernetes，使得社区可以简单地运行测试。
-
-(9) Autoscaling。该 SIG 负责开发与维护 Kubernetes 自动伸缩组件。这包括 Pod 的自动水平、垂直伸缩；初始资源预估；系统组件随集群规模的自动伸缩以及 Kubernetes 集群的自动伸缩。
-
-(10) Scalability。本 SIG 负责制定和推动实现 Kubernetes 在可伸缩性方面的目标。同时也协调推动全系统级别可伸缩性和性能改进相关的话题，也负责提供这方面的建议。这个 SIG 会持续积极寻找和移除各种伸缩瓶颈从而推动系统达到更高可伸缩级别。
-
-(11) Auth。负责开发登录、鉴权和集群安全策略相关部分。
-
-(12) Node。该 SIG 负责的模块会支持 Pod 与主机资源之间的交互。
+特别兴趣组（SIG）是份量很重的机构，因为具体的功能发起、蓝图设计与实现都是在各个 SIG 的主导下进行的。Kubernetes 中有众多的 SIG，一个 SIG 的职责可以是纵向包揽某一类事物的所有方面，例如 Network，Storage，Node 等；或是横向跨越多个模块去处理共同问题，例如 Architecture，Scalability；亦或是为整个项目服务，例如测试、文档等均有单独的 SIG 存在。SIG 内设置有主席，技术领导等角色。
 
 ### 2.1.2 SIG 内的子项目组
 
-SIG 所负责的具体工作是在 SIG 内的子项目组中拆解并执行的。每个项目组内有 4 种角色：成员，审核员，审批员，子项目拥有者（Owner），角色不同职责不同。各角色的任务和胜任条件在社区文档中有说明。一般成员是主要的贡献者，负责写代码、测试、编写文档等；审核员主要是检查成员提交上来的内容质量几何，一种对审核员的误解是只有水平非常高，资历非常深的人才有资格成为审核员，实则不然，审核员的要求是在子项目中有过贡献就可以，这些年由于 Kubernetes 中等待审核的 Pull Request 太多了，审核员的门槛已变得很低；而审批员就不是谁都可以做的了，该角色具有一票否决权，需要有经验的审核员去承担；子项目拥有者更重要，他/她需要把控项目的方向，具有非常出众的技术判断力。
+SIG 所负责的具体工作是在 SIG 内的子项目组中拆解并执行的。每个项目组内有 4 种角色：成员，审核员，审批员，子项目拥有者（Owner），角色不同职责不同。各角色的任务和胜任条件在社区文档中有说明。一般成员是主要的贡献者，负责写代码、测试、编写文档等；审核员主要是检查成员提交上来的内容质量，一种对审核员的误解是只有水平非常高、资历非常深的人才有资格成为审核员，实则不然，审核员的要求是在子项目中有过贡献就可以，这些年由于 Kubernetes 中等待审核的 Pull Request 太多了，审核员的门槛已变得很低；而审批员就不是谁都可以做的了，该角色具有一票否决权，需要有经验的审核员去承担；子项目拥有者更重要，他/她需要把控项目的方向，具有非常出众的技术判断力。
 
 ### 2.1.3 工作组
 
 由上述 SIG 的介绍可见，不同 SIG 之间在职责划分上泾渭分明，几乎不会重合。软件项目运作过程肯定没有这么理想，一个话题往往需要跨 SIG 合作，这时又如何是好呢？答案是工作组机制。
 
-工作组为不同团体提供围绕共同关心话题的讨论场所，例如组织周期会议、创建 Slack 中频道（Channel）、论坛讨论组等。它是一种轻量级的组织机构，由某个话题、问题催生，随问题的解决而解散。这种轻量还体现在不拥有代码上，一旦工作组涉及代码编写，则必须将代码库设立于某个 SIG 内。社区期望通过工作组将特定问题的所有相关方组织起来，从而形成最广泛的共识与最优解。工作组是 Kubernetes 项目的正式组织机构，需由指导委员会批准设立和解散。社区成员可以申请创建工作组，前提是目标事项满足如下基本条件：
+工作组为不同团体提供围绕共同关心话题的讨论场所，例如组织周期会议、创建 Slack 中的频道（Channel）、论坛讨论组等。它是一种轻量级的组织机构，由某个话题、问题催生，随问题的解决而解散。这种轻量还体现在不拥有代码上，一旦工作组涉及代码编写，则必须将代码库设立于某个 SIG 内。社区期望通过工作组将特定问题的所有相关方组织起来，从而形成最广泛的共识与最优解。工作组是 Kubernetes 项目的正式组织机构，需由指导委员会批准设立和解散。社区成员可以申请创建工作组，前提是目标事项满足如下基本条件：
 
-(1) 不需要拥有代码。(2) 具有清晰的目标交付物。(3) 具有临时属性，目标达成后可立即解散。工作组与SIG的区别是比较明显的，它主要目的是协助跨SIG的讨论，并且围绕单一问题、话题，具有简化的管理流程。
+1. 不需要拥有代码。
+2. 具有清晰的目标交付物。
+3. 具有临时属性，目标达成后可立即解散。
 
-## 2.2 开发人员如何贡献代码
-
-向社区贡献的方式有很多种的，并非唯独贡献代码一种。撰写使用文档、参与测试设施的维护、做代码审核员、在Slack中指导新手，都是好的参与方式。考虑到本书的读者中开发人员众多，这一小节着重讲述如何做代码层面的修改，包括修Bug和增强功能开发等。
-
-### 2.2.1 开发流程
-
-从代码签出到提交PullRequest的过程如图2- 3所示，这和很多公司的开发过程是一致的。
-
-![](https://cdn-mineru.openxlab.org.cn/result/2025-08-13/4aa1311a-0bdc-4b39-a1ff-4b5fdde9caae/5334e62a03d78aa5af4f0828ba96c0795194bdd024ad44edaf4930fb327087b0.jpg)  
-图2-3 代码贡献流程
-
-开发的第一步是把Kubernetes项目fork到自己的github账户，这时在自己的账户内出现一个项目副本，可以任意修改之；然后在本地把刚刚fork下来的工程克隆下来，并在本地创建分支进行开发；在开发过程中要注意尽量频繁地合并kubernetes/kubernetes代码库中的最新代码，至少要在向kubernetes工程提交PR前要做一次，目的是尽量确保提交的代码和Kubernetes最新代码没有冲突；开发完成后进行commit并推送至线上，这时代码进入你github账户内的工程拷贝；登录github，基于你的工程拷贝发起一个PR，等待审核、测试的开始，其内部过程在下一部分会介绍。
-
-注意：除了功能代码，开发人员还需提供单元测试代码去保证质量，缺失的话会面临审核的失败。在代码修改完成后，不要急于提交，做好充足的本地测试，从而确保这次改动没有影响到已发布功能，开发人员在本地几乎可以运行所有自动化测试。
-
-### 2.2.2 代码提交与合并流程
-
-每个成员都可以向Kubernetes贡献。贡献可以是代码：对Bug的修复或对Kubernetes功能的增强；也可以是非代码：给出增强建议（Kubernetes Enhancement Proposal），文档撰写。本小节聚焦代码的贡献流程。
-
-代码能够被采纳需要符合质量要求，编写符合编码规范，功能正常运行并不影响已有功能。社区定义了一整套保障流程，如图2- 4所示。
-
-![](https://cdn-mineru.openxlab.org.cn/result/2025-08-13/4aa1311a-0bdc-4b39-a1ff-4b5fdde9caae/dc4161af9b8086dc8386d26a05da0b0aeb5c4ea85c6698e69e2039722ea13797.jpg)  
-图2-4代码提交流程
-
-整个过程中有两层保护机制，第一层是人工审核，首先通过SIG成员或目标模块拥有者对变更进行详细审批，审核，保证这次修改的目标清晰合理，逻辑也正确，代码可读可维护等；第二层是机器执行的自动化测试，Kubernetes引入了诸多种类的测试，例如：
-
-（1）单元测试（UnitTest）（2）集成测试（IntegrationTest）（3）端到端测试（EndtoEndTest）
-
-(4）一致性测试（ConformanceTest）
-
-(4) 一致性测试（Conformance Test）为了进行自动化测试，谷歌公司贡献了测试用基础设施，设立在谷歌云上，称为测试网格。社区成员可以通过Github代码库kubernetes/test-infra对该测试基础设施进行设置。Kubernetes的自动化测试结果可以在线查看，地址是https://testgrid.k8s.io，这里可以看到各个模块过去两周的自动化测试结果，Kubernetes Gardener项目的端到端测试结果如图2-5所示。
-
-![](https://cdn-mineru.openxlab.org.cn/result/2025-08-13/4aa1311a-0bdc-4b39-a1ff-4b5fdde9caae/29a73a1158b0bede861f1367d74000285ce7f5c517dc828502f6ca1928fcb754.jpg)  
-图2-5 Gardener模块自动化测试结果
-
-## 2.3 源代码下载与编译
-
-### 2.3.1 下载
-
-Kubernetes项目托管在Github，开发者可以从项目主页克隆源码到本地，如果只为查阅源代码，则放在哪里都可以；如果还想本地编译出Kubernetes的各个应用程序，则源码放在本地的哪个目录下将有重要影响，原因要从Go的依赖管理方式变迁说起。
-
-Go的初始版本中是没有任何依赖管理机制的，但这种需求一直存在，2012年和2013年相关的讨论和探索就在进行了。在没有依赖管理工具的情况下，一个工程如何引用其它工程的产出呢？很简单粗暴：把被引用工程的产出下载到本地\$GOPATH/src目录下，然后在本工程内通过import引用它。这种方式增加了开发人员的工作不说，当两个本地项目依赖同一个库时，要求二者使用该库的同一版本，这个要求还是比较苛刻的。时间来到2014年，Go1.5发布时引入了vendor文件夹机制。它的想法很好理解：每个工程根目录下的vendor子目录将专门用于存放本工程的依赖，这样各个工程之间不再互相影响；在程序编译过程中，编译器会优先到vendor目录寻找需要的依赖。围绕着vendor目录机制，社区也开发了一些工具来简化依赖管理，这一机制的引入确实缓解了对依赖管理的迫切需求，但并没有解决全部问题。到了2018年，全新的Go1.11发布时，新的依赖管理工具——go mod被引入，它随Go语言一起安装。到了Go1.13，go mod成为默认的依赖管理方式，一个新的Go工程将默认启用它。编译器在解析依赖时，首先会考虑go mod配置文件go.mod。需要特别注意的是，go mod并不影响vendor机制，在1.14及后续版本中，如果工程根目录下有vendor文件夹，则编译器会优先在启用vendor机制而不是go mod机制。
-
-但Kubernetes项目伊始并没有gomod这种依赖管理工具存在，它先采用了vendor机制，把自身引用的第三方包全部放在vendor目录下，这样开发人员下载了整个项目后依赖就是完善的，编译也可以进行。在gomod引入后Kubernetes拥抱了这一变化，同时并没有
-
-废弃vendor目录：依赖的加入和升级等均借助gomod，但最终需要借助gomodvendor命令将它们放入vendor中，编译时真正起作用的是vendor机制。但需注意：vendor机制的工作方式会受到当前工程是否处于\$GOPATH下的影响！举个例子，如果你的工程处于\~/git文件夹下，而你的\$GOPATH是\~/go目录，那么编译器只考虑工程根目录下的vendor文件夹，其它地方一概不考虑，这会造成一些令人费解的编译失败。笔者曾试着在非\$GOPATH目录下存放源码并编译Kubernetes工程，结果是失败的，转而把同样的工程移动到\$GOPATH/src/k8s.io/下后，一切顺利完成。而关于源代码正确的存放地点问题，在2018年社区对新贡献者的培训中有明确说明：源代码要放在\$GOPATH/src/k8s.io/kubernetes下。所以建议读者在这一点上不要过度好奇，直接把工程下载到\$GOPATH/src/k8s.io/会减少很多不必要的麻烦。
-
-通过如下命令克隆整个代码库到本地，代码库非常庞大，网络环境一般的情况下会持续很长一段时间。运行完成后，在\$GOPATH/src/k8s.io/kubernetes下会保存所有源码，APIServer是其中的一个部分。
-
-$\Phi$  cd \ $GOPATH / src / k8s.io$  git clone https://github.com/kubernetes/kubernetes
-
-### 2.3.2 本地编译与运行
-
-本地编译并不是阅读源码的前置条件，如果只是浏览源代码完全不需要编译。但通过编译的过程读者可以更进一步了解Kubernetes，同时当需要改源代码验证自己的想法时，如何编译测试是必备知识。本小节讲解编译和在本地运行单节点集群，供感兴趣的读者参考。
-
-Kubernetes的编译有两种方式：通过容器去编译或本地裸机编译。受益于工程内完善的脚本，两种方式均不复杂，本节不采用容器编译，而是裸机编译。运行本地单节点集群的工作也被一个脚本简化了，比较繁琐的工作就剩下在本地安装一些前置软件包，例如containerd，ETCD及其它。编译与启动步骤大体如下：
-
-（1）安装必要的软件包。编译时需要的软件包只是Go和GUNDevTools；而运行时的软件包就要多一些，可以由Kubernetes项目文档中找到，笔者进行了一些整理，放在笔者的github主页上供读者参考。
-
-（2）本地编译。可通过以下命令编译全部应用或单独一个模块的应用（例如APIServer），命令如下：
-
-$\Phi$  cd \$GOPATH/src/k8s.io/kubernetes  $\Phi$  sudo make all  $\Phi$  sudo make what  $= ^{\prime \prime}$  cmd/kube- apiserver"
-
-（3）命令成功运行后，相应的应用程序编译完成。可执行文件存放在了哪里呢？留给读者自行研究。
-
-（4）本地运行。可以直接在本地运行一个单节点集群，命令如下
-
-$\Phi$  cd \$GOPATH/src/k8s.io/kubernetes
-
-$ sudo ./hack/local- up- cluster.sh
-
-上述启动的本地单节点集群肯定无法承担正式的工作任务，只可用于测试自己开发的新功能，跑端到端测试等。
-
-以上概括地给出了整个过程，略过诸多细节，有需要的读者可以参考笔者的Github库获取更为详细的信息。
+工作组与SIG的区别是比较明显的，它主要目的是协助跨 SIG 的讨论，并且围绕单一问题、话题，具有简化的管理流程。
 
 ## 2.4 本章小结
 
-学习源码绝不是单单读代码，如此宏大的开源项目如何组织有序取得今天这种成就本身就很有学问，值得开发者学习，也有助于理解其系统设计。本章介绍了Kubernetes项目的治理模式，讲解了如何向该项目贡献代码；最后下载了Kubernetes源代码，演示如何编译Kubernetes应用程序和运行本地单节点集群。下一篇将正式开启Kubernetes源码阅读之门！
+学习源码绝不是单单读代码，如此宏大的开源项目如何有序组织，值得开发者学习，也有助于理解其系统设计。
 
 # 第二篇 API Server 源码
 
@@ -635,26 +283,7 @@ API Server的源代码是嵌在Kubernetes工程中的，第二章介绍了如何
 
 ### 3.1.1 顶层目录
 
-Kubernetes根目录下的内容如图3- 1所示，本节将介绍其中几个重要子目录。
-
-![](https://cdn-mineru.openxlab.org.cn/result/2025-08-13/4aa1311a-0bdc-4b39-a1ff-4b5fdde9caae/05f7b95ef7f79abb8f5b042e6c4e14ab49004494d5de7ec6a55128652048f2a6.jpg)  
-图3-1项目结构体
-
-**1. 子目录api**
-
-API Server所提供的对外接口是符合OpenAPI规范的。利用OpenAPI规范，API Server将其接口所有技术细节严谨地描述出来，能够理解该规范的客户端便具备了与API Server交互的能力。顶层目录下的api子目录包含的正是这些OpenAPI服务定义文件。同时，其内容提供了一个便捷方式去获取API Server内置API的全部RESTful端点。
-
-**2.子目录cmd**
-
-整个 Kubernetes 工程会产出许多可执行程序，这些应用程序的编写都利用了 Cobra 框架，该框架建议在工程根目录下建立 cmd 文件夹做为存放命令定义及其实现源文件的根目录。在 3.2 节将介绍 Cobra 框架。虽然 cmd 不包含核心业务逻辑，但它却是查看源码实现的最好入口。
-
-**3.子目录hack**
-
-为了方便贡献者的工作，许多脚本被编写出来去自动化某些操作，它们全部放在这个文件夹下。例如脚本 .hack/update-codegen.sh，它会重新执行代码生成。这些脚本也间接统一了贡献者行为。
-
-**4.子目录pkg**
-
-Kubernetes 的业务逻辑代码存放地，各个模块的核心代码都在这里，例如 API Server、Kubelet、kubece1 等等。需要注意区分它和 cmd 目录的内容：cmd 目录包含 Cobra 框架下定义出的命令，它们很重要但不能算是核心业务逻辑。
+Kubernetes根目录下的内容如下所示，本节将介绍其中几个重要子目录。
 
 **5.子目录staging和vendor**
 
@@ -664,8 +293,7 @@ vendor 文件夹服务于 Go 的 vendor 机制。这个文件夹的存在会促�
 
 而 staging 目录是 Kubernetes 在模块化过程中的过渡工具。该项目不断把自身的模块剥离成一个个独立的 Github 代码库，很多代码库甚至可以脱离 Kubernetes 被单独使用，例如将要介绍的 Generic Server 便是如此。独立成为代码库进而形成独立项目是需要一个过程的，在这个过程完成前，针对这些被剥离模块的开发并不是在它们各自的代码库上进行，而是在 Kubernetes 项目里，这就要借助 staging 这个目录：其内会承载被剥离模块的最新代码，贡献者在这里进行开发去增强其功能，而这些修改会被定期同步到其 Github 代码库。可见 staging 包含的模块也是 Kubernetes 的依赖，它们如何被 vendor 机制使用到呢？通过查看 vendor/k8s.io/目录下的内容会发现，staging 所含的库被通过软链接引入该目录从而纳入 vendor 机制，如图 3- 2 所示。也正是由于这里使用了软链接，在 Windows 操作系统下去开发和编译 Kubernetes 障碍重重。
 
-![](https://cdn-mineru.openxlab.org.cn/result/2025-08-13/4aa1311a-0bdc-4b39-a1ff-4b5fdde9caae/61a5bf4e5ad57c0144c8a15b05e05bf51e09d811270eb2828ef2005383c84b9f.jpg)  
-图3-2 staging到vendor目录的软连接
+![](image/61a5bf4e5ad57c0144c8a15b05e05bf51e09d811270eb2828ef2005383c84b9f.jpg)
 
 ### 3.1.2 staging目录
 
@@ -713,8 +341,41 @@ code- generator 库基于 Go 代码生成框架提供 Kubernetes 的代码生成
 
 接下来，进入到核心业务逻辑目录 pkg，进一步讲解和 API Server 相关的子目录。pkg 目录结构如图 3- 3 所示。
 
-![](https://cdn-mineru.openxlab.org.cn/result/2025-08-13/4aa1311a-0bdc-4b39-a1ff-4b5fdde9caae/39b9567f91b4f427c4f67b24b4a97ea4d9b54ad76692b659cb32e45770dfa363.jpg)  
-图3-3 pkg目录结构
+```shell
+root@debian:~/golang/src/github.com/onexstack/kubernetes/pkg# tree -L 1
+.
+|-- OWNERS
+|-- api
+|-- apis
+|-- auth
+|-- capabilities
+|-- client
+|-- cloudprovider
+|-- cluster
+|-- controller
+|-- controlplane
+|-- credentialprovider
+|-- features
+|-- fieldpath
+|-- generated
+|-- kubeapiserver
+|-- kubectl
+|-- kubelet
+|-- kubemark
+|-- printers
+|-- probe
+|-- proxy
+|-- quota
+|-- registry
+|-- routes
+|-- scheduler
+|-- security
+|-- securitycontext
+|-- serviceaccount
+|-- util
+|-- volume
+`-- windows
+```
 
 **1. 子目录 pkg/api**
 
@@ -746,8 +407,34 @@ API实例最终存储在ETCD中，这就涉及到与ETCD的交互，这部分代
 
 （2）该API组的RESTful端点响应函数源代码，一般会放在rest子目录下，但令人费解的是，该源文件也是以storage前缀开头的，非常不易读。registry子目录的整体结构如图3-4所示。
 
-![](https://cdn-mineru.openxlab.org.cn/result/2025-08-13/4aa1311a-0bdc-4b39-a1ff-4b5fdde9caae/1cb4c186e9214cb4f65fb34cf90b2c62d47a271ca77d3dc6777146d975e17c3d.jpg)  
-图3-4 registry目录
+```shell
+root@debian:~/golang/src/github.com/onexstack/kubernetes/pkg/registry# tree -L 1
+.
+|-- OWNERS
+|-- admissionregistration
+|-- apiserverinternal
+|-- apps
+|-- authentication
+|-- authorization
+|-- autoscaling
+|-- batch
+|-- certificates
+|-- coordination
+|-- core
+|-- discovery
+|-- doc.go
+|-- events
+|-- flowcontrol
+|-- networking
+|-- node
+|-- policy
+|-- rbac
+|-- registrytest
+|-- resource
+|-- scheduling
+|-- storage
+`-- storagemigration
+```
 
 本节讲解了整个项目的重要目录。需要特别强调的是，对这些目录有深入认识会为后续代码阅读带来巨大帮助，希望读者多思考，多查阅。本着先总体后局部的讲解思路，下一小节会展开介绍构建API Server应用程序所使用的命令行框架——Cobra。
 
@@ -817,10 +504,9 @@ Cobra 使用开源项目 pflag 替代了 Go 的 flag 包从而支持 POSIX，pfl
 
 首先，一个 Cobra 应用程序的典型包结构简单明了，如下所示：
 
-<table><tr><td>appName/</td></tr><tr><td>cmd/</td></tr><tr><td>root.go</td></tr><tr><td>&lt;your command&gt;.go</td></tr><tr><td>main.go</td></tr></table>
+```
 
-
-</your>
+```
 
 它只包含两个部分：
 
@@ -832,7 +518,9 @@ Cobra 使用开源项目 pflag 替代了 Go 的 flag 包从而支持 POSIX，pfl
 
 main() 函数是 Go 程序的执行入口，Cobra 已经生成了初始内容，代码如下：
 
-```javascript// Cobra 主程序示例package main{    import ("{工程主目录}:cmd")    func main() {        command := ... <获取命令对象>        command.Execute()    }}```
+```
+
+```
 
 它的内容非常固定，简单场景几行代码就足够了：首先引入 cmd 包；然后调用该包的接口方法去创建根命令结构体实例；最后调用根命令的 Execute() 方法启动对用户输入的响应；结束。
 
@@ -840,7 +528,9 @@ main() 函数是 Go 程序的执行入口，Cobra 已经生成了初始内容，
 
 最后来看 cmd 包下为命令编写的 go 文件包含什么内容。引入一个小例子：假设要制作一个命令行应用，其有两个核心命令：sing_a_chinese_song 和 sing_a_english_song，它们位于根命令 sing_a_song 之下；用户可以指定一首歌曲的名字作为命令的 ARG，命令会调用播放器来播放歌曲。其中 sing_a_chinese_song 命令有两个 FLAG：- m 和 - f，用于指出希望让男生唱还是女生唱，显然一条命令不能同时使用 - m 和 - f。如下命令都是合法的命令（cobraTutorial 是应用程序名字）：
 
-``` $./cobraTutorial sing_a_english_song"yesterday once more"$  ./cobraTutorial sing_a_chinese_song “我爱你，中国” $./cobraTutorial sing_a_chinese_song"我爱你，中国"- m$  ./cobraTutorial sing_a_chinese_song “我爱你，中国"- f```
+```
+
+```
 
 \$./cobraTutorial sing_a_chinese_song“我爱你，中国”- - female
 
@@ -854,9 +544,11 @@ main() 函数是 Go 程序的执行入口，Cobra 已经生成了初始内容，
 
 Cobra允许明确设定二者不能同时使用，见要点  $(3)$  0
 
-//代码3- 1Cobra示例程序 package cmd import（ "fmt" "github.com/spf13/cobra" ） func NewCommand（）\*cobra.Command{//要点  $(1)$  rootCmd :  $=$  &cobra.Command{ Use: "sing_a_song", Short:"sing a song for user", Long:"this command will sing a song in .", } englishSongCmd :  $=$  makeEnglishSongCmd() rootCmd.AddCommand（englishSongCmd) chineseSongCmd :  $=$  makeChineseSongCmd() rootCmd.AddCommand(chineseSongCmd) return rootCmd } func makeChineseSongCmd（）\*cobra.Command{ chineseSongCmd :  $=$  &cobra.Command{
+```
 
-Use: "sing_a_chinese_song", Short: "sing a Chinese song for user", Long: "this command will sing a Chinese song ...", Run: singChineseSong, //要点② } chineseSongCmd.flags().BoolP("male", "m", true, "the singer is male") chineseSongCmd.Flags().BoolP("female", "f", false, "the singer is female") chineseSongCmd.MarkFtagsMutuallyExclusive("male", "female") //要点③ return chineseSongCmd } func makeEnglishSongCmd() *cobra.Command { englishSongCmd := &cobra.Command{ Use: "sing_a_english_song", Short: "sing a English song for user", Long: "this command will sing a English song ...", Run: singEnglishSong, //要点④ } return englishSongCmd } func singChineseSong(cmd *cobra.Command, args []string) { if len(args) == 0 { fmt.Println("which Chinese song do you like?") } else { sex := "male" if cmd.Flag("female").Value.String() == "true" { sex = "female" } fmt.Printf("Now a %s starts to sing %s \r\n", sex, args[0]) } } func singEnglishSong(cmd *cobra.Command, args []string) { if len(args) == 0 { fmt.Println("which English song do you like?") } else { fmt.Printf("Now a singer starts to sing %s \r\n", args[0]) } }
+```
+
+
 
 ## 3.3 整体结构
 
@@ -864,8 +556,7 @@ Use: "sing_a_chinese_song", Short: "sing a Chinese song for user", Long: "this c
 
 从外部看，API Server 表现为单一的 Web Server，响应来自用户、其它组件的关于 API 实例的请求。然而从内部看，API Server 由多个子 Server 构成，它们分别是主 Server（Master），扩展 Server（Extension Server），聚合器（Aggregate Layer）和聚合 Server（Aggregated Server），它们均以 Generic Server 为底座构建。其中主 Server，扩展 Server 和聚合器构成单一 Web Server，称为核心 API Server。这些 Server 组件之间最本质的区别是各自提供不同的 API。各子 Server 相互关系如图 3- 5 所示。
 
-![](https://cdn-mineru.openxlab.org.cn/result/2025-08-13/4aa1311a-0bdc-4b39-a1ff-4b5fdde9caae/c435ec6e633d80f7c89457b834650a5335121758ae7a491e0fe17e7d9d03e5c7.jpg)  
-图3-5 API Server 的子 Server
+<img src="image/c435ec6e633d80f7c89457b834650a5335121758ae7a491e0fe17e7d9d03e5c7.jpg" style="zoom:50%;" />
 
 **1.主Server**
 
@@ -879,11 +570,11 @@ Use: "sing_a_chinese_song", Short: "sing a Chinese song for user", Long: "this c
 
 基于CRD的扩展机制应该说十分强大了，但首先，其能定义的API在内容上还是会受到一些限制，例如对资源实例的验证手段就比较有限，只能使用OpenAPISchemav3中定义的规则；其次CRD实例还是运行在核心APIServer这个程序上，二者是一个强绑定的关系，处理用户的客制化API会成为APIServer的实际负担。为提供终极强大的扩展能力，Server的聚合机制被设计出来。
 
-3.1.2节介绍了聚合器库（staging/src/k8s.io/kube- aggregator），它实现了一种聚合机制，使得一个用户自制的Server（聚合Server）可以被挂载到控制面上，去响应用户针对其内定义的客制化API的请求。每个聚合Server都具有和主Server十分类似结构，因为它们具有共同的代码基础：GenericServer。在聚合Server中，用户撰写自己的API，也可以借助GenericServer提供的Admission插件机制去实现针对自己API实例的修改、检验等操作。聚合Server和CRD相比，体现出更大的灵活性，能力也极为强大，对集群的副作用也要小很多，本书第三篇会以多种方式开发聚合Server。
+3.1.2节介绍了聚合器库（`staging/src/k8s.io/kube-aggregator`），它实现了一种聚合机制，使得一个用户自制的Server（聚合Server）可以被挂载到控制面上，去响应用户针对其内定义的客制化API的请求。每个聚合Server都具有和主Server十分类似结构，因为它们具有共同的代码基础：GenericServer。在聚合Server中，用户撰写自己的API，也可以借助GenericServer提供的Admission插件机制去实现针对自己API实例的修改、检验等操作。聚合Server和CRD相比，体现出更大的灵活性，能力也极为强大，对集群的副作用也要小很多，本书第三篇会以多种方式开发聚合Server。
 
 **4.GenericServer**
 
-每个子Server都基于GenericServer构建，它由3.1.2节所介绍的k8s.io/apiserver库实现，将所有Server都通用的功能囊括其中。每个子Server只需针对底层GenericServer做个性化配置，并提供各自API的RESTful端点响应器便可。
+每个子Server都基于GenericServer构建，它由3.1.2节所介绍的 k8s.io/apiserver 库实现，将所有Server都通用的功能囊括其中。每个子Server只需针对底层GenericServer做个性化配置，并提供各自API的RESTful端点响应器便可。
 
 虽然在编码构建时核心APIServer的三大子Server各自以一个GenericServer为基座，但运行时只有聚合器的GenericServer会被启用。毕竟核心APIServer是单一程序，同时运行多个WebServer完全没有必要，图3- 5中主Server与扩展Server的基座都被标为空心就是这个用意，而这不会造成问题是由于主Server与扩展Server中针对各自GenericServer的配置会被转入聚合器的GenericServer，所以功能并没有少；同时聚合器会委托这两个子Server的端点响应器去处理针对相应API的请求，这样API响应逻辑也不会丢。
 
