@@ -270,7 +270,7 @@ Kubernetes cmd/ 目录下有很多组件，v1.30.2 版本下，cmd/ 目录下有
 	)
 	```
 	
-- kubernetes/pkg/api：该包包含了一些核心资源对象 utill 类型的函数定义。
+- kubernetes/pkg/api：该包包含了一些核心资源对象 util 类型的函数定义。
 
 - kubernetes/pkg/apis：与 k8s.io/api 包内容类似，也包含了 Kubernetes 内置资源对象的结构体定义。但是这个项目只建议被 Kubernetes 内部引用，如果外部项目引用建议使用 k8s.io/api。而且 Kubernetes 内置代码也有很多引用了 k8s.io/api 下面的 api，所以后面可能都会迁移至 k8s.io/api 项目下。
 
