@@ -366,7 +366,7 @@ func (v *Value) Store(val any) {
 
 - 这个函数会将当前Goroutine“钉”在当前的P（Processor，Go调度器中的一个概念）上，从而禁止被抢占（preemption）。
 - 调用这个函数后，当前Goroutine会一直运行，不会被调度器挂起，除非它主动让出（比如调用某个阻塞函数）或者已经完成。
-- 在这个状态下，GC也会被延迟执行（因为GC需要STW（stop the world）或者需要调度器协作），所以需要谨慎使用，避免长时间占用。
+- 在这个状态下，GC也会被延迟执行（因为GC需要STW（stop the world）），所以需要谨慎使用，避免长时间占用。
 
 `runtime_procUnpin()`：这个函数与`runtime_procPin()`相反，它会释放之前设置的“钉住”状态，允许当前Goroutine被抢占。
 
@@ -475,9 +475,3 @@ func cas(p *unsafe.Pointer, old, new *node) (ok bool) {
 入队的时候，通过CAS操作将一个元素添加到队尾，并且移动尾指针。
 
 出队的时候移除一个节点，并通过CAS操作移动head指针，同时在必要的时候移动尾指针。
-
-
-
-
-
-![](images/304127/53d55255fe851754659d90cbee814f13.jpg)
