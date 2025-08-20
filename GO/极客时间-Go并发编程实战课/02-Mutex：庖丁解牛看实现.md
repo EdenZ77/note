@@ -536,11 +536,90 @@ Mutex可能处于两种操作模式下： **正常模式** 和 **饥饿模式**�
 
 还有一点，你也可以观察到，为了一个程序20%的特性，你可能需要添加80%的代码，这也是程序越来越复杂的原因。所以，最开始的时候，如果能够有一个清晰而且易于扩展的设计，未来增加新特性时，也会更加方便。
 
-# 思考题
 
-最后，给你留两个小问题：
 
-1. 目前Mutex的state字段有几个意义，这几个意义分别是由哪些字段表示的？
-2. 等待一个Mutex的goroutine数最大是多少？是否能满足现实的需求？
+# 位操作
 
-欢迎在留言区写下你的思考和答案，我们一起交流讨论。如果你觉得有所收获，也欢迎你把今天的内容分享给你的朋友或同事。
+```shell
+# 此时 aibility 应该是 111，而 Like 是 001，我的目标是把 ability 变成 110 （这样就去掉了 Like 对应的标志位）
+111
+001
+---
+110
+# 发现了么？这不就是【异或】嘛。若位相同则为0，若不同则为 1。 此时我们只需要执行一次
+ability = ability ^ Like
+或者用简洁的写法： ability ^= Like
+
+#这里有一个问题，如果原来的aibility为110，也就是本身不具有Like这种能力，那执行上面的操作就不对了
+#我们得使用下面的方式：
+new &^= mutexWoken 等价于 new = new & (^mutexWoken)
+
+位置：    3 2 1 0
+new： 	1 1 0 1
+mutexW：  0 0 1 0  ← 需要清除第1位
+         ↑ ↑ ↑ ↑
+先计算 ^mutexWoken（按位取反）：0010 → 取反 → 1101
+再与 new做按位与操作：
+new：    1 1 0 1
+ & 
+~mutexW：1 1 0 1
+   -----------------
+   结果：  1 1 0 1
+```
+
+
+
+# runtime函数
+
+```go
+func runtime_Semacquire(s *uint32)
+func runtime_SemacquireMutex(s *uint32, lifo bool, skipframes int)
+func runtime_SemacquireRWMutexR(s *uint32, lifo bool, skipframes int)
+func runtime_SemacquireRWMutex(s *uint32, lifo bool, skipframes int)
+
+func runtime_Semrelease(s *uint32, handoff bool, skipframes int)
+
+func runtime_canSpin(i int) bool
+func runtime_doSpin()
+
+func runtime_nanotime() int64
+```
+
+## runtime_Semacquire
+
+- **作用**：阻塞当前Goroutine，直到信号量`*s > 0`，随后原子递减`*s`
+- **行为**：
+  - 若 `*s == 0`→ 当前Goroutine加入等待队列休眠
+  - 若 `*s > 0`→ 立即减1并继续执行
+- **适用场景**：基础锁实现（如`sync.Cond`）
+
+**增强版信号量获取**
+
+```go
+func runtime_SemacquireMutex(s *uint32, lifo bool, skipframes int)
+func runtime_SemacquireRWMutexR(s *uint32, lifo bool, skipframes int)
+func runtime_SemacquireRWMutex(s *uint32, lifo bool, skipframes int)
+```
+
+这些函数类似于更基础的 `runtime_Semacquire`函数，但这些函数是专门提供给标准库中的 `sync.Mutex`和 `sync.RWMutex`使用的。其特别之处在于，它们启用了当这些锁发生争用时的性能分析功能。当多个 goroutine 试图同时获取同一个锁时，就会发生争用（contention）。
+
+它们内部会记录调用栈、阻塞时间等关键信息，这些信息可以被 Go 的性能剖析工具（如 `pprof`）捕获，帮助你分析程序中哪些锁是瓶颈。
+
+参数 `lifo`：这个布尔参数决定了等待同一个锁的 goroutine 如何排队。
+
+- `lifo bool`：等待队列排序策略
+  - `true`：插入队列头部（后进先出）
+  - `false`：插入队列尾部（先进先出）
+
+参数 `skipframes int`：堆栈跟踪跳过层数（用于隐藏runtime调用，显示用户代码位置）
+
+## runtime_Semrelease
+
+- **作用**：原子递增`*s`，并唤醒一个等待中的Goroutine
+- **关键参数**：
+  - `handoff bool`：资源传递模式
+    - `true`：将信号量直接移交给第一个等待者（避免唤醒后竞争）
+    - `false`：仅增加信号量值（唤醒的Goroutine需重新竞争）
+  - `skipframes int`：同前，控制错误堆栈深度
+
+Go 的 `sync.Mutex`在**饥饿模式**（starvation mode）下会设置 `handoff=true`，将锁直接移交给等待最久的 goroutine，避免其持续饥饿。
