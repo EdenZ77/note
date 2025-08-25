@@ -324,6 +324,9 @@ for循环是不断尝试获取锁，如果获取不到，就通过runtime.Semacq
                 old = m.state
             }
         } else {
+// handoff模式会让当前goroutine主动让出处理器（通过类似goyield的操作），使被唤醒的waiter能立即获得CPU时间片，而不需要等待调度器重新调度。
+// 在解锁操作中，没有设置mutexLocked标志。被唤醒的waiter会在自己的lockSlow方法中，通过原子操作设置mutexLocked标志。
+// 在饥饿模式下，新来的goroutine在Lock方法中会检测到mutexStarving标志，它们会直接进入等待队列末尾，而不会尝试竞争锁。
             runtime_Semrelease(&m.sema, true, 1)
         }
     }
@@ -426,9 +429,10 @@ state字段又分出了一位，用来标记锁是否处于饥饿状态。现在
                 }
                 runtime_doSpin()
                 iter++
-                old = m.state // 再次获取锁的状态，之后会检查是否锁被释放了
+                old = m.state // 重新获取锁的最新状态！这是关键，因为自旋期间锁可能已被释放。
                 continue
             }
+// 设计体现了 Go 在性能优化上的哲学：用少量的 CPU 空转来换取避免更昂贵的调度开销。在高并发且锁持有时间很短的场景下，这种优化可以显著提升性能。
 ```
 
 第42行到第44行，非饥饿状态下抢锁。怎么抢？就是要把state的锁的那一位，置为加锁状态，后续CAS如果成功就可能获取到了锁。
@@ -455,7 +459,7 @@ state字段又分出了一位，用来标记锁是否处于饥饿状态。现在
 
 第86行则是将这个标识应用到state字段上。
 
-释放锁（Unlock）时调用的Unlock的fast path不用多少，所以我们主要看unlockSlow方法就行。
+释放锁（Unlock）时调用的Unlock的fast path没有多少，所以我们主要看unlockSlow方法就行。
 
 如果Mutex处于饥饿状态，第123行直接唤醒等待队列中的waiter。
 
