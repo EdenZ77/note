@@ -467,6 +467,79 @@ state字段又分出了一位，用来标记锁是否处于饥饿状态。现在
 
 否则，waiter数减1，mutexWoken标志设置上，通过CAS更新state的值（第115行到第119行）。
 
+# TryLock
+
+```go
+// TryLock tries to lock m and reports whether it succeeded.
+//
+// Note that while correct uses of TryLock do exist, they are rare,
+// and use of TryLock is often a sign of a deeper problem
+// in a particular use of mutexes.
+
+// TryLock的正确使用场景非常罕见
+func (m *Mutex) TryLock() bool {
+	old := m.state
+	if old&(mutexLocked|mutexStarving) != 0 {
+		return false
+	}
+
+	// There may be a goroutine waiting for the mutex, but we are
+	// running now and can try to grab the mutex before that
+	// goroutine wakes up.
+	if !atomic.CompareAndSwapInt32(&m.state, old, old|mutexLocked) {
+		return false
+	}
+
+	if race.Enabled {
+		race.Acquire(unsafe.Pointer(m))
+	}
+	return true
+}
+```
+
+它与普通的 `Lock`方法最根本的区别。普通的 `Lock`方法在获取不到锁时，会一直等待（阻塞），直到锁被释放。而 `TryLock`则会立即返回一个结果，告诉你是否成功获取到了锁。
+
+`TryLock`确实通过先检查状态再CAS来避免无效操作。但这并不能弥补它作为一个“一次性”操作与 `Lock`作为一个“完整状态机”之间的根本差距。
+
+1. **它破坏了公平性**：即使检查通过且CAS成功，这个操作也可能发生在饥饿模式刚被解除的瞬间，从而抢走了本应分配给等待队列中下一个 goroutine 的锁。(其实唤醒的goroutine也不一定能够抢到锁，它需要和新来的goroutine一起竞争)
+2. **它放弃了性能优化**：`Lock`的自旋优化旨在减少短锁场景下的上下文切换开销。`TryLock`的一次性尝试使其无法享受这种优化。
+3. **它迫使调用方处理重试**：`TryLock`失败后，调用方必须自己实现重试逻辑（例如循环 `for { if TryLock() { break } }`），而这很容易导致低效的忙等待。`Lock`则将重试逻辑内置并优化，在等待时优雅地挂起goroutine。
+
+因此，`TryLock`的“检查后CAS”模式是其正确性的基础，但它只是一个“快照”式的决策。而 `Lock`的威力在于它是一个“持续决策”的过程，能够适应锁状态的变化，并维护一套完整的、旨在保证公平和性能的并发协议。这才是两者最本质的区别。
+
+## 使用场景
+
+**场景一：任务冲突避免 (Conflict Avoidance)**
+
+核心思想：一个低优先级的后台任务尝试执行，但如果会干扰到高优先级的主业务，它宁愿放弃也不愿造成阻塞。
+
+典型例子：缓存清理或状态统计
+
+假设你有一个内存中的缓存，由一个互斥锁 `cacheMu`保护。主业务线程会频繁地持有这个锁进行读写操作。同时，你有一个后台的清理协程，定时运行（例如每秒一次），负责淘汰过期的缓存条目。这个清理操作不是紧急任务，它的存在是为了优化内存使用，绝不能影响主业务的性能和响应速度。
+
+```go
+func cleanupCache() {
+    // 非阻塞地尝试获取锁
+    if cacheMu.TryLock() {
+        defer cacheMu.Unlock()
+        // 成功获取锁，执行清理操作
+        doCleanup()
+    } else {
+        // 获取锁失败，说明主业务正在繁忙操作缓存
+        // 本次清理跳过，下次定时触发再尝试
+        log.Println("Cleanup skipped: cache is busy")
+    }
+}
+```
+
+为什么这是合理的？
+
+1. 有清晰的备用方案：失败路径非常明确且合理——直接放弃，`else`分支的逻辑是“什么都不做”。
+2. 优先级明确：后台任务的优先级低于主业务任务，放弃执行不会影响系统核心功能。
+3. 避免了不必要的阻塞。
+
+
+
 # 总结
 
 “罗马不是一天建成的”，Mutex的设计也是从简单设计到复杂处理逐渐演变的。初版的Mutex设计非常简洁，充分展示了Go创始者的简单、简洁的设计哲学。但是，随着大家的使用，逐渐暴露出一些缺陷，为了弥补这些缺陷，Mutex不得不越来越复杂。
