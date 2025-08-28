@@ -146,6 +146,55 @@ git config --global https.'https://github.com'.proxy "http://127.0.0.1:10809"
 git config --global http.'https://github.com'.proxy "http://127.0.0.1:10809"
 ```
 
+### 问题
+
+```shell
+ssh: connect to host github.com port 22: Connection timed out
+```
+
+网络环境（例如：公司网络、学校网络、公共 WiFi）可能出于安全考虑，防火墙禁用了 SSH 协议的 22 端口。
+
+解决方案一：改用 HTTPS 协议
+
+这是最快、最直接的临时解决方案。你可以将远程仓库的 URL 从 SSH 切换到 HTTPS。
+
+```shell
+# 查看当前远程仓库地址
+$ git remote -v
+origin  git@github.com:EdenZ77/note.git (fetch)
+origin  git@github.com:EdenZ77/note.git (push)
+
+
+# 那么将其更改为 HTTPS 地址
+git remote set-url origin https://github.com/EdenZ77/note.git
+# 改回去
+git remote set-url origin git@github.com:EdenZ77/note.git
+
+$ git remote -v
+origin  https://github.com/EdenZ77/note.git (fetch)
+origin  https://github.com/EdenZ77/note.git (push)
+
+# 再次执行 pull
+$ git pull --tags origin master
+```
+
+HTTPS 使用的 443 端口几乎在所有网络环境中都是开放的。每次推送可能需要输入用户名和密码。
+
+解决方案二：使用 SSH over HTTPS 端口
+
+这是一个更优雅的方案。SSH 可以通过 443 端口进行连接，完美绕过对 22 端口的封锁。编辑 `~/.ssh/config`文件（如果不存在就创建），加入以下内容：
+
+```
+Host github.com
+  Hostname ssh.github.com
+  Port 443
+  User git
+```
+
+保存后，再次尝试你的 `git pull`命令。这个配置会让所有与 `github.com`的 SSH 连接都通过 `ssh.github.com`的 443 端口进行。
+
+
+
 ## Go安装
 
 1、下载安装包
