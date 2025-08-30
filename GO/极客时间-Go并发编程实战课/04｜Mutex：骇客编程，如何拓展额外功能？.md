@@ -19,7 +19,7 @@
 
 如下图所示，如果Mutex已经被一个goroutine持有，调用Lock的goroutine阻塞排队等待，调用TryLock的goroutine直接得到一个false返回。
 
-![](images/296793/e7787d959b60d66cc3a46ee921098865.jpg)
+<img src="images/296793/e7787d959b60d66cc3a46ee921098865.jpg" style="zoom:15%;" />
 
 在实际开发中，如果要更新配置数据，我们通常需要加锁，这样可以避免同时有多个goroutine并发修改数据。有的时候，我们也会使用TryLock。这样一来，当某个goroutine想要更改配置数据时，如果发现已经有goroutine在更改了，其他的goroutine调用TryLock，返回了false，这个goroutine就会放弃更改。
 
@@ -102,19 +102,18 @@ func try() {
 
 第二讲中，我们已经学习了Mutex的结构。先来回顾一下Mutex的数据结构，如下面的代码所示。它包含两个字段，state和sema。前四个字节（int32）就是state字段。
 
-```
+```go
 type Mutex struct {
     state int32
     sema  uint32
 }
-
 ```
 
 Mutex结构中的state字段有很多个含义，通过state字段，你可以知道锁是否已经被某个goroutine持有、当前是否处于饥饿状态、是否有等待的goroutine被唤醒、等待者的数量等信息。但是，state这个字段并没有暴露出来，所以，我们需要想办法获取到这个字段，并进行解析。
 
 怎么获取未暴露的字段呢？很简单，我们可以通过unsafe的方式实现。我来举一个例子，你一看就明白了。
 
-```
+```go
 const (
     mutexLocked = 1 << iota // mutex is locked
     mutexWoken
@@ -138,7 +137,7 @@ func (m *Mutex) Count() int {
 
 state这个字段的第一位是用来标记锁是否被持有，第二位用来标记是否已经唤醒了一个等待者，第三位标记锁是否处于饥饿状态，通过分析这个state字段我们就可以得到这些状态信息。我们可以为这些状态提供查询的方法，这样就可以实时地知道锁的状态了。
 
-```
+```go
 // 锁是否被持有
 func (m *Mutex) IsLocked() bool {
     state := atomic.LoadInt32((*int32)(unsafe.Pointer(&m.Mutex)))
@@ -156,12 +155,11 @@ func (m *Mutex) IsStarving() bool {
     state := atomic.LoadInt32((*int32)(unsafe.Pointer(&m.Mutex)))
     return state&mutexStarving == mutexStarving
 }
-
 ```
 
 我们可以写一个程序测试一下，比如，在1000个goroutine并发访问的情况下，我们可以把锁的状态信息输出出来：
 
-```
+```go
 func count() {
     var mu Mutex
     for i := 0; i < 1000; i++ { // 启动1000个goroutine
@@ -176,7 +174,6 @@ func count() {
     // 输出锁的信息
     fmt.Printf("waitings: %d, isLocked: %t, woken: %t,  starving: %t\n", mu.Count(), mu.IsLocked(), mu.IsWoken(), mu.IsStarving())
 }
-
 ```
 
 有一点你需要注意一下，在获取state字段的时候，并没有通过Lock获取这把锁，所以获取的这个state的值是一个瞬态的值，可能在你解析出这个字段之后，锁的状态已经发生了变化。不过没关系，因为你查看的就是调用的那一时刻的锁的状态。
@@ -189,7 +186,7 @@ func count() {
 
 比如队列，我们可以通过Slice来实现，但是通过Slice实现的队列不是线程安全的，出队（Dequeue）和入队（Enqueue）会有data race的问题。这个时候，Mutex就要隆重出场了，通过它，我们可以在出队和入队的时候加上锁的保护。
 
-```
+```go
 type SliceQueue struct {
     data []interface{}
     mu   sync.Mutex
@@ -218,7 +215,6 @@ func (q *SliceQueue) Dequeue() interface{} {
     q.mu.Unlock()
     return v
 }
-
 ```
 
 因为标准库中没有线程安全的队列数据结构的实现，所以，你可以通过Mutex实现一个简单的队列。通过Mutex我们就可以为一个非线程安全的data interface{}实现线程安全的访问。
