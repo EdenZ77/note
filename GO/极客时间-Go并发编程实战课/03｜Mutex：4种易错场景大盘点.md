@@ -1,6 +1,4 @@
 # 03｜Mutex：4种易错场景大盘点
-你好，我是鸟窝。
-
 上一讲，我带你一起领略了Mutex的架构演进之美，现在我们已经清楚Mutex的实现细节了。当前Mutex的实现貌似非常复杂，其实主要还是针对饥饿模式和公平性问题，做了一些额外处理。但是，我们在第一讲中已经体验过了，Mutex使用起来还是非常简单的，毕竟，它只有Lock和Unlock两个方法，使用起来还能复杂到哪里去？
 
 正常使用Mutex时，确实是这样的，很简单，基本不会有什么错误，即使出现错误，也是在一些复杂的场景中，比如跨函数调用Mutex或者是在重构或者修补Bug时误操作。但是，我们使用Mutex时，确实会出现一些Bug，比如说忘记释放锁、重入锁、复制已使用了的Mutex等情况。那在这一讲中，我们就一起来看看使用Mutex常犯的几个错误，做到“Bug提前知，后面早防范”。
@@ -21,18 +19,17 @@ Lock/Unlock没有成对出现，就意味着会出现死锁的情况，或者是
 
 在这种情况下，锁被获取之后，就不会被释放了，这也就意味着，其它的goroutine永远都没机会获取到锁。
 
-我们再来看缺少Lock的场景，这就很简单了，一般来说就是误操作删除了Lock。 比如先前使用Mutex都是正常的，结果后来其他人重构代码的时候，由于对代码不熟悉，或者由于开发者的马虎，把Lock调用给删除了，或者注释掉了。比如下面的代码，mu.Lock()一行代码被删除了，直接Unlock一个未加锁的Mutex会panic：
+我们再来看缺少Lock的场景，这就很简单了，一般来说就是误操作删除了Lock。 比如先前使用Mutex都是正常的，结果后来其他人重构代码的时候，由于对代码不熟悉，或者由于开发者的马虎，把Lock调用给删除了，或者注释掉了。比如下面的代码，mu.Lock() 一行代码被删除了，直接 Unlock 一个未加锁的 Mutex 会 panic：
 
-```
+```go
 func foo() {
     var mu sync.Mutex
     defer mu.Unlock()
     fmt.Println("hello world!")
 }
-
 ```
 
-运行的时候panic：
+运行的时候 panic：
 
 ![](images/296541/5597316079a8fa37abef2a82bdac7b4f.png)
 
@@ -44,7 +41,7 @@ func foo() {
 
 当然，你可能说，你说的我都懂，你的警告我都记下了，但是实际在使用的时候，一不小心就踩了这个坑，我们来看一个例子。
 
-```
+```go
 type Counter struct {
     sync.Mutex
     Count int
@@ -64,26 +61,25 @@ func foo(c Counter) {
     defer c.Unlock()
     fmt.Println("in foo")
 }
-
 ```
 
-第12行在调用foo函数的时候，调用者会复制Mutex变量c作为foo函数的参数，不幸的是，复制之前已经使用了这个锁，这就导致，复制的Counter是一个带状态Counter。
+第12行在调用 foo 函数的时候，调用者会复制 Mutex 变量 c 作为 foo 函数的参数，不幸的是，复制之前已经使用了这个锁，这就导致，复制的 Counter 是一个带状态 Counter。
 
-怎么办呢？Go在运行时，有 **死锁的检查机制**（ [checkdead()](https://golang.org/src/runtime/proc.go?h=checkdead#L4345) 方法），它能够发现死锁的goroutine。这个例子中因为复制了一个使用了的Mutex，导致锁无法使用，程序处于死锁的状态。程序运行的时候，死锁检查机制能够发现这种死锁情况并输出错误信息，如下图中错误信息以及错误堆栈：
+怎么办呢？Go在运行时，有 **死锁的检查机制**（ [checkdead()](https://golang.org/src/runtime/proc.go?h=checkdead#L4345) 方法），它能够发现死锁的 goroutine。这个例子中因为复制了一个使用了的 Mutex，导致锁无法使用，程序处于死锁的状态。程序运行的时候，死锁检查机制能够发现这种死锁情况并输出错误信息，如下图中错误信息以及错误堆栈：
 
 ![](images/296541/cfb7a4a0e744c5ff534a676fd830d0ee.png)
 
-你肯定不想运行的时候才发现这个因为复制Mutex导致的死锁问题，那么你怎么能够及时发现问题呢？可以使用 **vet工具**，把检查写在Makefile文件中，在持续集成的时候跑一跑，这样可以及时发现问题，及时修复。我们可以使用go vet检查这个Go文件：
+你肯定不想运行的时候才发现这个因为复制 Mutex 导致的死锁问题，那么你怎么能够及时发现问题呢？可以使用 **vet工具**，把检查写在 Makefile 文件中，在持续集成的时候跑一跑，这样可以及时发现问题，及时修复。我们可以使用go vet检查这个Go文件：
 
 ![](images/296541/fa56520yy37009ca58d6640a933f01b8.png)
 
 你看，使用这个工具就可以发现Mutex复制的问题，错误信息显示得很清楚，是在调用foo函数的时候发生了lock value复制的情况，还告诉我们出问题的代码行数以及copy lock导致的错误。
 
-那么，vet工具是怎么发现Mutex复制使用问题的呢？我带你简单分析一下。
+那么，vet 工具是怎么发现 Mutex 复制使用问题的呢？我带你简单分析一下。
 
 检查是通过 [copylock](https://github.com/golang/tools/blob/master/go/analysis/passes/copylock/copylock.go) 分析器静态分析实现的。这个分析器会分析函数调用、range遍历、复制、声明、函数返回值等位置，有没有锁的值copy的情景，以此来判断有没有问题。可以说，只要是实现了Locker接口，就会被分析。我们看到，下面的代码就是确定什么类型会被分析，其实就是实现了Lock/Unlock两个方法的Locker接口：
 
-```
+```go
 var lockerType *types.Interface
 
 	// Construct a sync.Locker interface type.
@@ -95,7 +91,6 @@ var lockerType *types.Interface
 		}
 		lockerType = types.NewInterface(methods, nil).Complete()
 	}
-
 ```
 
 其实，有些没有实现Locker接口的同步原语（比如WaitGroup），也能被分析。我先卖个关子，后面我们会介绍这种情况是怎么实现的。
@@ -108,15 +103,15 @@ var lockerType *types.Interface
 
 如果你没接触过Java，也没关系，这里只是提一下，帮助会Java的同学对比来学。那下面我来具体讲解可重入锁是咋回事儿。
 
-当一个线程获取锁时，如果没有其它线程拥有这个锁，那么，这个线程就成功获取到这个锁。之后，如果其它线程再请求这个锁，就会处于阻塞等待的状态。但是，如果拥有这把锁的线程再请求这把锁的话，不会阻塞，而是成功返回，所以叫可重入锁（有时候也叫做递归锁）。只要你拥有这把锁，你可以可着劲儿地调用，比如通过递归实现一些算法，调用者不会阻塞或者死锁。
+当一个线程获取锁时，如果没有其它线程拥有这个锁，那么，这个线程就成功获取到这个锁。之后，如果其它线程再请求这个锁，就会处于阻塞等待的状态。但是，如果拥有这把锁的线程再请求这把锁的话，不会阻塞，而是成功返回，所以叫可重入锁（有时候也叫做递归锁）。
 
 了解了可重入锁的概念，那我们来看Mutex使用的错误场景。划重点了： **Mutex不是可重入的锁。**
 
-想想也不奇怪，因为Mutex的实现中没有记录哪个goroutine拥有这把锁。理论上，任何goroutine都可以随意地Unlock这把锁，所以没办法计算重入条件，毕竟，“臣妾做不到啊”！
+想想也不奇怪，因为Mutex的实现中没有记录哪个goroutine拥有这把锁。理论上，任何goroutine都可以随意地Unlock这把锁，所以没办法计算重入条件。
 
 所以，一旦误用Mutex的重入，就会导致报错。下面是一个误用Mutex的重入例子：
 
-```
+```go
 func foo(l sync.Locker) {
     fmt.Println("in foo")
     l.Lock()
@@ -134,7 +129,6 @@ func main() {
     l := &sync.Mutex{}
     foo(l)
 }
-
 ```
 
 写完这个Mutex重入的例子后，运行一下，你会发现类似下面的错误。程序一直在请求锁，但是一直没有办法获取到锁，结果就是Go运行时发现死锁了，没有其它地方能够释放锁让程序运行下去，你通过下面的错误堆栈信息就能定位到哪一行阻塞请求锁：
@@ -156,18 +150,17 @@ func main() {
 
 这个方案的关键第一步是获取goroutine id，方式有两种，分别是简单方式和hacker方式。
 
-简单方式，就是通过runtime.Stack方法获取栈帧信息，栈帧信息里包含goroutine id。你可以看看上面panic时候的贴图，goroutine id明明白白地显示在那里。runtime.Stack方法可以获取当前的goroutine信息，第二个参数为true会输出所有的goroutine信息，信息的格式如下：
+简单方式，就是通过 runtime.Stack 方法获取栈帧信息，栈帧信息里包含 goroutine id。你可以看看上面panic时候的贴图，goroutine id 明明白白地显示在那里。runtime.Stack 方法可以获取当前的 goroutine 信息，第二个参数为true会输出所有的 goroutine 信息，信息的格式如下：
 
-```
+```shell
 goroutine 1 [running]:
 main.main()
         ....../main.go:19 +0xb1
-
 ```
 
 第一行格式为goroutine xxx，其中xxx就是goroutine id，你只要解析出这个id即可。解析的方法可以采用下面的代码：
 
-```
+```go
 func GoID() int {
     var buf [64]byte
     n := runtime.Stack(buf[:], false)
@@ -179,18 +172,18 @@ func GoID() int {
     }
     return id
 }
-
 ```
 
 了解了简单方式，接下来我们来看hacker的方式，这也是我们方案一采取的方式。
 
-首先，我们获取运行时的g指针，反解出对应的g的结构。每个运行的goroutine结构的g指针保存在当前goroutine的一个叫做TLS对象中。
+首先，我们获取运行时的 g 指针，反解出对应的 g 的结构。每个运行的goroutine结构的 g 指针保存在当前goroutine的一个叫做 TLS 对象中。
 
-第一步：我们先获取到TLS对象；
+- 第一步：我们先获取到TLS对象；
 
-第二步：再从TLS中获取goroutine结构的g指针；
+- 第二步：再从TLS中获取goroutine结构的g指针；
 
-第三步：再从g指针中取出goroutine id。
+- 第三步：再从g指针中取出goroutine id。
+
 
 需要注意的是，不同Go版本的goroutine的结构可能不同，所以需要根据Go的 [不同版本](https://github.com/golang/go/blob/89f687d6dbc11613f715d1644b4983905293dd33/src/runtime/runtime2.go#L412) 进行调整。当然了，如果想要搞清楚各个版本的goroutine结构差异，所涉及的内容又过于底层而且复杂，学习成本太高。怎么办呢？我们可以重点关注一些库。我们没有必要重复发明轮子，直接使用第三方的库来获取goroutine id就可以了。
 
@@ -198,7 +191,7 @@ func GoID() int {
 
 知道了如何获取goroutine id，接下来就是最后的关键一步了，我们实现一个可以使用的可重入锁：
 
-```
+```go
 // RecursiveMutex 包装一个Mutex,实现可重入
 type RecursiveMutex struct {
     sync.Mutex
@@ -234,10 +227,9 @@ func (m *RecursiveMutex) Unlock() {
     atomic.StoreInt64(&m.owner, -1)
     m.Mutex.Unlock()
 }
-
 ```
 
-上面这段代码你可以拿来即用。我们一起来看下这个实现，真是非常巧妙，它相当于给Mutex打一个补丁，解决了记录锁的持有者的问题。可以看到，我们用owner字段，记录当前锁的拥有者goroutine的id；recursion 是辅助字段，用于记录重入的次数。
+上面这段代码你可以拿来即用。我们一起来看下这个实现，真是非常巧妙，它相当于给Mutex打一个补丁，解决了记录锁的持有者的问题。可以看到，我们用owner字段，记录当前锁的拥有者 goroutine 的 id；recursion 是辅助字段，用于记录重入的次数。
 
 有一点，我要提醒你一句，尽管拥有者可以多次调用Lock，但是也必须调用相同次数的Unlock，这样才能把锁释放掉。这是一个合理的设计，可以保证Lock和Unlock一一对应。
 
@@ -247,7 +239,7 @@ func (m *RecursiveMutex) Unlock() {
 
 下面的代码是第二种方案。调用者自己提供一个token，获取锁的时候把这个token传入，释放锁的时候也需要把这个token传入。通过用户传入的token替换方案一中goroutine id，其它逻辑和方案一一致。
 
-```
+```go
 // Token方式的递归锁
 type TokenRecursiveMutex struct {
     sync.Mutex
@@ -279,7 +271,6 @@ func (m *TokenRecursiveMutex) Unlock(token int64) {
     atomic.StoreInt64(&m.token, 0) // 没有递归调用了，释放锁
     m.Mutex.Unlock()
 }
-
 ```
 
 ## 死锁
@@ -295,7 +286,7 @@ func (m *TokenRecursiveMutex) Unlock(token int64) {
 3. **不可剥夺**：资源只能由持有它的goroutine来释放。
 4. **环路等待**：一般来说，存在一组等待进程，P={P1，P2，…，PN}，P1等待P2持有的资源，P2等待P3持有的资源，依此类推，最后是PN等待P1持有的资源，这就形成了一个环路等待的死结。
 
-![](images/296541/4ace1eecf856ef80607yyb6f7a45abd5.jpg)
+<img src="images/296541/4ace1eecf856ef80607yyb6f7a45abd5.jpg" style="zoom:20%;" />
 
 你看，死锁问题还真是挺有意思的，所以有很多人研究这个事儿。一个经典的死锁问题就是 [哲学家就餐问题](https://zh.wikipedia.org/wiki/%E5%93%B2%E5%AD%A6%E5%AE%B6%E5%B0%B1%E9%A4%90%E9%97%AE%E9%A2%98)，我不做介绍了，你可以点击链接进一步了解。其实，死锁问题在现实生活中也比比皆是。
 
@@ -303,7 +294,7 @@ func (m *TokenRecursiveMutex) Unlock(token int64) {
 
 这是一个最简单的只有两个goroutine相互等待的死锁的例子，转化成代码如下：
 
-```
+```go
 package main
 
 import (
@@ -352,7 +343,6 @@ func main() {
     wg.Wait()
     fmt.Println("成功完成")
 }
-
 ```
 
 这个程序没有办法运行成功，因为派出所的处理和物业的处理是一个环路等待的死结。
