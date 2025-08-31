@@ -1,15 +1,9 @@
 # 05｜ RWMutex：读写锁的实现原理及避坑指南
-你好，我是鸟窝。
-
 在前面的四节课中，我们学习了第一个同步原语，即Mutex，我们使用它来保证读写共享资源的安全性。不管是读还是写，我们都通过Mutex来保证只有一个goroutine访问共享资源，这在某些情况下有点“浪费”。比如说，在写少读多的情况下，即使一段时间内没有写操作，大量并发的读访问也不得不在Mutex的保护下变成了串行访问，这个时候，使用Mutex，对性能的影响就比较大。
 
 怎么办呢？你是不是已经有思路了，对，就是区分读写操作。
 
 我来具体解释一下。如果某个读操作的goroutine持有了锁，在这种情况下，其它读操作的goroutine就不必一直傻傻地等待了，而是可以并发地访问共享变量，这样我们就可以 **将串行的读变成并行读**，提高读操作的性能。当写操作的goroutine持有锁的时候，它就是一个排外锁，其它的写操作和读操作的goroutine，需要阻塞等待持有这个锁的goroutine释放锁。
-
-这一类并发读写问题叫作 [readers-writers问题](https://en.wikipedia.org/wiki/Readers%E2%80%93writers_problem)，意思就是，同时可能有多个读或者多个写，但是只要有一个线程在执行写操作，其它的线程都不能执行读写操作。
-
-**Go标准库中的RWMutex（读写锁）就是用来解决这类readers-writers问题的**。所以，这节课，我们就一起来学习RWMutex。我会给你介绍读写锁的使用场景、实现原理以及容易掉入的坑，你一定要记住这些陷阱，避免在实际的开发中犯相同的错误。
 
 # 什么是RWMutex？
 
@@ -18,7 +12,7 @@
 RWMutex的方法也很少，总共有5个。
 
 - **Lock/Unlock：写操作时调用的方法**。如果锁已经被reader或者writer持有，那么，Lock方法会一直阻塞，直到能获取到锁；Unlock则是配对的释放锁的方法。
-- **RLock/RUnlock：读操作时调用的方法**。如果锁已经被writer持有的话，RLock方法会一直阻塞，直到能获取到锁，否则就直接返回；而RUnlock是reader释放锁的方法。
+- **RLock/RUnlock：读操作时调用的方法**。如果锁已经被writer持有的话，RLock方法会一直阻塞，直到能获取到锁；而RUnlock是reader释放锁的方法。
 - **RLocker**：这个方法的作用是为读操作返回一个Locker接口的对象。它的Lock方法会调用RWMutex的RLock方法，它的Unlock方法会调用RWMutex的RUnlock方法。
 
 RWMutex的零值是未加锁的状态，所以，当你使用RWMutex的时候，无论是声明变量，还是嵌入到其它struct中，都不必显式地初始化。
@@ -27,7 +21,7 @@ RWMutex的零值是未加锁的状态，所以，当你使用RWMutex的时候，
 
 在这个例子中，使用10个goroutine进行读操作，每读取一次，sleep 1毫秒，同时，还有一个gorotine进行写操作，每一秒写一次，这是一个 **1** writer- **n** reader 的读写场景，而且写操作还不是很频繁（一秒一次）：
 
-```
+```go
 func main() {
     var counter Counter
     for i := 0; i < 10; i++ { // 10个reader
@@ -63,7 +57,6 @@ func (c *Counter) Count() uint64 {
     defer c.mu.RUnlock()
     return c.count
 }
-
 ```
 
 可以看到，Incr方法会修改计数器的值，是一个写操作，我们使用Lock/Unlock进行保护。Count方法会读取当前计数器的值，是一个读操作，我们使用RLock/RUnlock方法进行保护。
@@ -88,7 +81,7 @@ readers-writers问题一般有三类，基于对读和写操作的优先级，�
 
 RWMutex包含一个Mutex，以及四个辅助字段writerSem、readerSem、readerCount和readerWait：
 
-```
+```go
 type RWMutex struct {
 	w           Mutex   // 互斥锁解决多个writer的竞争
 	writerSem   uint32  // writer信号量
@@ -98,15 +91,14 @@ type RWMutex struct {
 }
 
 const rwmutexMaxReaders = 1 << 30
-
 ```
 
 我来简单解释一下这几个字段。
 
-- 字段w：为writer的竞争锁而设计；
-- 字段readerCount：记录当前reader的数量（以及是否有writer竞争锁）；
-- readerWait：记录writer请求锁时需要等待read完成的reader的数量；
-- writerSem 和readerSem：都是为了阻塞设计的信号量。
+- w：为writer的竞争锁而设计；
+- readerCount：记录当前reader的数量（以及是否有writer竞争锁）；
+- readerWait：记录writer请求锁时需要等待read完成的reader数量；
+- writerSem 和readerSem：都是为了阻塞而设计的信号量。
 
 这里的常量rwmutexMaxReaders，定义了最大的reader数量。
 
@@ -116,7 +108,7 @@ const rwmutexMaxReaders = 1 << 30
 
 首先，我们看一下移除了race等无关紧要的代码后的RLock和RUnlock方法：
 
-```
+```go
 func (rw *RWMutex) RLock() {
     if atomic.AddInt32(&rw.readerCount, 1) < 0 {
             // rw.readerCount是负值的时候，意味着此时有writer等待请求锁，因为writer优先级高，所以把后来的reader阻塞休眠
@@ -134,7 +126,6 @@ func (rw *RWMutex) rUnlockSlow(r int32) {
         runtime_Semrelease(&rw.writerSem, false, 1)
     }
 }
-
 ```
 
 第2行是对reader计数加1。你可能比较困惑的是，readerCount怎么还可能为负数呢？其实，这是因为，readerCount这个字段有双重含义：
@@ -156,7 +147,7 @@ RWMutex是一个多writer多reader的读写锁，所以同时可能有多个writ
 
 我们来看下下面的代码。第5行，还会记录当前活跃的reader数量，所谓活跃的reader，就是指持有读锁还没有释放的那些reader。
 
-```
+```go
 func (rw *RWMutex) Lock() {
     // 首先解决其他writer竞争问题
     rw.w.Lock()
@@ -167,7 +158,6 @@ func (rw *RWMutex) Lock() {
         runtime_SemacquireMutex(&rw.writerSem, false, 0)
     }
 }
-
 ```
 
 如果readerCount不是0，就说明当前有持有读锁的reader，RWMutex需要把这个当前readerCount赋值给readerWait字段保存下来（第7行）， 同时，这个writer进入阻塞等待状态（第8行）。
@@ -182,7 +172,7 @@ func (rw *RWMutex) Lock() {
 
 在RWMutex的Unlock返回之前，需要把内部的互斥锁释放。释放完毕后，其他的writer才可以继续竞争这把锁。
 
-```
+```go
 func (rw *RWMutex) Unlock() {
     // 告诉reader没有活跃的writer了
     r := atomic.AddInt32(&rw.readerCount, rwmutexMaxReaders)
@@ -194,7 +184,6 @@ func (rw *RWMutex) Unlock() {
     // 释放内部的互斥锁
     rw.w.Unlock()
 }
-
 ```
 
 在这段代码中，我删除了race的处理和异常情况的检查，总体看来还是比较简单的。这里有几个重点，我要再提醒你一下。首先，你要理解readerCount这个字段的含义以及反转方式。其次，你还要注意字段的更改和内部互斥锁的顺序关系。在Lock方法中，是先获取内部互斥锁，才会修改的其他字段；而在Unlock方法中，是先修改的其他字段，才会释放内部互斥锁，这样才能保证字段的修改也受到互斥锁的保护。
@@ -229,7 +218,7 @@ func (rw *RWMutex) Unlock() {
 
 我先介绍第一种情况。因为读写锁内部基于互斥锁实现对writer的并发访问，而互斥锁本身是有重入问题的，所以，writer重入调用Lock的时候，就会出现死锁的现象，这个问题，我们在学习互斥锁的时候已经了解过了。
 
-```
+```go
 func foo(l *sync.RWMutex) {
     fmt.Println("in foo")
     l.Lock()
@@ -247,7 +236,6 @@ func main() {
     l := &sync.RWMutex{}
     foo(l)
 }
-
 ```
 
 运行这个程序，你就会得到死锁的错误输出，在Go运行的时候，很容易就能检测出来。
@@ -258,11 +246,11 @@ func main() {
 
 当一个writer请求锁的时候，如果已经有一些活跃的reader，它会等待这些活跃的reader完成，才有可能获取到锁，但是，如果之后活跃的reader再依赖新的reader的话，这些新的reader就会等待writer释放锁之后才能继续执行，这就形成了一个环形依赖： **writer依赖活跃的reader -> 活跃的reader依赖新来的reader -> 新来的reader依赖writer**。
 
-![](images/297868/c18e897967d29e2d5273b88afe626035.jpg)
+<img src="images/297868/c18e897967d29e2d5273b88afe626035.jpg" style="zoom:15%;" />
 
 这个死锁相当隐蔽，原因在于它和RWMutex的设计和实现有关。啥意思呢？我们来看一个计算阶乘(n!)的例子：
 
-```
+```go
 func main() {
     var mu sync.RWMutex
 
@@ -297,7 +285,6 @@ func factorial(m *sync.RWMutex, n int) int {
     time.Sleep(100 * time.Millisecond)
     return factorial(m, n-1) * n // 递归调用
 }
-
 ```
 
 factoria方法是一个递归计算阶乘的方法，我们用它来模拟reader。为了更容易地制造出死锁场景，我在这里加上了sleep的调用，延缓逻辑的执行。这个方法会调用读锁（第27行），在第33行递归地调用此方法，每次调用都会产生一次读锁的调用，所以可以不断地产生读锁的调用，而且必须等到新请求的读锁释放，这个读锁才能释放。
