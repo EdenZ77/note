@@ -128,20 +128,20 @@ func (rw *RWMutex) rUnlockSlow(r int32) {
 }
 ```
 
-第2行是对reader计数加1。你可能比较困惑的是，readerCount怎么还可能为负数呢？其实，这是因为，readerCount这个字段有双重含义：
+第2行是对reader计数加1。你可能比较困惑的是，readerCount 怎么还可能为负数呢？其实，这是因为 readerCount这个字段有双重含义：
 
 - 没有writer竞争或持有锁时，readerCount和我们正常理解的reader的计数是一样的；
 - 但是，如果有writer竞争锁或者持有锁时，那么，readerCount不仅仅承担着reader的计数功能，还能够标识当前是否有writer竞争或持有锁，在这种情况下，请求锁的reader的处理进入第4行，阻塞等待锁的释放。
 
 调用RUnlock的时候，我们需要将Reader的计数减去1（第8行），因为reader的数量减少了一个。但是，第8行的AddInt32的返回值还有另外一个含义。如果它是负值，就表示当前有writer竞争锁，在这种情况下，还会调用rUnlockSlow方法，检查是不是reader都释放读锁了，如果读锁都释放了，那么可以唤醒请求写锁的writer了。
 
-当一个或者多个reader持有锁的时候，竞争锁的writer会等待这些reader释放完，才可能持有这把锁。打个比方，在房地产行业中有条规矩叫做“ **买卖不破租赁**”，意思是说，就算房东把房子卖了，新业主也不能把当前的租户赶走，而是要等到租约结束后，才能接管房子。这和RWMutex的设计是一样的。当writer请求锁的时候，是无法改变既有的reader持有锁的现实的，也不会强制这些reader释放锁，它的优先权只是限定后来的reader不要和它抢。
+当一个或者多个reader持有锁的时候，竞争锁的writer会等待这些reader释放完，才可能持有这把锁。当writer请求锁的时候，是无法改变既有的reader持有锁的现实的，也不会强制这些reader释放锁，它的优先权只是限定后来的reader不要和它抢。
 
 所以，rUnlockSlow将持有锁的reader计数减少1的时候，会检查既有的reader是不是都已经释放了锁，如果都释放了锁，就会唤醒writer，让writer持有锁。
 
 ## Lock
 
-RWMutex是一个多writer多reader的读写锁，所以同时可能有多个writer和reader。那么，为了避免writer之间的竞争，RWMutex就会使用一个Mutex来保证writer的互斥。
+那么，为了避免writer之间的竞争，RWMutex会使用一个Mutex来保证writer的互斥。
 
 一旦一个writer获得了内部的互斥锁，就会反转readerCount字段，把它从原来的正整数readerCount(>=0)修改为负数（readerCount-rwmutexMaxReaders），让这个字段保持两个含义（既保存了reader的数量，又表示当前有writer）。
 
@@ -166,9 +166,7 @@ func (rw *RWMutex) Lock() {
 
 ## Unlock
 
-当一个writer释放锁的时候，它会再次反转readerCount字段。可以肯定的是，因为当前锁由writer持有，所以，readerCount字段是反转过的，并且减去了rwmutexMaxReaders这个常数，变成了负数。所以，这里的反转方法就是给它增加rwmutexMaxReaders这个常数值。
-
-既然writer要释放锁了，那么就需要唤醒之后新来的reader，不必再阻塞它们了，让它们开开心心地继续执行就好了。
+当一个writer释放锁的时候，它会再次反转readerCount字段。既然writer要释放锁了，那么就需要唤醒之后新来的reader，不必再阻塞它们了，让它们开开心心地继续执行就好了。
 
 在RWMutex的Unlock返回之前，需要把内部的互斥锁释放。释放完毕后，其他的writer才可以继续竞争这把锁。
 
@@ -188,19 +186,168 @@ func (rw *RWMutex) Unlock() {
 
 在这段代码中，我删除了race的处理和异常情况的检查，总体看来还是比较简单的。这里有几个重点，我要再提醒你一下。首先，你要理解readerCount这个字段的含义以及反转方式。其次，你还要注意字段的更改和内部互斥锁的顺序关系。在Lock方法中，是先获取内部互斥锁，才会修改的其他字段；而在Unlock方法中，是先修改的其他字段，才会释放内部互斥锁，这样才能保证字段的修改也受到互斥锁的保护。
 
-好了，到这里我们就完整学习了RWMutex的概念和实现原理。RWMutex的应用场景非常明确，就是解决readers-writers问题。学完了今天的内容，之后当你遇到这类问题时，要优先想到RWMutex。另外，Go并发原语代码实现的质量都很高，非常精炼和高效，所以，你可以通过看它们的实现原理，学习一些编程的技巧。当然，还有非常重要的一点就是要知道reader或者writer请求锁的时候，既有的reader/writer和后续请求锁的reader/writer之间的（释放锁/请求锁）顺序关系。
-
-有个很有意思的事儿，就是官方的文档对RWMutex介绍是错误的，或者说是 [不明确的](https://github.com/golang/go/issues/41555)，在下一个版本（Go 1.16）中，官方会更改对RWMutex的介绍，具体是这样的：
-
-> A RWMutex is a reader/writer mutual exclusion lock.
-
-> The lock can be held by any number of readers or a single writer, and
-
-> a blocked writer also blocks new readers from acquiring the lock.
-
-这个描述是相当精确的，它指出了RWMutex可以被谁持有，以及writer比后续的reader有获取锁的优先级。
+好了，到这里我们就完整学习了RWMutex的概念和实现原理。RWMutex的应用场景非常明确，就是解决readers-writers问题。学完了今天的内容，之后当你遇到这类问题时，要优先想到RWMutex。另外，Go并发原语代码实现的质量都很高，非常精炼和高效，所以，你可以通过看它们的实现原理，学习一些编程的技巧。
 
 虽然RWMutex暴露的API也很简单，使用起来也没有复杂的逻辑，但是和Mutex一样，在实际使用的时候，也会很容易踩到一些坑。接下来，我给你重点介绍3个常见的踩坑点。
+
+
+
+## 场景分析
+
+让我们通过一个具体场景来分析 `RWMutex` 的工作流程和字段变化。场景顺序：写锁加锁 → 三个读锁加锁 → 写锁释放 → 先后释放两个读锁 → 来一个写锁请求 → 最后释放第三个读锁。
+
+### 步骤 1：写者加锁
+
+1. 获取底层锁：
+   `rw.w.Lock()` → 其他写者会被阻塞在此
+2. 翻转 `readerCount`：
+   `atomic.AddInt32(&rw.readerCount, -rwmutexMaxReaders)` ​结果​：`readerCount = 0 - 1073741824 = -1073741824`（负数表示当前有writer）
+3. 计算剩余读者：
+   `r = (-1073741824) + 1073741824 = 0` → 无活跃读者
+4. 跳过等待：因 `r = 0`，写者直接进入临界区。
+
+此时状态：
+
+```go
+rw.w = locked            // 底层锁已被写者占用
+rw.readerCount = -1073741824  // 标记有写者（阻塞新读者）
+rw.readerWait = 0         // 记录 writer 请求锁时需要等待 read 完成的 reader 的数量；
+writerSem = 0             // 写者无需阻塞
+```
+
+### 步骤 2：第一个读者加锁
+
+1. 增加 `readerCount`：`atomic.AddInt32(&rw.readerCount, 1) = -1073741824 + 1 = -1073741823`
+2. 检查负值：`-1073741823 < 0` → 读者阻塞在 `readerSem`。
+
+此时状态：
+
+```go
+rw.readerCount = -1073741823  // 值更接近0，但仍是负数
+readerSem = 1阻塞              // 读者1在信号量上休眠
+```
+
+### 步骤 3：第二个读者加锁
+
+1. 增加 `readerCount`：`-1073741823 + 1 = -1073741822`
+2. 检查负值：仍 `< 0` → 阻塞在 `readerSem`。
+
+此时状态：
+
+```go
+rw.readerCount = -1073741822
+readerSem = 2阻塞              // 两个读者在信号量上排队
+```
+
+### 步骤 4：第三个读者加锁
+
+1. 增加 `readerCount`：`-1073741822 + 1 = -1073741821`
+2. 检查负值：仍 `< 0` → 阻塞在 `readerSem`。
+
+此时状态：
+
+```go
+rw.readerCount = -1073741821
+readerSem = 3阻塞              // 三个读者均被阻塞
+```
+
+### 步骤 5：写者释放锁
+
+1. 恢复 `readerCount`：
+   `atomic.AddInt32(&rw.readerCount, rwmutexMaxReaders)`
+   `-1073741821 + 1073741824 = 3`，结果​​：`r = 3`（代表有 3 个阻塞读者）
+2. 唤醒阻塞读者：循环 3 次 `runtime_Semrelease(&rw.readerSem)` → 唤醒所有 3 个读者
+3. 释放底层锁：`rw.w.Unlock()` 
+
+此时状态：
+
+```go
+rw.w = unlocked          // 底层锁释放
+rw.readerCount = 3        // 三个活跃读者
+readerSem = 0             // 无阻塞读者
+writerSem = 0             // 无阻塞写者
+```
+
+### 步骤 6：释放第一个读锁
+
+- 操作：`readerCount = 3 - 1 = 2`
+- 判断：`2 >= 0` → 直接返回（无慢路径）
+
+此时状态：
+
+```go
+rw.readerCount = 2        // 剩余两个活跃读者
+```
+
+### 步骤 7：释放第二个读锁
+
+- 操作：`readerCount = 2 - 1 = 1`
+- 判断：`1 >= 0` → 直接返回
+
+此时状态：
+
+```go
+rw.readerCount = 1        // 仅剩一个活跃读者（读者3）
+```
+
+### 步骤 8：新写锁请求
+
+1. 获取底层锁：`rw.w.Lock()` → 成功（无竞争）
+2. 翻转 `readerCount`：
+   `atomic.AddInt32(&rw.readerCount, -1073741824) = 1 - 1073741824 = -1073741823`
+3. 计算剩余读者：
+   `r = (-1073741823) + 1073741824 = 1`（有一个活跃读者）
+4. 设置等待计数器：
+   `atomic.AddInt32(&rw.readerWait, 1) = 0 + 1 = 1`（需等待1个读者）
+5. 写者阻塞：
+   因 `readerWait = 1 ≠ 0`，写者​阻塞​​在 `writerSem` 上
+
+此时状态：
+
+```go
+rw.w = locked            // 底层锁被写者占用
+rw.readerCount = -1073741823  // 负值，表示有写者（阻塞新读者）
+rw.readerWait = 1         // 需等待1个读者退出
+writerSem = 1阻塞         // 写者在信号量上休眠
+```
+
+### 步骤 9：释放第三个读锁
+
+1. 减少计数：
+   `r := atomic.AddInt32(&rw.readerCount, -1) = -1073741823 -1 = -1073741824`
+2. 进入慢路径：因 `r < 0` → 调用 `rUnlockSlow(r)`
+
+```go
+func (rw *RWMutex) rUnlockSlow(r int32) {
+    if atomic.AddInt32(&rw.readerWait, -1) == 0 { // 1-1=0
+        runtime_Semrelease(&rw.writerSem, false, 1) // 唤醒写者！
+    }
+}
+```
+
+- 操作：`readerWait = 1 - 1 = 0`
+- 唤醒写者：因 `readerWait == 0`，释放 `writerSem`
+
+此时状态：
+
+```go
+rw.readerCount = -1073741824  // 仍为负
+rw.readerWait = 0         // 归零
+writerSem = 0             // 写者被唤醒
+```
+
+1. 写者阻塞条件：
+   只要 `readerWait > 0`（有活跃读者），写者就在 `writerSem` 阻塞
+2. 读者唤醒写者：
+   最后一个读者退出时：
+   - 减少 `readerWait` 并检查归零
+   - 归零时释放 `writerSem` 唤醒写者
+3. 新读者处理：
+   从写者翻转 `readerCount` 开始（变为负值），后续所有新读者直接阻塞在 `readerSem`，直到未来写者释放。
+
+该流程保证：**写者会等待所有旧读者退出，同时阻塞所有新读者**，避免写者饥饿。
+
+
 
 # RWMutex的3个踩坑点
 
@@ -240,13 +387,11 @@ func main() {
 
 运行这个程序，你就会得到死锁的错误输出，在Go运行的时候，很容易就能检测出来。
 
-第二种死锁的场景有点隐蔽。我们知道，有活跃reader的时候，writer会等待，如果我们在reader的读操作时调用writer的写操作（它会调用Lock方法），那么，这个reader和writer就会形成互相依赖的死锁状态。Reader想等待writer完成后再释放锁，而writer需要这个reader释放锁之后，才能不阻塞地继续执行。这是一个读写锁常见的死锁场景。
+第二种死锁的场景有点隐蔽。我们知道，有活跃reader的时候，writer会等待，如果我们在reader的读操作时调用writer的写操作（它会调用Lock方法），那么，这个reader和writer就会形成互相依赖的死锁状态。reader想等待writer完成后再释放锁，而writer需要这个reader释放锁之后，才能不阻塞地继续执行。这是一个读写锁常见的死锁场景。
 
 第三种死锁的场景更加隐蔽。
 
 当一个writer请求锁的时候，如果已经有一些活跃的reader，它会等待这些活跃的reader完成，才有可能获取到锁，但是，如果之后活跃的reader再依赖新的reader的话，这些新的reader就会等待writer释放锁之后才能继续执行，这就形成了一个环形依赖： **writer依赖活跃的reader -> 活跃的reader依赖新来的reader -> 新来的reader依赖writer**。
-
-<img src="images/297868/c18e897967d29e2d5273b88afe626035.jpg" style="zoom:15%;" />
 
 这个死锁相当隐蔽，原因在于它和RWMutex的设计和实现有关。啥意思呢？我们来看一个计算阶乘(n!)的例子：
 
@@ -335,8 +480,3 @@ factoria方法是一个递归计算阶乘的方法，我们用它来模拟reader
 
 ![](images/297868/695b9aa6027b5d3a61e92cbcbba10042.jpg)
 
-# 思考题
-
-请你写一个扩展的读写锁，比如提供TryLock，查询当前是否有writer、reader的数量等方法。
-
-欢迎在留言区写下你的思考和答案，我们一起交流讨论。如果你觉得有所收获，也欢迎你把今天的内容分享给你的朋友或同事。
