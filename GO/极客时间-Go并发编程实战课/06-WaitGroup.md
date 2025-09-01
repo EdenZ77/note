@@ -1,27 +1,14 @@
 # 06 | WaitGroup：协同等待，任务编排利器
-你好，我是鸟窝。
-
-WaitGroup，我们以前都多多少少学习过，或者是使用过。其实，WaitGroup很简单，就是package sync用来做任务编排的一个并发原语。它要解决的就是并发-等待的问题：现在有一个goroutine A 在检查点（checkpoint）等待一组goroutine全部完成，如果在执行任务的这些goroutine还没全部完成，那么goroutine A就会阻塞在检查点，直到所有goroutine都完成后才能继续执行。
-
-我们来看一个使用WaitGroup的场景。
-
-比如，我们要完成一个大的任务，需要使用并行的goroutine执行三个小任务，只有这三个小任务都完成，我们才能去执行后面的任务。如果通过轮询的方式定时询问三个小任务是否完成，会存在两个问题：一是，性能比较低，因为三个小任务可能早就完成了，却要等很长时间才被轮询到；二是，会有很多无谓的轮询，空耗CPU资源。
-
-那么，这个时候使用WaitGroup并发原语就比较有效了，它可以阻塞等待的goroutine。等到三个小任务都完成了，再即时唤醒它们。
-
-其实，很多操作系统和编程语言都提供了类似的并发原语。比如，Linux中的barrier、Pthread（POSIX线程）中的barrier、C++中的std::barrier、Java中的CyclicBarrier和CountDownLatch等。由此可见，这个并发原语还是一个非常基础的并发类型。所以，我们要认真掌握今天的内容，这样就可以举一反三，轻松应对其他场景下的需求了。
-
-我们还是从WaitGroup的基本用法学起吧。
+其实，WaitGroup很简单，就是package sync用来做任务编排的一个并发原语。它要解决的就是并发-等待的问题：现在有一个goroutine A 在检查点（checkpoint）等待一组goroutine全部完成，如果在执行任务的这些goroutine还没全部完成，那么goroutine A就会阻塞在检查点，直到这些goroutine都完成后才能继续执行。
 
 ## WaitGroup的基本用法
 
 Go标准库中的WaitGroup提供了三个方法，保持了Go简洁的风格。
 
-```
+```go
     func (wg *WaitGroup) Add(delta int)
     func (wg *WaitGroup) Done()
     func (wg *WaitGroup) Wait()
-
 ```
 
 我们分别看下这三个方法：
@@ -34,7 +21,7 @@ Go标准库中的WaitGroup提供了三个方法，保持了Go简洁的风格。
 
 在这个例子中，我们使用了以前实现的计数器struct。我们启动了10个worker，分别对计数值加一，10个worker都完成后，我们期望输出计数器的值。
 
-```
+```go
 // 线程安全的计数器
 type Counter struct {
     mu    sync.Mutex
@@ -73,7 +60,6 @@ func main() {
     // 输出当前计数器的值
     fmt.Println(counter.Count())
 }
-
 ```
 
 我们一起来分析下这段代码。
@@ -89,108 +75,87 @@ func main() {
 
 ## WaitGroup的实现
 
-首先，我们看看WaitGroup的数据结构。它包括了一个noCopy的辅助字段，一个state1记录WaitGroup状态的数组。
+首先，我们看看WaitGroup的数据结构。它包括了一个noCopy的辅助字段。noCopy的辅助字段，主要就是辅助vet工具检查是否通过copy赋值这个WaitGroup实例。我会在后面和你详细分析这个字段；
 
-- noCopy的辅助字段，主要就是辅助vet工具检查是否通过copy赋值这个WaitGroup实例。我会在后面和你详细分析这个字段；
-- state1，一个具有复合意义的字段，包含WaitGroup的计数、阻塞在检查点的waiter数和信号量。
+WaitGroup的数据结构定义如下：
 
-WaitGroup的数据结构定义以及state信息的获取方法如下：
-
-```
+```go
 type WaitGroup struct {
-    // 避免复制使用的一个技巧，可以告诉vet工具违反了复制使用的规则
-    noCopy noCopy
-    // 64bit(8bytes)的值分成两段，高32bit是计数值，低32bit是waiter的计数
-    // 另外32bit是用作信号量的
-    // 因为64bit值的原子操作需要64bit对齐，但是32bit编译器不支持，所以数组中的元素在不同的架构中不一样，具体处理看下面的方法
-    // 总之，会找到对齐的那64bit作为state，其余的32bit做信号量
-    state1 [3]uint32
-}
+	noCopy noCopy
 
-// 得到state的地址和信号量的地址
-func (wg *WaitGroup) state() (statep *uint64, semap *uint32) {
-    if uintptr(unsafe.Pointer(&wg.state1))%8 == 0 {
-        // 如果地址是64bit对齐的，数组前两个元素做state，后一个元素做信号量
-        return (*uint64)(unsafe.Pointer(&wg.state1)), &wg.state1[2]
-    } else {
-        // 如果地址是32bit对齐的，数组后两个元素用来做state，它可以用来做64bit的原子操作，第一个元素32bit用来做信号量
-        return (*uint64)(unsafe.Pointer(&wg.state1[1])), &wg.state1[0]
-    }
+	state atomic.Uint64 // high 32 bits are counter, low 32 bits are waiter count.
+	sema  uint32
 }
-
 ```
-
-因为对64位整数的原子操作要求整数的地址是64位对齐的，所以针对64位和32位环境的state字段的组成是不一样的。
-
-在64位环境下，state1的第一个元素是waiter数，第二个元素是WaitGroup的计数值，第三个元素是信号量。
-
-![](images/298516/71b5fyy6284140986d04c0b6f87aedea.jpg)
-
-在32位环境下，如果state1不是64位对齐的地址，那么state1的第一个元素是信号量，后两个元素分别是waiter数和计数值。
-
-![](images/298516/22c40ac54cfeb53669a6ae39020c23ac.jpg)
 
 然后，我们继续深入源码，看一下Add、Done和Wait这三个方法的实现。
 
 在查看这部分源码实现时，我们会发现，除了这些方法本身的实现外，还会有一些额外的代码，主要是race检查和异常检查的代码。其中，有几个检查非常关键，如果检查不通过，会出现panic，这部分内容我会在下一小节分析WaitGroup的错误使用场景时介绍。现在，我们先专注在Add、Wait和Done本身的实现代码上。
 
-我先为你梳理下 **Add方法的逻辑**。Add方法主要操作的是state的计数部分。你可以为计数值增加一个delta值，内部通过原子操作把这个值加到计数值上。需要注意的是，这个delta也可以是个负数，相当于为计数值减去一个值，Done方法内部其实就是通过Add(-1)实现的。
-
-它的实现代码如下：
-
-```
+```go
 func (wg *WaitGroup) Add(delta int) {
-    statep, semap := wg.state()
-    // 高32bit是计数值v，所以把delta左移32，增加到计数上
-    state := atomic.AddUint64(statep, uint64(delta)<<32)
-    v := int32(state >> 32) // 当前计数值
-    w := uint32(state) // waiter count
+	state := wg.state.Add(uint64(delta) << 32)
+	v := int32(state >> 32)
+	w := uint32(state)
 
-    if v > 0 || w == 0 {
-        return
-    }
-
-    // 如果计数值v为0并且waiter的数量w不为0，那么state的值就是waiter的数量
-    // 将waiter的数量设置为0，因为计数值v也是0,所以它们俩的组合*statep直接设置为0即可。此时需要并唤醒所有的waiter
-    *statep = 0
-    for ; w != 0; w-- {
-        runtime_Semrelease(semap, false, 0)
-    }
+	if v < 0 {
+		panic("sync: negative WaitGroup counter")
+	}
+    // w != 0：存在等待者（Wait 已被调用）
+    // delta > 0：当前 Add 是增加计数（正值）
+    // v == int32(delta)：操作后的计数器值正好等于 delta（说明原始计数为0）
+    //	核心规则：计数器从0变正值必须在任何Wait调用之前完成
+	if w != 0 && delta > 0 && v == int32(delta) {
+		panic("sync: WaitGroup misuse: Add called concurrently with Wait")
+	}
+    // 判断是否需要唤醒等待者
+    // v > 0：计数器仍大于0（还有未完成的任务）
+    // w == 0：没有等待者（无人阻塞）
+    // 只有当 v == 0 && w > 0（任务完成且有等待者）时才继续执行唤醒流程
+	if v > 0 || w == 0 {
+		return
+	}
+	// 确认状态未被并发修改
+    // 在决定唤醒前再加载一次状态，比较当前状态与之前决策时状态
+	if wg.state.Load() != state {
+		panic("sync: WaitGroup misuse: Add called concurrently with Wait")
+	}
+	// 将两部分同时置为0，确保被唤醒的协程能看到清零的状态
+	wg.state.Store(0)
+	for ; w != 0; w-- {
+		runtime_Semrelease(&wg.sema, false, 0)
+	}
 }
 
-// Done方法实际就是计数器减1
 func (wg *WaitGroup) Done() {
-    wg.Add(-1)
+	wg.Add(-1)
 }
-
 ```
 
-Wait方法的实现逻辑是：不断检查state的值。如果其中的计数值变为了0，那么说明所有的任务已完成，调用者不必再等待，直接返回。如果计数值大于0，说明此时还有任务没完成，那么调用者就变成了等待者，需要加入waiter队列，并且阻塞住自己。
+Wait 方法的主干代码如下：
 
-其主干实现代码如下：
-
-```
+```go
 func (wg *WaitGroup) Wait() {
-    statep, semap := wg.state()
-
-    for {
-        state := atomic.LoadUint64(statep)
-        v := int32(state >> 32) // 当前计数值
-        w := uint32(state) // waiter的数量
-        if v == 0 {
-            // 如果计数值为0, 调用这个方法的goroutine不必再等待，继续执行它后面的逻辑即可
-            return
-        }
-        // 否则把waiter数量加1。期间可能有并发调用Wait的情况，所以最外层使用了一个for循环
-        if atomic.CompareAndSwapUint64(statep, state, state+1) {
-            // 阻塞休眠等待
-            runtime_Semacquire(semap)
-            // 被唤醒，不再阻塞，返回
-            return
-        }
-    }
+	for {
+		state := wg.state.Load()
+		v := int32(state >> 32)
+		w := uint32(state)
+        // 计数器已归零，直接返回，无需等待
+		if v == 0 {
+			return
+		}
+		// 尝试将自己注册为等待者
+		if wg.state.CompareAndSwap(state, state+1) {
+			runtime_Semacquire(&wg.sema)
+            // 当被唤醒时，状态必须为0，确保WaitGroup没有被提前重用
+            // 因为计数器归零时，Add方法会将状态置为0；如果唤醒后状态不为0，说明在此之间调用了Add方法，违反了WaitGroup使用规则
+			if wg.state.Load() != 0 {
+				panic("sync: WaitGroup is reused before previous Wait has returned")
+			}
+			return
+		}
+	}
 }
-
 ```
 
 ## 使用WaitGroup时的常见错误
@@ -201,15 +166,13 @@ func (wg *WaitGroup) Wait() {
 
 ### 常见问题一：计数器设置为负值
 
-WaitGroup的计数器的值必须大于等于0。我们在更改这个计数值的时候，WaitGroup会先做检查，如果计数值被设置为负数，就会导致panic。
-
-一般情况下，有两种方法会导致计数器设置为负数。
+WaitGroup的计数器的值必须大于等于0。如果计数值为负数，就会导致panic。一般情况下，有两种方法会导致计数器设置为负数。
 
 第一种方法是： **调用Add的时候传递一个负数**。如果你能保证当前的计数器加上这个负数后还是大于等于0的话，也没有问题，否则就会导致panic。
 
 比如下面这段代码，计数器的初始值为10，当第一次传入-10的时候，计数值被设置为0，不会有啥问题。但是，再紧接着传入-1以后，计数值就被设置为负数了，程序就会出现panic。
 
-```
+```go
 func main() {
     var wg sync.WaitGroup
     wg.Add(10)
@@ -218,7 +181,6 @@ func main() {
 
     wg.Add(-1)//将-1作为参数调用Add，如果加上-1计数值就会变为负数。这是不对的，所以会触发panic
 }
-
 ```
 
 第二个方法是： **调用Done方法的次数过多，超过了WaitGroup的计数值**。
@@ -229,7 +191,7 @@ func main() {
 
 比如下面这个例子中，多调用了一次Done方法后，会导致计数值为负，所以程序运行到这一行会出现panic。
 
-```
+```go
 func main() {
     var wg sync.WaitGroup
     wg.Add(1)
@@ -238,7 +200,6 @@ func main() {
 
     wg.Done()
 }
-
 ```
 
 ### 常见问题二：不期望的Add时机
@@ -366,13 +327,12 @@ func main() {
 
 noCopy字段的类型是noCopy，它只是一个辅助的、用来帮助vet检查用的类型:
 
-```
+```go
 type noCopy struct{}
 
 // Lock is a no-op used by -copylocks checker from `go vet`.
 func (*noCopy) Lock()   {}
 func (*noCopy) Unlock() {}
-
 ```
 
 如果你想要自己定义的数据结构不被复制使用，或者说，不能通过vet工具检查出复制使用的报警，就可以通过嵌入noCopy这个数据类型来实现。
@@ -383,7 +343,7 @@ func (*noCopy) Unlock() {}
 
 有网友在Go的 [issue 28123](https://github.com/golang/go/issues/28123) 中提了以下的例子，你能发现这段代码有什么问题吗？
 
-```
+```go
 type TestStruct struct {
 	Wait sync.WaitGroup
 }
@@ -398,7 +358,6 @@ func main() {
 	t.Wait.Done()
 	fmt.Println("Finished")
 }
-
 ```
 
 这段代码最大的一个问题，就是第9行copy了WaitGroup的实例w。虽然这段代码能执行成功，但确实是违反了WaitGroup使用之后不要复制的规则。在项目中，我们可以通过vet工具检查出这样的错误。
@@ -429,8 +388,3 @@ Kubernetes [issue 59574](https://github.com/kubernetes/kubernetes/pull/59574) �
 
 ![](images/298516/845yyf00c6db85c0yy59867e6de77dff.jpg)
 
-## 思考题
-
-通常我们可以把WaitGroup的计数值，理解为等待要完成的waiter的数量。你可以试着扩展下WaitGroup，来查询WaitGroup的当前的计数值吗？
-
-欢迎在留言区写下你的思考和答案，我们一起交流讨论。如果你觉得有所收获，也欢迎你把今天的内容分享给你的朋友或同事。
