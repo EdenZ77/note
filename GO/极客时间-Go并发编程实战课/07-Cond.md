@@ -1,7 +1,5 @@
 # 07 | Cond：条件变量的实现机制及避坑指南
-你好，我是鸟窝。
-
-在写Go程序之前，我曾经写了10多年的Java程序，也面试过不少Java程序员。在Java面试中，经常被问到的一个知识点就是等待/通知（wait/notify）机制。面试官经常会这样考察候选人：请实现一个限定容量的队列（queue），当队列满或者空的时候，利用等待/通知机制实现阻塞或者唤醒。
+在写Go程序之前，我曾经写了10多年的Java程序，也面试过不少Java程序员。面试官经常会这样考察候选人：请实现一个限定容量的队列（queue），当队列满或者空的时候，利用等待/通知机制实现阻塞或者唤醒。
 
 在Go中，也可以实现一个类似的限定容量的队列，而且实现起来也比较简单，只要用条件变量（Cond）并发原语就可以。Cond并发原语相对来说不是那么常用，但是在特定的场景使用会事半功倍，比如你需要在唤醒一个或者所有的等待者做一些检查操作的时候。
 
@@ -11,7 +9,7 @@
 
 Go标准库提供Cond原语的目的是，为等待/通知场景下的并发问题提供支持。Cond通常应用于等待某个条件的一组goroutine，等条件变为true的时候，其中一个goroutine或者所有的goroutine都会被唤醒执行。
 
-顾名思义，Cond是和某个条件相关，这个条件需要一组goroutine协作共同完成，在条件还没有满足的时候，所有等待这个条件的goroutine都会被阻塞住，只有这一组goroutine通过协作达到了这个条件，等待的goroutine才可能继续进行下去。
+顾名思义，Cond是和某个条件相关，这个条件需要一组goroutine协作共同完成，在条件还没有满足的时候，所有等待这个条件的goroutine都会被阻塞住，只有这一组goroutine通过协作达到了这个条件，等待的goroutine才可以继续进行下去。
 
 那这里等待的条件是什么呢？等待的条件，可以是某个变量达到了某个阈值或者某个时间点，也可以是一组变量分别都达到了某个阈值，还可以是某个对象的状态满足了特定的条件。总结来讲，等待的条件是一种可以用来计算结果是true还是false的条件。
 
@@ -21,34 +19,40 @@ Go标准库提供Cond原语的目的是，为等待/通知场景下的并发问�
 
 ## Cond的基本用法
 
-标准库中的Cond并发原语初始化的时候，需要关联一个Locker接口的实例，一般我们使用Mutex或者RWMutex。
+标准库中的Cond并发原语初始化的时候，需要关联一个Locker接口的实例，一般我们使用 Mutex 或者 RWMutex。
 
 我们看一下Cond的实现：
 
-```
-type Cond
+```go
+type Cond struct {
+	noCopy noCopy
+	// L is held while observing or changing the condition
+	L Locker
+	notify  notifyList
+	checker copyChecker
+}
+
   func NeWCond(l Locker) *Cond
   func (c *Cond) Broadcast()
   func (c *Cond) Signal()
   func (c *Cond) Wait()
-
 ```
 
-首先，Cond关联的Locker实例可以通过c.L访问，它内部维护着一个先入先出的等待队列。
+首先，Cond 关联的 Locker 实例可以通过 c.L 访问，它内部维护着一个先入先出的等待队列。
 
-然后，我们分别看下它的三个方法Broadcast、Signal和Wait方法。
+然后，我们分别看下它的三个方法 Broadcast、Signal 和 Wait 方法。
 
-**Signal方法**，允许调用者Caller唤醒一个等待此Cond的goroutine。如果此时没有等待的goroutine，显然无需通知waiter；如果Cond等待队列中有一个或者多个等待的goroutine，则需要从等待队列中移除第一个goroutine并把它唤醒。在其他编程语言中，比如Java语言中，Signal方法也被叫做notify方法。
+**Signal方法**，允许调用者Caller唤醒一个等待此Cond的goroutine。如果此时没有等待的goroutine，显然无需通知waiter；如果Cond等待队列中有一个或者多个等待的goroutine，则需要从等待队列中移除第一个goroutine并把它唤醒。
 
-调用Signal方法时，不强求你一定要持有c.L的锁。
+调用Signal方法时，不强求你一定要持有 c.L 的锁。
 
-**Broadcast方法**，允许调用者Caller唤醒所有等待此Cond的goroutine。如果此时没有等待的goroutine，显然无需通知waiter；如果Cond等待队列中有一个或者多个等待的goroutine，则清空所有等待的goroutine，并全部唤醒。在其他编程语言中，比如Java语言中，Broadcast方法也被叫做notifyAll方法。
+**Broadcast方法**，允许调用者Caller唤醒所有等待此Cond的goroutine。如果此时没有等待的goroutine，显然无需通知waiter；如果Cond等待队列中有一个或者多个等待的goroutine，则清空所有等待的goroutine，并全部唤醒。
 
-同样地，调用Broadcast方法时，也不强求你一定持有c.L的锁。
+同样地，调用Broadcast方法时，也不强求你一定持有 c.L 的锁。
 
 **Wait方法**，会把调用者Caller放入Cond的等待队列中并阻塞，直到被Signal或者Broadcast的方法从等待队列中移除并唤醒。
 
-调用Wait方法时必须要持有c.L的锁。
+调用Wait方法时必须要持有 c.L 的锁。
 
 Go实现的sync.Cond的方法名是Wait、Signal和Broadcast，这是计算机科学中条件变量的 [通用方法名](https://en.wikipedia.org/wiki/Monitor_(synchronization)#Condition_variables_2)。比如，C语言中对应的方法名是pthread\_cond\_wait、pthread\_cond\_signal和 pthread\_cond\_broadcast。
 
@@ -56,9 +60,9 @@ Go实现的sync.Cond的方法名是Wait、Signal和Broadcast，这是计算机�
 
 每个运动员做好准备之后，将ready加一，表明自己做好准备了，同时调用Broadcast方法通知裁判员。因为裁判员只有一个，所以这里可以直接替换成Signal方法调用。调用Broadcast方法的时候，我们并没有请求c.L锁，只是在更改等待变量的时候才使用到了锁。
 
-裁判员会等待运动员都准备好（第22行）。虽然每个运动员准备好之后都唤醒了裁判员，但是裁判员被唤醒之后需要检查等待条件是否满足（ **运动员都准备好了**）。可以看到，裁判员被唤醒之后一定要检查等待条件，如果条件不满足还是要继续等待。
+裁判员会等待运动员都准备好。虽然每个运动员准备好之后都唤醒了裁判员，但是裁判员被唤醒之后需要检查等待条件是否满足（ **运动员都准备好了**）。可以看到，裁判员被唤醒之后一定要检查等待条件，如果条件不满足还是要继续等待。
 
-```
+```go
 func main() {
     c := sync.NewCond(&sync.Mutex{})
     var ready int
@@ -88,7 +92,6 @@ func main() {
     //所有的运动员是否就绪
     log.Println("所有运动员都准备就绪。比赛开始，3，2，1, ......")
 }
-
 ```
 
 你看，Cond的使用其实没那么简单。它的复杂在于：一，这段代码有时候需要加锁，有时候可以不加；二，Wait唤醒后需要检查条件；三，条件变量的更改，其实是需要原子操作或者互斥锁保护的。所以，有的开发者会认为，Cond是唯一难以掌握的Go并发原语。
@@ -99,7 +102,7 @@ func main() {
 
 其实，Cond的实现非常简单，或者说复杂的逻辑已经被Locker或者runtime的等待队列实现了。我们直接看看Cond的源码吧。
 
-```
+```go
 type Cond struct {
     noCopy noCopy
 
@@ -117,24 +120,37 @@ func NewCond(l Locker) *Cond {
 
 func (c *Cond) Wait() {
     c.checker.check()
-    // 增加到等待队列中
+    // 将当前goroutine添加到c.notify这个等待链表的末尾。这个函数返回一个唯一的 ticket（通常是链表中的位置或序号）
     t := runtime_notifyListAdd(&c.notify)
     c.L.Unlock()
-    // 阻塞休眠直到被唤醒
+    // 挂起（阻塞）当前 goroutine。它会一直阻塞，直到被 Signal() 或 Broadcast() 唤醒。唤醒时，它会检查自己的 ticket 是否有效。
     runtime_notifyListWait(&c.notify, t)
+    // 在 Wait() 返回后，仍然持有锁 c.L，可以安全地检查或修改共享状态。
+    // 重要提示：被唤醒并不保证条件已经成立！调用者必须在循环中检查条件（for !condition() { c.Wait() }），因为可能存在条件在唤醒后又被其他 goroutine 改变。
     c.L.Lock()
 }
 
+// 会查找 c.notify 链表中最早开始等待的 goroutine（通常是链表头部），并将其标记为可唤醒。具体的唤醒时机由 Go 调度器决定。
 func (c *Cond) Signal() {
     c.checker.check()
     runtime_notifyListNotifyOne(&c.notify)
 }
-
+// 会标记 c.notify 链表中所有正在等待的 goroutine 为可唤醒状态。同样，唤醒由调度器安排。
 func (c *Cond) Broadcast() {
     c.checker.check()
     runtime_notifyListNotifyAll(&c.notify）
 }
 
+// 这个机制是 noCopy 的运行时补充，确保即使绕过静态检查，在运行时复制 Cond 也会导致程序崩溃。
+type copyChecker uintptr
+
+func (c *copyChecker) check() {
+	if uintptr(*c) != uintptr(unsafe.Pointer(c)) &&
+		!atomic.CompareAndSwapUintptr((*uintptr)(c), 0, uintptr(unsafe.Pointer(c))) &&
+		uintptr(*c) != uintptr(unsafe.Pointer(c)) {
+		panic("sync.Cond is copied")
+	}
+}
 ```
 
 这部分源码确实很简单，我来带你学习下其中比较关键的逻辑。
@@ -155,7 +171,7 @@ Wait把调用者加入到等待队列时会释放锁，在被唤醒之后还会�
 
 以前面百米赛跑的程序为例，在调用cond.Wait时，把前后的Lock/Unlock注释掉，如下面的代码中的第20行和第25行：
 
-```
+```go
 func main() {
     c := sync.NewCond(&sync.Mutex{})
     var ready int
@@ -185,18 +201,17 @@ func main() {
     //所有的运动员是否就绪
     log.Println("所有运动员都准备就绪。比赛开始，3，2，1, ......")
 }
-
 ```
 
-再运行程序，就会报释放未加锁的panic：
+再运行程序，就会报释放未加锁的 panic：
 
 ![](images/299312/4780dca40087277be0d183674bc42c76.jpeg)
 
-出现这个问题的原因在于，cond.Wait方法的实现是，把当前调用者加入到notify队列之中后会释放锁（如果不释放锁，其他Wait的调用者就没有机会加入到notify队列中了），然后一直等待；等调用者被唤醒之后，又会去争抢这把锁。如果调用Wait之前不加锁的话，就有可能Unlock一个未加锁的Locker。所以切记， **调用cond.Wait方法之前一定要加锁**。
+出现这个问题的原因在于，cond.Wait 方法的实现是，把当前调用者加入到notify队列之中后会释放锁（如果不释放锁，其他Wait的调用者就没有机会加入到notify队列中了），然后一直等待；等调用者被唤醒之后，又会去争抢这把锁。如果调用Wait之前不加锁的话，就有可能Unlock一个未加锁的Locker。所以切记， **调用cond.Wait方法之前一定要加锁**。
 
 使用Cond的另一个常见错误是，只调用了一次Wait，没有检查等待条件是否满足，结果条件没满足，程序就继续执行了。出现这个问题的原因在于，误以为Cond的使用，就像WaitGroup那样调用一下Wait方法等待那么简单。比如下面的代码中，把第21行和第24行注释掉：
 
-```
+```go
 func main() {
     c := sync.NewCond(&sync.Mutex{})
     var ready int
@@ -226,10 +241,9 @@ func main() {
     //所有的运动员是否就绪
     log.Println("所有运动员都准备就绪。比赛开始，3，2，1, ......")
 }
-
 ```
 
-运行这个程序，你会发现，可能只有几个运动员准备好之后程序就运行完了，而不是我们期望的所有运动员都准备好才进行下一步。原因在于，每一个运动员准备好之后都会唤醒所有的等待者，也就是这里的裁判员，比如第一个运动员准备好后就唤醒了裁判员，结果这个裁判员傻傻地没做任何检查，以为所有的运动员都准备好了，就继续执行了。
+运行这个程序，你会发现，只有一个运动员准备好之后程序就运行完了，而不是我们期望的所有运动员都准备好才进行下一步。原因在于，每一个运动员准备好之后都会唤醒所有的等待者，也就是这里的裁判员，比如第一个运动员准备好后就唤醒了裁判员，结果这个裁判员傻傻地没做任何检查，以为所有的运动员都准备好了，就继续执行了。
 
 所以，我们一定要 **记住**，waiter goroutine被唤醒 **不等于** 等待条件被满足，只是有goroutine把它唤醒了而已，等待条件有可能已经满足了，也有可能不满足，我们需要进一步检查。你也可以理解为，等待者被唤醒，只是得到了一次检查的机会而已。
 
@@ -251,13 +265,13 @@ Cond在实际项目中被使用的机会比较少，原因总结起来有两个�
 
 开源项目中使用sync.Cond的代码少之又少，包括标准库原先一些使用Cond的代码也改成使用Channel实现了，所以别说找Cond相关的使用Bug了，想找到的一个使用的例子都不容易，我找了Kubernetes中的一个例子，我们一起看看它是如何使用Cond的。
 
-Kubernetes项目中定义了优先级队列 [PriorityQueue](https://github.com/kubernetes/kubernetes/blob/master/pkg/scheduler/internal/queue/scheduling_queue.go) 这样一个数据结构，用来实现Pod的调用。它内部有三个Pod的队列，即activeQ、podBackoffQ和unschedulableQ，其中activeQ就是用来调度的活跃队列（heap）。
+Kubernetes项目中定义了优先级队列 [PriorityQueue](https://github.com/kubernetes/kubernetes/blob/master/pkg/scheduler/internal/queue/scheduling_queue.go) 这样一个数据结构，用来实现Pod的调度。它内部有三个Pod的队列，即activeQ、podBackoffQ和unschedulableQ，其中activeQ就是用来调度的活跃队列（heap）。
 
 Pop方法调用的时候，如果这个队列为空，并且这个队列没有Close的话，会调用Cond的Wait方法等待。
 
 你可以看到，调用Wait方法的时候，调用者是持有锁的，并且被唤醒的时候检查等待条件（队列是否为空）。
 
-```
+```go
 // 从队列中取出一个元素
 func (p *PriorityQueue) Pop() (*framework.QueuedPodInfo, error) {
 		p.lock.Lock()
@@ -271,12 +285,11 @@ func (p *PriorityQueue) Pop() (*framework.QueuedPodInfo, error) {
 		......
 		return pInfo, err
 	}
-
 ```
 
 当activeQ增加新的元素时，会调用条件变量的Boradcast方法，通知被Pop阻塞的调用者。
 
-```
+```go
 // 增加元素到队列中
 func (p *PriorityQueue) Add(pod *v1.Pod) error {
 		p.lock.Lock()
@@ -291,12 +304,11 @@ func (p *PriorityQueue) Add(pod *v1.Pod) error {
 
 		return nil
 	}
-
 ```
 
 这个优先级队列被关闭的时候，也会调用Broadcast方法，避免被Pop阻塞的调用者永远hang住。
 
-```
+```go
 func (p *PriorityQueue) Close() {
 		p.lock.Lock()
 		defer p.lock.Unlock()
@@ -304,7 +316,6 @@ func (p *PriorityQueue) Close() {
 		p.closed = true
 		p.cond.Broadcast() //关闭时通知等待的goroutine，避免它们永远等待
 }
-
 ```
 
 你可以思考一下，这里为什么使用Cond这个并发原语，能不能换成Channel实现呢？
@@ -323,9 +334,3 @@ Cond是为等待/通知场景下的并发问题提供支持的。它提供了条
 
 ![](images/299312/477157d2dbe1b7e4511f56c2c9c2105d.jpg)
 
-## 思考题
-
-1. 一个Cond的waiter被唤醒的时候，为什么需要再检查等待条件，而不是唤醒后进行下一步？
-2. 你能否利用Cond实现一个容量有限的queue？
-
-欢迎在留言区写下你的思考和答案，我们一起交流讨论。如果你觉得有所收获，也欢迎你把今天的内容分享给你的朋友或同事。
