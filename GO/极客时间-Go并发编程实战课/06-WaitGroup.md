@@ -208,7 +208,7 @@ func main() {
 
 我们构造这样一个场景：只有部分的Add/Done执行完后，Wait就返回。我们看一个例子：启动四个goroutine，每个goroutine内部调用Add(1)然后调用Done()，主goroutine调用Wait等待任务完成。
 
-```
+```go
 func main() {
     var wg sync.WaitGroup
     go dosomething(100, &wg) // 启动第一个goroutine
@@ -228,14 +228,13 @@ func dosomething(millisecs time.Duration, wg *sync.WaitGroup) {
     fmt.Println("后台执行, duration:", duration)
     wg.Done()
 }
-
 ```
 
 在这个例子中，我们原本设想的是，等四个goroutine都执行完毕后输出Done的信息，但是它的错误之处在于，将WaitGroup.Add方法的调用放在了子gorotuine中。等主goorutine调用Wait的时候，因为四个任务goroutine一开始都休眠，所以可能WaitGroup的Add方法还没有被调用，WaitGroup的计数还是0，所以它并没有等待四个子goroutine执行完毕才继续执行，而是立刻执行了下一步。
 
 导致这个错误的原因是，没有遵循先完成所有的Add之后才Wait。要解决这个问题，一个方法是，预先设置计数值：
 
-```
+```go
 func main() {
     var wg sync.WaitGroup
     wg.Add(4) // 预先设定WaitGroup的计数值
@@ -256,12 +255,11 @@ func dosomething(millisecs time.Duration, wg *sync.WaitGroup) {
     fmt.Println("后台执行, duration:", duration)
     wg.Done()
 }
-
 ```
 
 另一种方法是在启动子goroutine之前才调用Add：
 
-```
+```go
 func main() {
     var wg sync.WaitGroup
 
@@ -284,20 +282,15 @@ func dosomething(millisecs time.Duration, wg *sync.WaitGroup) {
         wg.Done()
     }()
 }
-
 ```
 
 可见，无论是怎么修复，都要保证所有的Add方法是在Wait方法之前被调用的。
 
 ### 常见问题三：前一个Wait还没结束就重用WaitGroup
 
-“前一个Wait还没结束就重用WaitGroup”这一点似乎不太好理解，我借用田径比赛的例子和你解释下吧。在田径比赛的百米小组赛中，需要把选手分成几组，一组选手比赛完之后，就可以进行下一组了。为了确保两组比赛时间上没有冲突，我们在模型化这个场景的时候，可以使用WaitGroup。
+“前一个Wait还没结束就重用WaitGroup”这一点似乎不太好理解，我们看一个例子，初始设置WaitGroup的计数值为1，启动一个goroutine先调用Done方法，接着就调用Add方法，Add方法有可能和主goroutine并发执行。
 
-WaitGroup等一组比赛的所有选手都跑完后5分钟，才开始下一组比赛。下一组比赛还可以使用这个WaitGroup来控制，因为 **WaitGroup是可以重用的**。只要WaitGroup的计数值恢复到零值的状态，那么它就可以被看作是新创建的WaitGroup，被重复使用。
-
-但是，如果我们在WaitGroup的计数值还没有恢复到零值的时候就重用，就会导致程序panic。我们看一个例子，初始设置WaitGroup的计数值为1，启动一个goroutine先调用Done方法，接着就调用Add方法，Add方法有可能和主goroutine并发执行。
-
-```
+```go
 func main() {
     var wg sync.WaitGroup
     wg.Add(1)
@@ -308,7 +301,12 @@ func main() {
     }()
     wg.Wait() // 主goroutine等待，有可能和第7行并发执行
 }
-
+// 运行报错如下：
+// panic: sync: WaitGroup is reused before previous Wait has returned
+//
+// goroutine 1 [running]:
+// sync.(*WaitGroup).Wait(0x6ca3f8?)
+//	C:/Users/zhuqiqi/sdk/go1.21.0/src/sync/waitgroup.go:118 +0x74
 ```
 
 在这个例子中，第6行虽然让WaitGroup的计数恢复到0，但是因为第9行有个waiter在等待，如果等待Wait的goroutine，刚被唤醒就和Add调用（第7行）有并发执行的冲突，所以就会出现panic。
@@ -321,9 +319,12 @@ func main() {
 
 你可能会说了，为什么要把noCopy字段单独拿出来讲呢？一方面，把noCopy字段穿插到waitgroup代码中讲解，容易干扰我们对WaitGroup整体的理解。另一方面，也是非常重要的原因，noCopy是一个通用的计数技术，其他并发原语中也会用到，所以单独介绍有助于你以后在实践中使用这个技术。
 
-我们在 [第3讲](https://time.geekbang.org/column/article/296541) 学习Mutex的时候用到了vet工具。vet会对实现Locker接口的数据类型做静态检查，一旦代码中有复制使用这种数据类型的情况，就会发出警告。但是，WaitGroup同步原语不就是Add、Done和Wait方法吗？vet能检查出来吗？
+`go vet` 不仅检查类型本身是否实现 Lock/Unlock，还会递归分析其所有字段。`sync.WaitGroup` 通过一种巧妙的"标记字段"设计：
 
-其实是可以的。通过给WaitGroup添加一个noCopy字段，我们就可以为WaitGroup实现Locker接口，这样vet工具就可以做复制检查了。而且因为noCopy字段是未输出类型，所以WaitGroup不会暴露Lock/Unlock方法。
+1. 不直接实现 Lock/Unlock：保持核心逻辑纯净
+2. 包含 noCopy 字段：提供静态检测能力
+3. 递归传播机制：`go vet` 分析字段链
+4. 组合优于继承：符合 Go 语言哲学
 
 noCopy字段的类型是noCopy，它只是一个辅助的、用来帮助vet检查用的类型:
 
@@ -360,7 +361,7 @@ func main() {
 }
 ```
 
-这段代码最大的一个问题，就是第9行copy了WaitGroup的实例w。虽然这段代码能执行成功，但确实是违反了WaitGroup使用之后不要复制的规则。在项目中，我们可以通过vet工具检查出这样的错误。
+这段代码最大的一个问题，就是第9行 copy 了 WaitGroup 的实例 w。虽然这段代码能执行成功，但确实是违反了WaitGroup使用之后不要复制的规则。在项目中，我们可以通过vet工具检查出这样的错误。
 
 Docker [issue 28161](https://github.com/moby/moby/issues/28161) 和 [issue 27011](https://github.com/moby/moby/issues/27011) ，都是因为在重用WaitGroup的时候，没等前一次的Wait结束就Add导致的错误。Etcd [issue 6534](https://github.com/etcd-io/etcd/issues/6534) 也是重用WaitGroup的Bug，没有等前一个Wait结束就Add。
 
