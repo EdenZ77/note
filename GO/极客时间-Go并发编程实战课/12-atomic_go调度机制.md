@@ -107,8 +107,6 @@ Store 函数会把一个值存入到指定的 addr 地址中，即使在多处�
 
 # Value原理
 
-`Mutex`由**操作系统**实现，而`atomic`包中的原子操作则由**底层硬件**直接提供支持。在 CPU 实现的指令集里，有一些指令被封装进了`atomic`包，这些指令在执行的过程中是不允许中断（interrupt）的，因此原子操作可以在`lock-free`的情况下保证并发安全。
-
 ## 源码剖析
 
 ```go
@@ -280,6 +278,8 @@ func (v *Value) Store(val any) {
 	if val == nil {
 		panic("sync/atomic: store of nil value into Value")
 	}
+    // 这里 v 是 Store 方法的接收者（即 &config）
+    // 因为 Value 结构只有 1 个字段 v，所以 &config 的地址就是 config.v 的地址
 	vp := (*efaceWords)(unsafe.Pointer(v)) // Old value
 	vlp := (*efaceWords)(unsafe.Pointer(&val)) // New value
 	for {
@@ -320,23 +320,16 @@ func (v *Value) Store(val any) {
 }
 ```
 
-第一次存储时，需要同时设置类型指针（`typ`）和数据指针（`data`），这是一个两步操作，而这两个操作必须是原子性的。为了保证第一次存储的原子性，代码使用了一个标志：`firstStoreInProgress`。它是一个全局变量，类型为`byte`（占用1个字节，所以它的地址可以作为一个唯一的标识）。
+第一次存储时，需要同时设置类型指针（`typ`）和数据指针（`data`），这是一个两步操作，而这两个操作必须是原子性的。为了保证第一次存储的原子性，代码使用了一个标志：`firstStoreInProgress`。它是一个全局变量，类型为`byte`。
 
 在`Store`方法中：
 
-1. 首先检查如果`typ`为 nil，意味着还没有任何存储操作完成（可能是第一次存储，也可能其他 goroutine 正在第一次存储）。
-2. 如果 `typ` 为 nil，当前 goroutine 会尝试通过 CAS（CompareAndSwap）操作将 `typ` 从 nil 设置为`unsafe.Pointer(&firstStoreInProgress)`。这个标志表示第一次存储正在进行中。
+1. 首先检查如果`typ`为 nil，意味着还没有任何存储操作完成。
+2. 如果 `typ` 为 nil，当前 goroutine 会尝试通过 CAS（CompareAndSwap）操作将 `typ` 从 nil 设置为`unsafe.Pointer(&firstStoreInProgress)`。这个标志表示第一次存储正在进行中。这个标识的作用是临时占用`typ`字段，告诉其他 goroutine：第一次存储正在进行，请等待。当第一次存储完成时，`typ`会被替换成实际存储值的类型指针。
    - 在 CAS 之前，调用了`runtime_procPin()`，这个函数的作用是禁止当前 goroutine 被抢占（preemption）。这样做的目的是为了确保在第一次存储的过程中，当前 goroutine 不会被挂起，从而避免其他 goroutine 长时间等待（因为第一次存储的完成需要当前 goroutine 来完成）。
    - 如果 CAS 成功，那么当前 goroutine 就获得了完成第一次存储的权利，然后会设置`vp.data`和`vp.typ`（注意顺序：先设置 data，然后设置 typ）。最后解除抢占禁止（`runtime_procUnpin()`）。
    - 如果 CAS 失败（意味着有别的 goroutine 已经抢先进入了第一次存储），那么当前 goroutine 会解除抢占禁止，然后重新循环（等待）。
 3. 在循环中，如果检测到`typ`等于`unsafe.Pointer(&firstStoreInProgress)`，说明当前有另一个 goroutine 正在进行第一次存储，因此当前 goroutine 需要等待（通过 `continue` 重新循环）。由于持有第一次存储的 goroutine 禁用了抢占，所以它不会被挂起，可以很快完成第一次存储。因此，等待是通过 active spinning（主动循环）进行的。
-
-那么为什么使用一个全局变量`firstStoreInProgress`的地址呢？
-
-- 我们需要一个非 nil 的唯一标识，用来表示第一次存储正在进行中。使用一个全局变量的地址可以保证这个标识的唯一性（在整个程序运行期间，这个变量的地址是唯一的）。
-- 这个标识的作用是临时占用`typ`字段，告诉其他 goroutine：第一次存储正在进行，请等待。当第一次存储完成时，`typ`会被替换成实际存储值的类型指针。
-
-
 
 通过禁止抢占，我们可以让这个存储过程尽快完成，从而减少其他等待的Goroutine自旋的时间。
 
@@ -450,8 +443,6 @@ func (v *Value) Store(val any) {
 # 使用atomic实现Lock-Free queue
 
 atomic常常用来实现Lock-Free的数据结构，这次我会给你展示一个Lock-Free queue的实现。
-
-Lock-Free queue最出名的就是 Maged M. Michael 和 Michael L. Scott 1996年发表的 [论文](https://www.cs.rochester.edu/u/scott/papers/1996_PODC_queues.pdf) 中的算法，算法比较简单，容易实现，伪代码的每一行都提供了注释，我就不在这里贴出伪代码了，因为我们使用Go实现这个数据结构的代码几乎和伪代码一样：
 
 ```go
 package queue
