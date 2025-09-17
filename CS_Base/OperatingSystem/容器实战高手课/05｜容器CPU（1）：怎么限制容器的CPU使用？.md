@@ -50,7 +50,7 @@ spec:
 
 下面这张图里最长的带箭头横轴，我们可以把它看成一个时间轴。同时，它的上半部分代表Linux用户态（User space），下半部分代表内核态（Kernel space）。这里为了方便你理解，我们先假设只有一个CPU吧。
 
-![](images/311054/7dbd023628f5f4165abc23c1d67aca99.jpeg)
+<img src="images/311054/7dbd023628f5f4165abc23c1d67aca99.jpeg" style="zoom:20%;" />
 
 我们可以用上面这张图，把这些值挨个解释一下。
 
@@ -88,9 +88,43 @@ spec:
 
 另外一个是"st"，"st"是"steal"的缩写，是在虚拟机里用的一个CPU使用类型，表示有多少时间是被同一个宿主机上的其他虚拟机抢走的。
 
+#### nice
+
+核心概念：进程优先级与 `nice`值
+
+1. Linux 进程优先级：
+   - Linux 内核使用一个动态优先级系统来调度进程。
+   - 每个进程都有一个 静态优先级 (Static Priority) 和一个 动态优先级 (Dynamic Priority)。
+   - `nice`值直接影响的是静态优先级。
+2. `nice`值的范围与含义：
+   - 范围： `-20`到 `19`。
+   - 数值越小，优先级越高： `-20`是最高优先级（最“不 nice”，进程更霸道，更容易获得 CPU）。
+   - 数值越大，优先级越低： `19`是最低优先级（最“nice”，进程更谦让，更愿意让出 CPU）。
+   - 默认值： 用户进程通常默认 `nice = 0`。
+
+3. `ni`指标的含义：
+   - `top`命令中 `%Cpu(s)`行的 `ni`指标，专门统计 `nice`值 > 0（即 1 到 19）的进程用户态所消耗的 CPU 时间百分比。
+   - 它不包含：
+     - `nice = 0`的普通用户进程（这些计入 `us`）。
+     - `nice < 0`的高优先级进程（这些也计入 `us`，只有特权用户如 `root`才能设置负 `nice`值）。
+     - 进程的系统调用时间。
+
+为什么会有 `ni`？它的作用是什么？
+
+确保高优先级（`nice`值低或为负）的关键任务（如 Web 服务器、数据库、交互式应用）在 CPU 资源紧张时，能优先获得计算能力，保持响应速度。
+
+`ni`指标的意义：
+
+- 反映低优先级任务的 CPU 负载： `ni`值告诉你，有多少 CPU 时间被分配给了那些被刻意调低了优先级的后台任务。
+- 系统负载分析：
+  - 如果 `ni`值很高，同时 `us`和 `sy`不高，且 `id`很低：说明系统 CPU 资源主要被低优先级任务消耗。这可能意味着后台任务（如批量处理、报表生成、科学计算）正在大量运行，但管理员通过 `nice`确保了前台关键任务不受影响。
+  - 如果 `ni`值高，同时 `us`或 `sy`也很高，且 `id`很低：说明系统 CPU 资源非常紧张，即使是低优先级任务也不得不占用相当一部分 CPU（因为实在没有空闲资源了）。此时系统可能已过载，关键任务的性能可能开始受到影响。
+
+
+
 综合前面的内容，我再用表格为你总结一下：
 
-![](images/311054/a4f537187a16e872ebcc605d972672a3.jpeg)
+<img src="images/311054/a4f537187a16e872ebcc605d972672a3.jpeg" style="zoom:20%;" />
 
 ### CPU Cgroup
 
@@ -108,7 +142,7 @@ spec:
 
 这样操作以后，我们就建立了一个树状的控制组层级，你可以参考下面的示意图。
 
-![](images/311054/8b86bc86706b0bbfe8fe157ee21b6454.jpeg)
+<img src="images/311054/8b86bc86706b0bbfe8fe157ee21b6454.jpeg" style="zoom:20%;" />
 
 那么我们的每个控制组里，都有哪些CPU Cgroup相关的控制信息呢？这里我们需要看一下每个控制组目录中的内容：
 
@@ -153,7 +187,6 @@ cpu.cfs_period_us  cpu.cfs_quota_us  cpu.rt_period_us  cpu.rt_runtime_us  cpu.sh
 ```
 ./threads-cpu/threads-cpu 2 &
 echo $! > /sys/fs/cgroup/cpu/group2/group3/cgroup.procs
-
 ```
 
 在我们没有修改cpu.cfs\_quota\_us前，用top命令可以看到threads-cpu这个进程的CPU 使用是199%，近似2个CPU。
@@ -165,7 +198,6 @@ echo $! > /sys/fs/cgroup/cpu/group2/group3/cgroup.procs
 ```
 echo 150000 > /sys/fs/cgroup/cpu/group2/group3/cpu.cfs_quota_us
 echo 1024 > /sys/fs/cgroup/cpu/group2/group3/cpu.shares
-
 ```
 
 这时候我们再运行top，就会发现threads-cpu进程的CPU使用减小到了150%。这是因为我们设置的cpu.cfs\_quota\_us起了作用，限制了进程CPU的绝对值。
@@ -185,7 +217,6 @@ group3：
 echo $! > /sys/fs/cgroup/cpu/group2/group3/cgroup.procs #把程序的pid加入到控制组
 echo 150000 > /sys/fs/cgroup/cpu/group2/group3/cpu.cfs_quota_us #限制CPU为1.5CPU
 echo 1024 > /sys/fs/cgroup/cpu/group2/group3/cpu.shares
-
 ```
 
 group4：
@@ -195,7 +226,6 @@ group4：
 echo $! > /sys/fs/cgroup/cpu/group2/group4/cgroup.procs #把程序的pid加入到控制组
 echo 350000 > /sys/fs/cgroup/cpu/group2/group4/cpu.cfs_quota_us  #限制CPU为3.5CPU
 echo 3072 > /sys/fs/cgroup/cpu/group2/group3/cpu.shares # shares 比例 group4: group3 = 3:1
-
 ```
 
 好了，现在我们的节点上总共有4个CPU，而group3的程序需要消耗2个CPU，group4里的程序要消耗4个CPU。
