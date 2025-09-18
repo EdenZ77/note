@@ -278,8 +278,8 @@ func (v *Value) Store(val any) {
 	if val == nil {
 		panic("sync/atomic: store of nil value into Value")
 	}
-    // 这里 v 是 Store 方法的接收者（即 &config）
-    // 因为 Value 结构只有 1 个字段 v，所以 &config 的地址就是 config.v 的地址
+    // 这里 v 是 Store 方法的接收者
+    // 因为 Value 结构只有 1 个字段 v，所以此处的v就是 Value.v 的地址
 	vp := (*efaceWords)(unsafe.Pointer(v)) // Old value
 	vlp := (*efaceWords)(unsafe.Pointer(&val)) // New value
 	for {

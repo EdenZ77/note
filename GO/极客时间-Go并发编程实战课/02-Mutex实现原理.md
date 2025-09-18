@@ -326,13 +326,13 @@ for循环是不断尝试获取锁，如果获取不到，就通过runtime.Semacq
 
 Mutex 可能处于两种操作模式下： **正常模式** 和 **饥饿模式**。
 
-正常模式下，waiter 都是进入先入先出队列，被唤醒的 waiter 并不会直接持有锁，而是要和新来的 goroutine 进行竞争。新来的 goroutine 有先天的优势，它们正在 CPU 中运行，可能它们的数量还不少，所以，在高并发情况下，被唤醒的 waiter 可能比较悲剧地获取不到锁，这时，它会被插入到队列的前面。如果 waiter 获取不到锁的时间超过阈值1毫秒，那么，这个 Mutex 就进入到了饥饿模式。
+正常模式下，waiter 都是进入到先入先出的队列，被唤醒的 waiter 并不会直接持有锁，而是要和新来的 goroutine 进行竞争。新来的 goroutine 有先天的优势，它们正在 CPU 中运行，可能它们的数量还不少，所以，在高并发情况下，被唤醒的 waiter 可能比较悲剧地获取不到锁，这时，它会被插入到队列的前面。如果 waiter 获取不到锁的时间超过阈值1毫秒，那么，这个 Mutex 就进入到了饥饿模式。
 
 在饥饿模式下，Mutex 的拥有者将直接把锁交给队列最前面的 waiter。新来的 goroutine 不会尝试获取锁，即使锁没有被持有，它也不会去抢，也不会 spin，它会乖乖地加入到等待队列的尾部。
 
 如果拥有 Mutex 的 waiter 发现下面两种情况的其中之一，它就会把这个 Mutex 转换成正常模式:
 
-- 此 waiter 已经是队列中的最后一个 waiter 了，没有其它的等待锁的 goroutine 了；
+- 此 waiter 已经是队列中的最后一个 waiter 了，没有其它等待锁的 goroutine 了；
 - 此 waiter 的等待时间小于1毫秒。
 
 正常模式拥有更好的性能。饥饿模式是对公平性和性能的一种平衡，它避免了某些 goroutine 长时间的等待锁。在饥饿模式下，优先对待的是那些一直在等待的 waiter。
@@ -599,7 +599,7 @@ func runtime_SemacquireRWMutex(s *uint32, lifo bool, skipframes int)
 作用：原子递增`*s`，并唤醒队列中的第一个等待的Goroutine。`handoff` 的取值仅影响唤醒后的调度行为，而非唤醒对象：
 
 - `handoff=true`：立即调度被唤醒的 goroutine
-  - 当前 goroutine 通过 `goyield` 主动让出处理器（P），被唤醒的队首 goroutine 直接继承剩余时间片，无需等待调度器分配。
+  - 当前 goroutine 通过 `goyield` 主动让出处理器，被唤醒的队首 goroutine 直接继承剩余时间片，无需等待调度器分配。
   - 在 `sync.Mutex` 饥饿模式下，此行为确保等待最久的 goroutine 优先获得锁，避免其因新 goroutine 竞争而再次阻塞。
 - `handoff=false`：仅通知唤醒，不立即调度
   - 被唤醒的 goroutine 被加入可运行队列，由调度器按常规策略分配执行时间。
@@ -608,13 +608,11 @@ func runtime_SemacquireRWMutex(s *uint32, lifo bool, skipframes int)
 
 `runtime_canSpin(i int) bool`：判断当前 goroutine 是否满足自旋条件，以避免不必要的 CPU 资源浪费。
 
-
-
 ## runtime_doSpin()
 
 执行主动自旋，占用 CPU 时间片等待锁释放。
 
-- 在满足自旋条件时，**短暂占用 CPU** 等待锁释放，避免立即进入阻塞状态 。
+- 在满足自旋条件时，短暂占用 CPU 等待锁释放，避免立即进入阻塞状态 。
 - 自旋时间极短（约数十纳秒），对性能影响可控。
 
 
