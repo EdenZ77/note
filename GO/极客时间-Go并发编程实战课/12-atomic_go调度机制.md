@@ -405,7 +405,7 @@ func (v *Value) Store(val any) {
 
   - 最小抢占间隔： 为了避免过于频繁的抢占（例如，一个 G 刚被抢占后很快又被调度到，然后很快又被抢占）导致的性能开销甚至“活锁”（Goroutine 不断被抢占而无法完成有效工作），运行时设置了最小抢占间隔。`sysmon`不会在短时间内对同一个 G 重复发送抢占信号。
 
-  - 寄存器状态保存： 需要精确保存和恢复被中断点的所有寄存器状态，确保抢占操作对用户代码透明，就像在某个点发生了函数调用一样（虽然实际是异步插入的）。
+  - 寄存器状态保存： 需要精确保存和恢复被中断点的所有寄存器状态，确保抢占操作对用户代码透明。
 
 - 总结： 基于信号的异步抢占是 Go 调度器的一次革命性升级。它突破了协作式抢占对函数调用的依赖，利用操作系统信号机制实现了真正的强制中断能力。这极大地提高了 Go 调度器在应对复杂、任意用户代码时的鲁棒性、公平性和响应能力，特别是显著降低了 GC 的最大暂停时间，是 Go 成为高性能、低延迟系统开发语言的重要基石。
 
@@ -413,11 +413,11 @@ func (v *Value) Store(val any) {
 
 ## runtime_procPin与runtime_procUnpin
 
-在Go的运行时中，`runtime_procPin()`和`runtime_procUnpin()`这两个函数分别用于“禁止”和“恢复”当前Goroutine的抢占调度（preemption）。
+在Go的运行时中，`runtime_procPin() int`和`runtime_procUnpin()`这两个函数分别用于“禁止”和“恢复”当前Goroutine的抢占调度（preemption）。
 
-`runtime_procPin()`：
+`runtime_procPin() int`：
 
-- 这个函数会将当前Goroutine“钉”在当前的P（Processor，Go调度器中的一个概念）上，从而禁止被抢占（preemption）。
+- 这个函数会将当前Goroutine“钉”在当前的P（Processor，Go调度器中的一个概念）上，从而禁止被抢占（preemption）。返回当前P的ID，用于标识与Goroutine绑定的P。
 - 调用这个函数后，当前Goroutine会一直运行，不会被调度器挂起，除非它主动让出（比如调用某个阻塞函数）或者已经完成。
 - 在这个状态下，GC也会被延迟执行（因为GC需要STW（stop the world）），所以需要谨慎使用，避免长时间占用。
 
