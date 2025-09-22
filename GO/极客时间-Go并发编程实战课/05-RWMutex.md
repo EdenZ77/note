@@ -83,11 +83,11 @@ RWMutex包含一个Mutex，以及四个辅助字段writerSem、readerSem、reade
 
 ```go
 type RWMutex struct {
-	w           Mutex   // 互斥锁解决多个writer的竞争
-	writerSem   uint32  // writer信号量
-	readerSem   uint32  // reader信号量
-	readerCount int32   // reader的数量
-	readerWait  int32   // writer等待完成的reader的数量
+	w           Mutex        // held if there are pending writers
+	writerSem   uint32       // semaphore for writers to wait for completing readers
+	readerSem   uint32       // semaphore for readers to wait for completing writers
+	readerCount atomic.Int32 // number of pending readers
+	readerWait  atomic.Int32 // number of departing readers
 }
 
 const rwmutexMaxReaders = 1 << 30
@@ -292,7 +292,7 @@ rw.readerCount = 1        // 仅剩一个活跃读者（读者3）
 
 ### 步骤 8：新写锁请求
 
-1. 获取底层锁：`rw.w.Lock()` → 成功（无竞争）
+1. 获取底层锁：`rw.w.Lock()` → 成功
 2. 翻转 `readerCount`：
    `atomic.AddInt32(&rw.readerCount, -1073741824) = 1 - 1073741824 = -1073741823`
 3. 计算剩余读者：
@@ -336,8 +336,6 @@ rw.readerWait = 0         // 归零
 writerSem = 0             // 写者被唤醒
 ```
 
-1. 写者阻塞条件：
-   只要 `readerWait > 0`（有活跃读者），写者就在 `writerSem` 阻塞
 2. 读者唤醒写者：
    最后一个读者退出时：
    - 减少 `readerWait` 并检查归零
@@ -346,8 +344,6 @@ writerSem = 0             // 写者被唤醒
    从写者翻转 `readerCount` 开始（变为负值），后续所有新读者直接阻塞在 `readerSem`，直到未来写者释放。
 
 该流程保证：**写者会等待所有旧读者退出，同时阻塞所有新读者**，避免写者饥饿。
-
-
 
 # RWMutex的3个踩坑点
 
