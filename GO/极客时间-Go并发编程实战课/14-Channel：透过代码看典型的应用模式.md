@@ -430,7 +430,7 @@ func or(channels ...<-chan interface{}) <-chan interface{} {
 
 反射的代码比较简短，易于理解，主要就是构造出SelectCase slice，然后传递给reflect.Select语句。
 
-```
+```go
 func fanInReflect(chans ...<-chan interface{}) <-chan interface{} {
     out := make(chan interface{})
     go func() {
@@ -456,12 +456,11 @@ func fanInReflect(chans ...<-chan interface{}) <-chan interface{} {
     }()
     return out
 }
-
 ```
 
 递归模式也是在Channel大于2时，采用二分法递归merge。
 
-```
+```go
 func fanInRec(chans ...<-chan interface{}) <-chan interface{} {
     switch len(chans) {
     case 0:
@@ -479,12 +478,11 @@ func fanInRec(chans ...<-chan interface{}) <-chan interface{} {
             fanInRec(chans[m:]...))
     }
 }
-
 ```
 
 这里有一个mergeTwo的方法，是将两个Channel合并成一个Channel，是扇入形式的一种特例（只处理两个Channel）。 下面我来借助一段代码帮你理解下这个方法。
 
-```
+```go
 func mergeTwo(a, b <-chan interface{}) <-chan interface{} {
     c := make(chan interface{})
     go func() {
@@ -508,7 +506,6 @@ func mergeTwo(a, b <-chan interface{}) <-chan interface{} {
     }()
     return c
 }
-
 ```
 
 ### 扇出模式
@@ -519,7 +516,7 @@ func mergeTwo(a, b <-chan interface{}) <-chan interface{} {
 
 下面是一个扇出模式的实现。从源Channel取出一个数据后，依次发送给目标Channel。在发送给目标Channel的时候，可以同步发送，也可以异步发送：
 
-```
+```go
 func fanOut(ch <-chan interface{}, out []chan interface{}, async bool) {
     go func() {
         defer func() { //退出时关闭所有的输出chan
@@ -543,7 +540,6 @@ func fanOut(ch <-chan interface{}, out []chan interface{}, async bool) {
         }
     }()
 }
-
 ```
 
 你也可以尝试使用反射的方式来实现，我就不列相关代码了，希望你课后可以自己思考下。
@@ -554,7 +550,7 @@ func fanOut(ch <-chan interface{}, out []chan interface{}, async bool) {
 
 首先，我们提供创建流的方法。这个方法把一个数据slice转换成流：
 
-```
+```go
 func asStream(done <-chan struct{}, values ...interface{}) <-chan interface{} {
     s := make(chan interface{}) //创建一个unbuffered的channel
     go func() { // 启动一个goroutine，往s中塞数据
@@ -569,7 +565,6 @@ func asStream(done <-chan struct{}, values ...interface{}) <-chan interface{} {
     }()
     return s
 }
-
 ```
 
 流创建好以后，该咋处理呢？下面我再给你介绍下实现流的方法。
@@ -583,7 +578,7 @@ func asStream(done <-chan struct{}, values ...interface{}) <-chan interface{} {
 
 这些方法的实现很类似，我们以takeN为例来具体解释一下。
 
-```
+```go
 func takeN(done <-chan struct{}, valueStream <-chan interface{}, num int) <-chan interface{} {
     takeStream := make(chan interface{}) // 创建输出流
     go func() {
@@ -598,7 +593,6 @@ func takeN(done <-chan struct{}, valueStream <-chan interface{}, num int) <-chan
     }()
     return takeStream
 }
-
 ```
 
 ### map-reduce
@@ -613,7 +607,7 @@ map-reduce分为两个步骤，第一步是映射（map），处理队列中的�
 
 我们先来看下map函数的处理逻辑:
 
-```
+```go
 func mapChan(in <-chan interface{}, fn func(interface{}) interface{}) <-chan interface{} {
     out := make(chan interface{}) //创建一个输出chan
     if in == nil { // 异常检查
@@ -630,12 +624,11 @@ func mapChan(in <-chan interface{}, fn func(interface{}) interface{}) <-chan int
 
     return out
 }
-
 ```
 
 reduce函数的处理逻辑如下：
 
-```
+```go
 func reduce(in <-chan interface{}, fn func(r, v interface{}) interface{}) interface{} {
     if in == nil { // 异常检查
         return nil
@@ -648,12 +641,11 @@ func reduce(in <-chan interface{}, fn func(r, v interface{}) interface{}) interf
 
     return out
 }
-
 ```
 
 我们可以写一个程序，这个程序使用map-reduce模式处理一组整数，map函数就是为每个整数乘以10，reduce函数就是把map处理的结果累加起来：
 
-```
+```go
 // 生成一个数据流
 func asStream(done <-chan struct{}) <-chan interface{} {
     s := make(chan interface{})
@@ -687,7 +679,6 @@ func main() {
     sum := reduce(mapChan(in, mapFn), reduceFn) //返回累加结果
     fmt.Println(sum)
 }
-
 ```
 
 # 总结

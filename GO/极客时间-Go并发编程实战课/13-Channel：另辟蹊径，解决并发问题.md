@@ -1,6 +1,4 @@
 # 13 | Channel：另辟蹊径，解决并发问题
-你好，我是鸟窝。
-
 Channel是Go语言内建的first-class类型，也是Go语言与众不同的特性之一。Go语言的Channel设计精巧简单，以至于也有人用其它语言编写了类似Go风格的Channel库，比如 [docker/libchan](https://github.com/docker/libchan)、 [tylertreat/chan](https://github.com/tylertreat/chan)，但是并不像Go语言一样把Channel内置到了语言规范中。从这一点，你也可以看出来，Channel的地位在编程语言中的地位之高，比较罕见。
 
 所以，这节课，我们就来学习下Channel。
@@ -255,31 +253,29 @@ func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
 
 第二部分的逻辑是当你往一个已经满了的chan实例发送数据时，并且想不阻塞当前调用，那么这里的逻辑是直接返回。chansend1方法在调用chansend的时候设置了阻塞参数，所以不会执行到第二部分的分支里。
 
-```
+```go
 	// 第三部分，chan已经被close的情景
     lock(&c.lock) // 开始加锁
     if c.closed != 0 {
 			unlock(&c.lock)
 			panic(plainError("send on closed channel"))
 	}
-
 ```
 
 第三部分显示的是，如果chan已经被close了，再往里面发送数据的话会panic。
 
-```
+```go
 	    // 第四部分，从接收队列中出队一个等待的receiver
         if sg := c.recvq.dequeue(); sg != nil {
 			//
 			send(c, sg, ep, func() { unlock(&c.lock) }, 3)
 			return true
 		}
-
 ```
 
 第四部分，如果等待队列中有等待的receiver，那么这段代码就把它从队列中弹出，然后直接把数据交给它（通过memmove(dst, src, t.size)），而不需要放入到buf中，速度可以更快一些。
 
-```
+```go
 	  // 第五部分，buf还没满
       if c.qcount < c.dataqsiz {
 			qp := chanbuf(c, c.sendx)
@@ -296,12 +292,11 @@ func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
 			unlock(&c.lock)
 			return true
 		}
-
 ```
 
 第五部分说明当前没有receiver，需要把数据放入到buf中，放入之后，就成功返回了。
 
-```
+```go
 	    // 第六部分，buf满。
         // chansend1不会进入if块里，因为chansend1的block=true
         if !block {
@@ -309,7 +304,6 @@ func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
 			return false
 		}
         ......
-
 ```
 
 第六部分是处理buf满的情况。如果buf满了，发送者的goroutine就会加入到发送者的等待队列中，直到被唤醒。这个时候，数据或者被取走了，或者chan被close了。
@@ -318,7 +312,7 @@ func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
 
 在处理从chan中接收数据时，Go会把代码转换成chanrecv1函数，如果要返回两个返回值，会转换成chanrecv2，chanrecv1函数和chanrecv2会调用chanrecv。我们分段学习它的逻辑：
 
-```
+```go
     func chanrecv1(c *hchan, elem unsafe.Pointer) {
 		chanrecv(c, elem, true)
 	}
@@ -336,24 +330,22 @@ func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
 			gopark(nil, nil, waitReasonChanReceiveNilChan, traceEvGoStop, 2)
 			throw("unreachable")
 		}
-
 ```
 
 chanrecv1和chanrecv2传入的block参数的值是true，都是阻塞方式，所以我们分析chanrecv的实现的时候，不考虑block=false的情况。
 
 第一部分是chan为nil的情况。和send一样，从nil chan中接收（读取、获取）数据时，调用者会被永远阻塞。
 
-```
+```go
 	// 第二部分, block=false且c为空
     if !block && empty(c) {
       ......
     }
-
 ```
 
 第二部分你可以直接忽略，因为不是我们这次要分析的场景。
 
-```
+```go
         // 加锁，返回时释放锁
 	    lock(&c.lock)
 	    // 第三部分，c已经被close,且chan为空empty
@@ -364,23 +356,21 @@ chanrecv1和chanrecv2传入的block参数的值是true，都是阻塞方式，�
 			}
 			return true, false
 		}
-
 ```
 
 第三部分是chan已经被close的情况。如果chan已经被close了，并且队列中没有缓存的元素，那么返回true、false。
 
-```
+```go
 	    // 第四部分，如果sendq队列中有等待发送的sender
         if sg := c.sendq.dequeue(); sg != nil {
 			recv(c, sg, ep, func() { unlock(&c.lock) }, 3)
 			return true, true
 		}
-
 ```
 
 第四部分是处理buf满的情况。这个时候，如果是unbuffer的chan，就直接将sender的数据复制给receiver，否则就从队列头部读取一个值，并把这个sender的值加入到队列尾部。
 
-```
+```go
       // 第五部分, 没有等待的sender, buf中有数据
 	  if c.qcount > 0 {
 			qp := chanbuf(c, c.recvx)
@@ -404,7 +394,6 @@ chanrecv1和chanrecv2传入的block参数的值是true，都是阻塞方式，�
 
         // 第六部分， buf中没有元素，阻塞
         ......
-
 ```
 
 第五部分是处理没有等待的sender的情况。这个是和chansend共用一把大锁，所以不会有并发的问题。如果buf有元素，就取出一个元素给receiver。
@@ -419,7 +408,7 @@ chanrecv1和chanrecv2传入的block参数的值是true，都是阻塞方式，�
 
 下面的代码就是close chan的逻辑:
 
-```
+```go
     func closechan(c *hchan) {
 		if c == nil { // chan为nil, panic
 			panic(plainError("close of nil channel"))
@@ -460,7 +449,6 @@ chanrecv1和chanrecv2传入的block参数的值是true，都是阻塞方式，�
 			goready(gp, 3)
 		}
 	}
-
 ```
 
 掌握了Channel的基本用法和实现原理，下面我再来给你讲一讲容易犯的错误。你一定要认真看，毕竟，这些可都是帮助你避坑的。
