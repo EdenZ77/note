@@ -13,7 +13,7 @@ Go标准库提供Cond原语的目的是，为等待/通知场景下的并发问�
 
 那这里等待的条件是什么呢？等待的条件，可以是某个变量达到了某个阈值或者某个时间点，也可以是一组变量分别都达到了某个阈值，还可以是某个对象的状态满足了特定的条件。总结来讲，等待的条件是一种可以用来计算结果是true还是false的条件。
 
-从开发实践上，我们真正使用Cond的场景比较少，因为一旦遇到需要使用Cond的场景，我们更多地会使用Channel的方式（我会在第12和第13讲展开Channel的用法）去实现，因为那才是更地道的Go语言的写法，甚至Go的开发者有个“把Cond从标准库移除”的提议（ [issue 21165](https://github.com/golang/go/issues/21165)）。而有的开发者认为，Cond是唯一难以掌握的Go并发原语。至于其中原因，我先卖个关子，到这一讲的后半部分我再和你解释。
+从开发实践上，我们真正使用Cond的场景比较少，因为一旦遇到需要使用Cond的场景，我们更多地会使用Channel的方式去实现，因为那才是更地道的Go语言的写法，甚至Go的开发者有个“把Cond从标准库移除”的提议（ [issue 21165](https://github.com/golang/go/issues/21165)）。而有的开发者认为，Cond是唯一难以掌握的Go并发原语。至于其中原因，我先卖个关子，到这一讲的后半部分我再和你解释。
 
 今天，这一讲我们就带你仔细地学一学Cond这个并发原语吧。
 
@@ -322,15 +322,13 @@ func (p *PriorityQueue) Close() {
 
 ## 总结
 
-好了，我们来做个总结。
-
 Cond是为等待/通知场景下的并发问题提供支持的。它提供了条件变量的三个基本方法Signal、Broadcast和Wait，为并发的goroutine提供等待/通知机制。
 
 在实践中，处理等待/通知的场景时，我们常常会使用Channel替换Cond，因为Channel类型使用起来更简洁，而且不容易出错。但是对于需要重复调用Broadcast的场景，比如上面Kubernetes的例子，每次往队列中成功增加了元素后就需要调用Broadcast通知所有的等待者，使用Cond就再合适不过了。
 
 使用Cond之所以容易出错，就是Wait调用需要加锁，以及被唤醒后一定要检查条件是否真的已经满足。你需要牢记这两点。
 
-虽然我们讲到的百米赛跑的例子，也可以通过WaitGroup来实现，但是本质上WaitGroup和Cond是有区别的：WaitGroup是主goroutine等待确定数量的子goroutine完成任务；而Cond是等待某个条件满足，这个条件的修改可以被任意多的goroutine更新，而且Cond的Wait不关心也不知道其他goroutine的数量，只关心等待条件。而且Cond还有单个通知的机制，也就是Signal方法。
+虽然我们讲到的百米赛跑的例子，也可以通过WaitGroup来实现，**但是本质上WaitGroup和Cond是有区别的：WaitGroup是主goroutine等待确定数量的子goroutine完成任务；而Cond是等待某个条件满足，这个条件的修改可以被任意多的goroutine更新，而且Cond的Wait不关心也不知道其他goroutine的数量，只关心等待条件。而且Cond还有单个通知的机制，也就是Signal方法。**
 
 ![](images/299312/477157d2dbe1b7e4511f56c2c9c2105d.jpg)
 
