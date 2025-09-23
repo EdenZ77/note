@@ -75,9 +75,9 @@ func main() {
 
 ## WaitGroup的实现
 
-首先，我们看看WaitGroup的数据结构。它包括了一个noCopy的辅助字段。noCopy的辅助字段，主要就是辅助vet工具检查是否通过copy赋值这个WaitGroup实例。我会在后面和你详细分析这个字段；
+首先，我们看看WaitGroup的数据结构。它包括了一个 noCopy 的辅助字段。noCopy 的辅助字段，主要就是辅助 vet 工具检查是否通过 copy 赋值这个 WaitGroup 实例。我会在后面和你详细分析这个字段；
 
-WaitGroup的数据结构定义如下：
+WaitGroup 的数据结构定义如下：
 
 ```go
 type WaitGroup struct {
@@ -88,9 +88,9 @@ type WaitGroup struct {
 }
 ```
 
-然后，我们继续深入源码，看一下Add、Done和Wait这三个方法的实现。
+然后，我们继续深入源码，看一下 Add、Done 和Wait 这三个方法的实现。
 
-在查看这部分源码实现时，我们会发现，除了这些方法本身的实现外，还会有一些额外的代码，主要是race检查和异常检查的代码。其中，有几个检查非常关键，如果检查不通过，会出现panic，这部分内容我会在下一小节分析WaitGroup的错误使用场景时介绍。现在，我们先专注在Add、Wait和Done本身的实现代码上。
+在查看这部分源码实现时，我们会发现，除了这些方法本身的实现外，还会有一些额外的代码，主要是 race 检查和异常检查的代码。其中，有几个检查非常关键，如果检查不通过，会出现 panic，这部分内容我会在下一小节分析WaitGroup 的错误使用场景时介绍。现在，我们先专注在 Add、Wait 和 Done 本身的实现代码上。
 
 ```go
 func (wg *WaitGroup) Add(delta int) {
@@ -160,7 +160,7 @@ func (wg *WaitGroup) Wait() {
 
 ## 使用WaitGroup时的常见错误
 
-在分析WaitGroup的Add、Done和Wait方法的实现的时候，为避免干扰，我删除了异常检查的代码。但是，这些异常检查非常有用。
+在分析 WaitGroup 的 Add、Done 和 Wait 方法的实现的时候，为避免干扰，我删除了异常检查的代码。但是，这些异常检查非常有用。
 
 我们在开发的时候，经常会遇见或看到误用WaitGroup的场景，究其原因就是没有弄明白这些检查的逻辑。所以接下来，我们就通过几个小例子，一起学习下在开发时绝对要避免的3个问题。
 
@@ -288,7 +288,7 @@ func dosomething(millisecs time.Duration, wg *sync.WaitGroup) {
 
 ### 常见问题三：前一个Wait还没结束就重用WaitGroup
 
-“前一个Wait还没结束就重用WaitGroup”这一点似乎不太好理解，我们看一个例子，初始设置WaitGroup的计数值为1，启动一个goroutine先调用Done方法，接着就调用Add方法，Add方法有可能和主goroutine并发执行。
+“前一个 Wait 还没结束就重用 WaitGroup ”这一点似乎不太好理解，我们看一个例子，初始设置 WaitGroup 的计数值为1，启动一个 goroutine 先调用 Done 方法，接着就调用 Add 方法，Add 方法有可能和主 goroutine 并发执行。
 
 ```go
 func main() {
@@ -309,15 +309,15 @@ func main() {
 //	C:/Users/zhuqiqi/sdk/go1.21.0/src/sync/waitgroup.go:118 +0x74
 ```
 
-在这个例子中，第6行虽然让WaitGroup的计数恢复到0，但是因为第9行有个waiter在等待，如果等待Wait的goroutine，刚被唤醒就和Add调用（第7行）有并发执行的冲突，所以就会出现panic。
+在这个例子中，第6行虽然让 WaitGroup 的计数恢复到 0，但是因为第9行有个 waiter 在等待，如果等待 Wait 的goroutine，刚被唤醒就和 Add 调用（第7行）有并发执行的冲突，所以就会出现 panic。
 
-总结一下：WaitGroup虽然可以重用，但是是有一个前提的，那就是必须等到上一轮的Wait完成之后，才能重用WaitGroup执行下一轮的Add/Wait，如果你在Wait还没执行完的时候就调用下一轮Add方法，就有可能出现panic。
+总结一下：WaitGroup 虽然可以重用，但是是有一个前提的，那就是必须等到上一轮的 Wait 完成之后，才能重用WaitGroup 执行下一轮的 Add/Wait，如果你在 Wait 还没执行完的时候就调用下一轮 Add 方法，就有可能出现panic。
 
 ## noCopy：辅助vet检查
 
-我们刚刚在学习WaitGroup的数据结构时，提到了里面有一个noCopy字段。你还记得它的作用吗？其实，它就是指示vet工具在做检查的时候，这个数据结构不能做值复制使用。更严谨地说，是不能在第一次使用之后复制使用( must not be copied after first use)。
+我们刚刚在学习 WaitGroup 的数据结构时，提到了里面有一个 noCopy 字段。你还记得它的作用吗？其实，它就是指示 vet 工具在做检查的时候，这个数据结构不能做值复制使用。更严谨地说，是不能在第一次使用之后复制使用( must not be copied after first use)。
 
-你可能会说了，为什么要把noCopy字段单独拿出来讲呢？一方面，把noCopy字段穿插到waitgroup代码中讲解，容易干扰我们对WaitGroup整体的理解。另一方面，也是非常重要的原因，noCopy是一个通用的计数技术，其他并发原语中也会用到，所以单独介绍有助于你以后在实践中使用这个技术。
+你可能会说了，为什么要把 noCopy 字段单独拿出来讲呢？一方面，把 noCopy 字段穿插到 waitgroup 代码中讲解，容易干扰我们对 WaitGroup 整体的理解。另一方面，也是非常重要的原因，noCopy 是一个通用的计数技术，其他并发原语中也会用到，所以单独介绍有助于你以后在实践中使用这个技术。
 
 `go vet` 不仅检查类型本身是否实现 Lock/Unlock，还会递归分析其所有字段。`sync.WaitGroup` 通过一种巧妙的"标记字段"设计：
 
@@ -326,7 +326,7 @@ func main() {
 3. 递归传播机制：`go vet` 分析字段链
 4. 组合优于继承：符合 Go 语言哲学
 
-noCopy字段的类型是noCopy，它只是一个辅助的、用来帮助vet检查用的类型:
+noCopy 字段的类型是 noCopy，它只是一个辅助的、用来帮助 vet 检查用的类型:
 
 ```go
 type noCopy struct{}
@@ -336,7 +336,7 @@ func (*noCopy) Lock()   {}
 func (*noCopy) Unlock() {}
 ```
 
-如果你想要自己定义的数据结构不被复制使用，或者说，不能通过vet工具检查出复制使用的报警，就可以通过嵌入noCopy这个数据类型来实现。
+如果你想要自己定义的数据结构不被复制使用，或者说，不能通过 vet 工具检查出复制使用的报警，就可以通过嵌入noCopy这个数据类型来实现。
 
 ## 流行的Go开发项目中的坑
 
