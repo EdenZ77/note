@@ -1,22 +1,21 @@
-# 08 | Once：一个简约而不简单的并发原语
+# 08 | Once
 这一讲我来讲一个简单的并发原语：Once。为什么要学习Once呢？我先给你答案： **Once可以用来执行且仅仅执行一次动作，常常用于单例对象的初始化场景。**
 
 那这节课，我们就从对单例对象进行初始化这件事儿说起。
 
-初始化单例资源有很多方法，比如定义package级别的变量，这样程序在启动的时候就可以初始化：
+初始化单例资源有很多方法，比如定义 package 级别的变量，这样程序在启动的时候就可以初始化：
 
-```
+```go
 package abc
 
 import time
 
 var startTime = time.Now()
-
 ```
 
-或者在init函数中进行初始化：
+或者在 init 函数中进行初始化：
 
-```
+```go
 package abc
 
 var startTime time.Time
@@ -24,12 +23,11 @@ var startTime time.Time
 func init() {
   startTime = time.Now()
 }
-
 ```
 
-又或者在main函数开始执行的时候，执行一个初始化的函数：
+又或者在 main 函数开始执行的时候，执行一个初始化的函数：
 
-```
+```go
 package abc
 
 var startTime time.Tim
@@ -40,14 +38,13 @@ func initApp() {
 func main() {
   initApp()
 }
-
 ```
 
 这三种方法都是线程安全的，并且后两种方法还可以根据传入的参数实现定制化的初始化操作。
 
 但是很多时候我们是要延迟进行初始化的，所以有时候单例资源的初始化，我们会使用下面的方法：
 
-```
+```go
 package main
 
 import (
@@ -81,7 +78,6 @@ func main() {
         panic("conn is nil")
     }
 }
-
 ```
 
 这种方式虽然实现起来简单，但是有性能问题。一旦连接创建好，每次请求的时候还是得竞争锁才能读取到这个连接，这是比较浪费资源的，因为连接如果创建好之后，其实就不需要锁的保护了。怎么办呢？
@@ -90,16 +86,15 @@ func main() {
 
 # Once的使用场景
 
-**sync.Once只暴露了一个方法Do，你可以多次调用Do方法，但是只有第一次调用Do方法时f参数才会执行，这里的f是一个无参数无返回值的函数。**
+sync.Once 只暴露了一个方法 Do，你可以多次调用 Do 方法，但是只有第一次调用 Do 方法时 f 参数才会执行，这里的 f 是一个无参数无返回值的函数。
 
-```
+```go
 func (o *Once) Do(f func())
-
 ```
 
-因为当且仅当第一次调用Do方法的时候参数f才会执行，即使第二次、第三次、第n次调用时f参数的值不一样，也不会被执行，比如下面的例子，虽然f1和f2是不同的函数，但是第二个函数f2就不会执行。
+因为当且仅当第一次调用 Do 方法的时候参数 f 才会执行，即使第二次、第三次、第 n 次调用时 f 参数的值不一样，也不会被执行，比如下面的例子，虽然 f1 和 f2 是不同的函数，但是第二个函数 f2 就不会执行。
 
-```
+```go
 package main
 
 import (
@@ -122,12 +117,11 @@ func main() {
     }
     once.Do(f2) // 无输出
 }
-
 ```
 
-因为这里的f参数是一个无参数无返回的函数，所以你可能会通过闭包的方式引用外面的参数，比如：
+因为这里的 f 参数是一个无参数无返回的函数，所以你可能会通过闭包的方式引用外面的参数，比如：
 
-```
+```go
     var addr = "baidu.com"
 
     var conn net.Conn
@@ -136,16 +130,15 @@ func main() {
     once.Do(func() {
         conn, err = net.Dial("tcp", addr)
     })
-
 ```
 
 而且在实际的使用中，绝大多数情况下，你会使用闭包的方式去初始化外部的一个资源。
 
-你看，Once的使用场景很明确，所以，在标准库内部实现中也常常能看到Once的身影。
+你看，Once 的使用场景很明确，所以，在标准库内部实现中也常常能看到 Once 的身影。
 
-比如标准库内部 [cache](https://github.com/golang/go/blob/f0e97546962736fe4aa73b7c7ed590f0134515e1/src/cmd/go/internal/cache/default.go) 的实现上，就使用了Once初始化Cache资源，包括defaultDir值的获取：
+比如标准库内部 [cache](https://github.com/golang/go/blob/f0e97546962736fe4aa73b7c7ed590f0134515e1/src/cmd/go/internal/cache/default.go) 的实现上，就使用了 Once 初始化 Cache 资源，包括 defaultDir 值的获取：
 
-```
+```go
     func Default() *Cache { // 获取默认的Cache
 		defaultOnce.Do(initDefaultCache) // 初始化cache
 		return defaultCache
@@ -168,24 +161,11 @@ func main() {
 		defaultDir     string
 		defaultDirErr  error
 	)
-
 ```
 
-还有一些测试的时候初始化测试的资源（ [export\_windows\_test](https://github.com/golang/go/blob/50bd1c4d4eb4fac8ddeb5f063c099daccfb71b26/src/time/export_windows_test.go)）：
+我给你重点介绍一下很值得我们学习的 math/big/sqrt.go 中实现的一个数据结构，它通过 Once 封装了一个只初始化一次的值：
 
-```
-    // 测试window系统调用时区相关函数
-    func ForceAusFromTZIForTesting() {
-		ResetLocalOnceForTest()
-        // 使用Once执行一次初始化
-		localOnce.Do(func() { initLocalFromTZI(&aus) })
-	}
-
-```
-
-除此之外，还有保证只调用一次copyenv的envOnce，strings包下的Replacer，time包中的 [测试](https://github.com/golang/go/blob/b71eafbcece175db33acfb205e9090ca99a8f984/src/time/export_test.go#L12)，Go拉取库时的 [proxy](https://github.com/golang/go/blob/8535008765b4fcd5c7dc3fb2b73a856af4d51f9b/src/cmd/go/internal/modfetch/proxy.go#L103)，net.pipe，crc64，Regexp，……，数不胜数。我给你重点介绍一下很值得我们学习的 math/big/sqrt.go中实现的一个数据结构，它通过Once封装了一个只初始化一次的值：
-
-```
+```go
    // 值是3.0或者0.0的一个数据结构
    var threeOnce struct {
 		sync.Once
@@ -199,22 +179,21 @@ func main() {
 		})
 		return threeOnce.v
 	}
-
 ```
 
-它将sync.Once和\*Float封装成一个对象，提供了只初始化一次的值v。 你看它的three方法的实现，虽然每次都调用threeOnce.Do方法，但是参数只会被调用一次。
+它将 sync.Once 和 \*Float 封装成一个对象，提供了只初始化一次的值 v。 你看它的 three 方法的实现，虽然每次都调用 threeOnce.Do 方法，但是参数只会被调用一次。
 
-当你使用Once的时候，你也可以尝试采用这种结构，将值和Once封装成一个新的数据结构，提供只初始化一次的值。
+当你使用 Once 的时候，你也可以尝试采用这种结构，将值和 Once 封装成一个新的数据结构，提供只初始化一次的值。
 
-总结一下Once并发原语解决的问题和使用场景： **Once常常用来初始化单例资源，或者并发访问只需初始化一次的共享资源，或者在测试的时候初始化一次测试资源**。
+总结一下 Once 并发原语解决的问题和使用场景： **Once常常用来初始化单例资源，或者并发访问只需初始化一次的共享资源，或者在测试的时候初始化一次测试资源**。
 
 了解了Once的使用场景，那应该怎样实现一个Once呢？
 
 # 如何实现一个Once？
 
-很多人认为实现一个Once一样的并发原语很简单，只需使用一个flag标记是否初始化过即可，最多是用atomic原子操作这个flag，比如下面的实现：
+很多人认为实现一个 Once 一样的并发原语很简单，只需使用一个 flag 标记是否初始化过即可，最多是用 atomic 原子操作这个 flag，比如下面的实现：
 
-```
+```go
 type Once struct {
     done uint32
 }
@@ -225,18 +204,17 @@ func (o *Once) Do(f func()) {
     }
     f()
 }
-
 ```
 
-这确实是一种实现方式，但是，这个实现有一个很大的问题，就是如果参数f执行很慢的话，后续调用Do方法的goroutine虽然看到done已经设置为执行过了，但是获取某些初始化资源的时候可能会得到空的资源，因为f还没有执行完。
+这确实是一种实现方式，但是，这个实现有一个很大的问题，就是如果参数 f 执行很慢的话，后续调用 Do 方法的goroutine 虽然看到 done 已经设置为执行过了，但是获取某些初始化资源的时候可能会得到空的资源，因为 f 还没有执行完。所以得在执行完 f 之后再修改 done 的状态。
 
-所以， **一个正确的Once实现要使用一个互斥锁，这样初始化的时候如果有并发的goroutine，就会进入doSlow方法**。互斥锁的机制保证只有一个goroutine进行初始化，同时利用 **双检查的机制**（double-checking），再次判断o.done是否为0，如果为0，则是第一次执行，执行完毕后，就将o.done设置为1，然后释放锁。
+一个正确的Once实现要使用一个互斥锁，互斥锁的机制保证只有一个 goroutine 进行初始化，同时利用双检查的机制（double-checking），再次判断 o.done 是否为 0，如果为 0，则是第一次执行，执行完毕后，就将 o.done 设置为 1，然后释放锁。
 
-即使此时有多个goroutine同时进入了doSlow方法，因为双检查的机制，后续的goroutine会看到o.done的值为1，也不会再次执行f。
+即使此时有多个 goroutine 同时进入了 doSlow 方法，因为双检查的机制，后续的 goroutine 会看到 o.done 的值为1，也不会再次执行 f。
 
-这样既保证了并发的goroutine会等待f完成，而且还不会多次执行f。
+这样既保证了并发的 goroutine 会等待 f 完成，而且还不会多次执行 f。
 
-```
+```go
 type Once struct {
     done uint32
     m    Mutex
@@ -257,10 +235,9 @@ func (o *Once) doSlow(f func()) {
         f()
     }
 }
-
 ```
 
-好了，到这里我们就了解了Once的使用场景，很明确，同时呢，也感受到Once的实现也是相对简单的。在实践中，其实很少会出现错误使用Once的情况，但是就像墨菲定律说的，凡是可能出错的事就一定会出错。使用Once也有可能出现两种错误场景，尽管非常罕见。我这里提前讲给你，咱打个预防针。
+好了，到这里我们就了解了 Once 的使用场景，很明确，同时呢，也感受到 Once 的实现也是相对简单的。在实践中，其实很少会出现错误使用 Once 的情况，但是就像墨菲定律说的，凡是可能出错的事就一定会出错。使用 Once也有可能出现两种错误场景，尽管非常罕见。我这里提前讲给你，咱打个预防针。
 
 # 使用Once可能出现的2种错误
 
@@ -268,7 +245,7 @@ func (o *Once) doSlow(f func()) {
 
 你已经知道了Do方法会执行一次f，但是如果f中再次调用这个Once的Do方法的话，就会导致死锁的情况出现。这还不是无限递归的情况，而是的的确确的Lock的递归调用导致的死锁。
 
-```
+```go
 func main() {
     var once sync.Once
     once.Do(func() {
@@ -277,18 +254,17 @@ func main() {
         })
     })
 }
-
 ```
 
 当然，想要避免这种情况的出现，就不要在f参数中调用当前的这个Once，不管是直接的还是间接的。
 
 ## 第二种错误：未初始化
 
-如果f方法执行的时候panic，或者f执行初始化资源的时候失败了，这个时候，Once还是会认为初次执行已经成功了，即使再次调用Do方法，也不会再次执行f。
+如果 f 方法执行的时候 panic，或者 f 执行初始化资源的时候失败了，这个时候，Once 还是会认为初次执行已经成功了，即使再次调用 Do 方法，也不会再次执行 f。
 
-比如下面的例子，由于一些防火墙的原因，googleConn并没有被正确的初始化，后面如果想当然认为既然执行了Do方法googleConn就已经初始化的话，会抛出空指针的错误：
+比如下面的例子，由于一些防火墙的原因，googleConn 并没有被正确的初始化，后面如果想当然认为既然执行了Do方法 googleConn 就已经初始化的话，会抛出空指针的错误：
 
-```
+```go
 func main() {
     var once sync.Once
     var googleConn net.Conn // 到Google网站的一个连接
@@ -301,14 +277,13 @@ func main() {
     googleConn.Write([]byte("GET / HTTP/1.1\r\nHost: google.com\r\n Accept: */*\r\n\r\n"))
     io.Copy(os.Stdout, googleConn)
 }
-
 ```
 
 既然执行过Once.Do方法也可能因为函数执行失败的原因未初始化资源，并且以后也没机会再次初始化资源，那么这种初始化未完成的问题该怎么解决呢？
 
-这里我来告诉你一招独家秘笈，我们可以 **自己实现一个类似Once的并发原语**，既可以返回当前调用Do方法是否正确完成，还可以在初始化失败后调用Do方法再次尝试初始化，直到初始化成功才不再初始化了。
+这里我来告诉你一招独家秘笈，我们可以自己实现一个类似Once的并发原语，既可以返回当前调用Do方法是否正确完成，还可以在初始化失败后调用Do方法再次尝试初始化，直到初始化成功才不再初始化了。
 
-```
+```go
 // 一个功能更加强大的Once
 type Once struct {
     m    sync.Mutex
@@ -335,18 +310,17 @@ func (o *Once) slowDo(f func() error) error {
     }
     return err
 }
-
 ```
 
-我们所做的改变就是Do方法和参数f函数都会返回error，如果f执行失败，会把这个错误信息返回。
+我们所做的改变就是 Do 方法和参数 f 函数都会返回error，如果 f 执行失败，会把这个错误信息返回。
 
-对slowDo方法也做了调整，如果f调用失败，我们不会更改done字段的值，这样后续的goroutine还会继续调用f。如果f执行成功，才会修改done的值为1。
+对 slowDo 方法也做了调整，如果 f 调用失败，我们不会更改done字段的值，这样后续的goroutine还会继续调用 f。如果 f 执行成功，才会修改done的值为1。
 
-可以说，真是一顿操作猛如虎，我们使用Once有点得心应手的感觉了。等等，还有个问题，我们怎么查询是否初始化过呢？
+可以说，我们使用Once有点得心应手的感觉了。等等，还有个问题，我们怎么查询是否初始化过呢？
 
-目前的Once实现可以保证你调用任意次数的once.Do方法，它只会执行这个方法一次。但是，有时候我们需要打一个标记。如果初始化后我们就去执行其它的操作，标准库的Once并不会告诉你是否初始化完成了，只是让你放心大胆地去执行Do方法，所以， **你还需要一个辅助变量，自己去检查是否初始化过了**，比如通过下面的代码中的inited字段：
+目前的Once实现可以保证你调用任意次数的once.Do方法，它只会执行这个方法一次。但是，有时候我们需要打一个标记。如果初始化后我们就去执行其它的操作，标准库的Once并不会告诉你是否初始化完成了，只是让你放心大胆地去执行Do方法，所以， 你还需要一个辅助变量，自己去检查是否初始化过了，比如通过下面的代码中的inited字段：
 
-```
+```go
 type AnimalStore struct {once   sync.Once;inited uint32}
 func (a *AnimalStore) Init() // 可以被并发调用
 	a.once.Do(func() {
@@ -360,12 +334,11 @@ func (a *AnimalStore) CountOfCats() (int, error) { // 另外一个goroutine
 	}
         //Real operation
 }
-
 ```
 
 当然，通过这段代码，我们可以解决这类问题，但是，如果官方的Once类型有Done这样一个方法的话，我们就可以直接使用了。这是有人在Go代码库中提出的一个issue( [#41690](https://github.com/golang/go/issues/41690))。对于这类问题，一般都会被建议采用其它类型，或者自己去扩展。我们可以尝试扩展这个并发原语：
 
-```
+```go
 // Once 是一个扩展的sync.Once类型，提供了一个Done方法
 type Once struct {
     sync.Once
@@ -388,7 +361,6 @@ func main() {
 
     fmt.Println(flag.Done()) //true
 }
-
 ```
 
 好了，到这里关于并发原语Once的内容我讲得就差不多了。最后呢，和你分享一个Once的踩坑案例。
@@ -401,7 +373,7 @@ func main() {
 
 go#25955有网友提出一个需求，希望Once提供一个Reset方法，能够将Once重置为初始化的状态。比如下面的例子，St通过两个Once控制它的Open/Close状态。但是在Close之后再调用Open的话，不会再执行init函数，因为Once只会执行一次初始化函数。
 
-```
+```go
 type St struct {
     openOnce *sync.Once
     closeOnce *sync.Once
@@ -416,7 +388,6 @@ func(st *St) Close(){
     st.closeOnce.Do(func() { ... }) // deinit
     ...
 }
-
 ```
 
 所以提交这个Issue的开发者希望Once增加一个Reset方法，Reset之后再调用once.Do就又可以初始化了。
@@ -425,7 +396,7 @@ Go的核心开发者Ian Lance Taylor给他了一个简单的解决方案。在�
 
 这个解决方案一点都没问题，可以很好地解决这位开发者的需求。Docker较早的版本（1.11.2）中使用了它们的一个网络库libnetwork，这个网络库在使用Once的时候就使用Ian Lance Taylor介绍的方法，但是不幸的是，它的Reset方法中又改变了Once指针的值，导致程序panic了。原始逻辑比较复杂，一个简化版可重现的 [代码](https://play.golang.org/p/xPULnrVKiY) 如下：
 
-```
+```go
 package main
 
 import (
@@ -469,7 +440,6 @@ func main() {
 	fmt.Println(m.strings())
 	fmt.Println(m.strings())
 }
-
 ```
 
 如果你执行这段代码就会panic:
@@ -480,7 +450,7 @@ func main() {
 
 如果你还不太明白，我再给你简化成一个更简单的例子：
 
-```
+```go
 package main
 
 import (
@@ -503,7 +473,6 @@ func main() {
     var once Once
     once.doSlow()
 }
-
 ```
 
 doSlow方法就演示了这个错误。Ian Lance Taylor介绍的Reset方法没有错误，但是你在使用的时候千万别再初始化函数中Reset这个Once，否则势必会导致Unlock一个未加锁的Mutex的错误。
@@ -520,14 +489,12 @@ doSlow方法就演示了这个错误。Ian Lance Taylor介绍的Reset方法没�
 
 ```
 var EOF = errors.New("EOF")
-
 ```
 
 因为它是一个package级别的变量，我们可以在程序中偷偷把它改了，这会导致一些依赖io.EOF这个变量做判断的代码出错。
 
 ```
 io.EOF = errors.New("我们自己定义的EOF")
-
 ```
 
 从我个人的角度来说，一些单例（全局变量）的确很方便，比如Buffer池或者连接池，所以有时候我们也不要谈虎色变。虽然有人把单例模式称之为反模式，但毕竟只能代表一部分开发者的观点，否则也不会把它列在23种设计模式中了。
