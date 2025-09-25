@@ -683,7 +683,75 @@ func main() {
 ./main.go:30:2: moved to heap: n
 ```
 
-
-
 # new与make
+
+## 1. `new`内置函数
+
+**功能与定义**
+
+`new(T)`接受一个类型 `T`作为参数，它的作用是：在内存中为该类型分配一片零值化的空间，并返回一个指向该内存的 `*T`类型指针。
+
+**底层行为**
+
+1. 分配内存：在堆上分配一片足够容纳 `T`类型值的内存。
+2. 内存清零：将这片内存的值设置为类型 `T`的零值。
+   - `int`的零值是 `0`
+   - `bool`的零值是 `false`
+   - `string`的零值是 `""`
+   - `struct`的零值是所有字段均为其各自零值的状态
+   - 指针、slice、map、channel、func、interface 的零值是 `nil`
+3. 返回指针：返回一个 `*T`类型的指针，该指针指向新分配的零值内存地址。
+
+**使用示例**
+
+```go
+// 为 int 类型分配内存，返回 *int
+ptr := new(int)
+fmt.Println(*ptr) // 输出: 0 (int的零值)
+*ptr = 100        // 通过指针赋值
+fmt.Println(*ptr) // 输出: 100
+
+// 为自定义结构体分配内存，返回 *Demo
+type Demo struct {
+    Name string
+    Age  int
+}
+d := new(Demo)
+fmt.Println(d)      // 输出: &{ 0} (指向一个零值结构体的指针)
+fmt.Println(d.Name) // 输出: "" (空字符串)
+fmt.Println(d.Age)  // 输出: 0
+```
+
+## 2. `make`内置函数
+
+**功能与定义**
+
+`make`是 Go 专门为三个内建的引用类型（Slice, Map, Channel）而设计的。它接受一个类型、一个长度（有时还有容量）作为参数，并返回一个已经准备好可以使用的 `T`类型的值，而不是指针。
+
+`make`只能用于 `slice`, `map`, `channel`。
+
+**使用示例**
+
+```go
+// 初始化一个 slice
+s := make([]int, 5, 10) // 长度5，容量10，底层数组已分配且元素初始化为0
+fmt.Println(s)          // 输出: [0 0 0 0 0]
+s[0] = 42               // 可以直接使用，不会 panic
+fmt.Println(s)          // 输出: [42 0 0 0 0]
+
+// 初始化一个 map
+m := make(map[string]int)
+m["score"] = 90         // 可以直接插入键值对，不会 panic
+fmt.Println(m)          // 输出: map[score:90]
+
+// 初始化一个 channel
+ch := make(chan int, 2) // 缓冲区大小为2的通道
+ch <- 1                 // 可以向通道发送数据
+ch <- 2
+fmt.Println(<-ch)       // 输出: 1
+```
+
+
+
+# defer
 
