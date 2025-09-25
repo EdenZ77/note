@@ -751,7 +751,255 @@ ch <- 2
 fmt.Println(<-ch)       // 输出: 1
 ```
 
-
-
 # defer
+
+## defer的执行顺序
+
+多个defer出现的时候，它们是一个“栈”的关系，也就是先进后出。在一个函数中，写在前面的defer会比写在后面的defer调用得晚。看下面的代码，并分析的结果是什么：
+
+```go
+func main() {
+	defer func1()
+	defer func2()
+	defer func3()
+}
+
+func func1() {
+	fmt.Println("A")
+}
+
+func func2() {
+	fmt.Println("B")
+}
+
+func func3() {
+	fmt.Println("C")
+}
+```
+
+输出结果：
+
+```
+C
+B
+A
+```
+
+## defer与return谁先谁后
+
+defer 和 return 后面的表达式谁先执行谁后执行也是需要掌握的知识，接下来分析下面的代码：
+
+```go
+func deferFunc() int {
+	fmt.Println("defer func called")
+	return 0
+}
+
+func returnFunc() int {
+	fmt.Println("return func called")
+	return 0
+}
+
+func returnAndDefer() int {
+
+	defer deferFunc()
+
+	return returnFunc()
+}
+
+func main() {
+	returnAndDefer()
+}
+```
+
+执行结果为：
+
+```
+return func called
+defer func called
+```
+
+结论是 return 语句后面的表达式先执行，defer 后面的语句后执行。
+
+defer 触发的出栈时机是当前函数的作用域结束，而 return 作为当前函数的最后一条语句显然是在函数结束之前需要执行完的语句，所以在 return 语句动作完成前不会触发 defer 出栈且执行 defer 之后的表达式语句。
+
+## 函数返回值遇见defer的情况
+
+在没有defer的情况下，其实函数的返回就是与return一致的，但是有了defer就不一样了。
+
+```go
+func returnButDefer() (t int) {  //t初始化0， 并且作用域为该函数全域
+
+    defer func() {
+        t = t * 10
+    }()
+
+    return 1
+}
+
+func main() {
+    fmt.Println(returnButDefer())
+}
+```
+
+该returnButDefer() 的返回值本应为1，但是在return之后，又被defer的匿名func函数执行，所以t=t∗10被执行，最后returnButDefer() 返给上层main() 的结果为10，运行结果如下：
+
+```
+$ go run test.go
+10
+```
+
+## defer遇见panic
+
+能够触发 defer 的情况是遇见 return（或函数体到末尾）和遇见 panic。
+
+defer 遇见 return，是先执行 return 语句，然后 defer 的语句才会依次出栈并且执行。
+
+当遇到 panic 时，会遍历本协程的 defer 链表，并执行 defer。在执行 defer 的过程中，如果遇到 recover，则停止panic，返回 recover 处继续往下执行。如果没有遇到 recover，则遍历完本协程的 defer 链表后，向 stderr 抛出panic 信息，如图8.5所示。
+
+<img src="image/image-20250925181038461.png" alt="image-20250925181038461" style="zoom:50%;" />
+
+### defer遇见panic，但是并不捕获异常的情况
+
+```go
+func main() {
+	defer_call()
+
+	fmt.Println("main 正常结束")
+}
+
+func defer_call() {
+	defer func() { fmt.Println("defer: panic 之前1") }()
+	defer func() { fmt.Println("defer: panic 之前2") }()
+
+	panic("异常内容") //触发defer出栈
+
+	defer func() { fmt.Println("defer: panic 之后，永远执行不到") }()
+}
+```
+
+运行结果如下：
+
+```
+defer: panic 之前2
+defer: panic 之前1
+panic: 异常内容
+
+goroutine 1 [running]:
+main.defer_call()
+	D:/workspace/go_project/study/daydayup/base/defer_panic_recover/panic/v1/main.go:15 +0x4e
+main.main()
+	D:/workspace/go_project/study/daydayup/base/defer_panic_recover/panic/v1/main.go:6 +0x13
+
+Process finished with the exit code 2
+```
+
+所以在panic之后的defer无法被触发，因为执行语句并没有将最后一个defer压栈。
+
+### defer遇见panic，并捕获异常
+
+```go
+func main() {
+    defer_call()
+
+    fmt.Println("main 正常结束")
+}
+
+func defer_call() {
+
+    defer func() {
+        fmt.Println("defer: panic 之前1, 捕获异常")
+        if err := recover(); err != nil {
+            fmt.Println(err)
+        }
+    }()
+
+    defer func() { fmt.Println("defer: panic 之前2, 不捕获") }()
+
+    panic("异常内容")  //触发defer出栈
+
+	defer func() { fmt.Println("defer: panic 之后, 永远执行不到") }()
+}
+```
+
+运行结果如下：
+
+```
+defer: panic 之前2, 不捕获
+defer: panic 之前1, 捕获异常
+异常内容
+main 正常结束
+```
+
+defer最大的功能是panic后依然有效，所以defer可以保证一些资源一定会被关闭，从而避免一些异常出现的问题。
+
+## defer中包含panic
+
+如果defer后面的表达式中也有panic或者触发panic的动作，则最终捕获到的是哪个panic呢？还是通过一段程序来得到结果，代码如下：
+
+```go
+func main()  {
+
+    defer func() {
+       if err := recover(); err != nil{
+           fmt.Println(err)
+       }else {
+           fmt.Println("fatal")
+       }
+    }()
+
+    defer func() {
+        panic("defer panic")
+    }()
+
+    panic("panic")
+}
+```
+
+运行结果如下：
+
+```
+defer panic
+```
+
+panic仅有最后一个可以被recover捕获。触发panic(＂panic＂)后defer按顺序出栈执行，第1个被执行的defer中会有panic(＂defer panic＂)异常语句，这个异常将会覆盖main中的异常panic(＂panic＂)，最后这个异常被第2个执行的defer捕获。
+
+## defer下的函数参数包含子函数
+
+如果defer后面的表达式中函数调用拥有子函数调用会出现什么情况呢？来看下面的代码：
+
+```go
+func function(index int, value int) int {
+
+    fmt.Println(index)
+
+    return index
+}
+
+func main() {
+    defer function(1, function(3, 0))
+    defer function(2, function(4, 0))
+}
+```
+
+这里有4个函数，它们的index序号分别为1、2、3、4。这4个函数的先后执行顺序是什么呢？这里有两个defer，所以defer一共会压栈两次，先进栈1，后进栈2。在压栈function1的时候，需要连同函数地址、函数形参一同进栈，为了得到function1的第2个参数的结果，所以就需要先执行function3将第2个参数算出，所以function3就被第1个执行。同理压栈function2，就需要执行function4算出function2的第2个参数的值，然后函数结束，先出栈function2，再出栈function1。
+
+执行顺序如下：
+
+(1)defer压栈function1，压栈函数地址、形参1、形参2（调用function3），打印3。
+
+(2)defer压栈function2，压栈函数地址、形参1、形参2（调用function4），打印4。
+
+(3)defer出栈function2，调用function，打印2。
+
+(4)defer出栈function1，调用function1，打印1。
+
+运行的结果如下：
+
+```
+3
+4
+2
+1
+```
 
