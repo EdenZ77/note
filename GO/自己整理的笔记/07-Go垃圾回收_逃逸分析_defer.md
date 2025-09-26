@@ -419,7 +419,7 @@ Go V1.8版本引入了混合写屏障机制(Hybrid Write Barrier)，避免了对
 GC 过程与 STW 时机：
 
 1. STW 阶段一（开始）：GC 周期开始时，暂停所有用户 Goroutine。
-2. 标记阶段 (Mark)：在 STW 状态下，从根对象（栈、全局变量）开始，单线程遍历并标记所有可达（存活）的对象。
+2. 标记阶段 (Mark)：在 STW 状态下，从根对象（栈、全局变量）开始，遍历并标记所有可达（存活）的对象。
 3. 清除阶段 (Sweep)：同样在 STW 状态下，遍历堆内存，将未标记的对象回收，内存放回空闲链表。
 4. STW 阶段二（结束）：清除完成后，恢复所有用户 Goroutine。
 
@@ -435,8 +435,8 @@ GC 过程与 STW 时机：
 GC 过程与 STW 时机：
 
 1. STW 阶段一（开启屏障，初始扫描）：
-   - 时机：GC 周期开始时。
-   - 目的：暂停所有 Goroutine，开启写屏障，并快速扫描所有 Goroutine 的栈，将根对象直接引用的第一层对象标记为灰色。这个过程很快，因为只扫描栈，不遍历整个堆。
+   - 时机：GC 周期开始的瞬间，由专门的 GC Goroutine 发起，运行时环境会安全地暂停所有用户 Goroutine。
+   - 目的：为并发标记阶段做准备，建立一个安全的起点。具体要做三件事：1、暂停所有 Goroutine。2、开启写屏障：将运行时环境切换到“屏障模式”。从此之后，所有在堆上的指针写操作都会先执行一段额外的屏障代码，然后再执行赋值。3、扫描栈，建立初始灰色对象集：快速扫描所有 Goroutine 的栈空间，找到所有根对象（栈上的指针），并将这些根对象直接指向的第一层堆对象标记为灰色，放入灰色队列。
    - 时长：短（通常 ~10ms 级别）。
 2. 并发标记阶段：
    - 时机：STW 阶段一结束后。
@@ -641,10 +641,6 @@ func main() {
 }
 ```
 
-- `generate8191()` 创建了大小为 8191 的 int 型切片，小于 64 KB(64位机器上，int 占 8 字节)。
-- `generate8192()` 创建了大小为 8192 的 int 型切片，恰好占用 64 KB。
-- `generate(n)`，切片大小不确定，调用时传入。
-
 编译结果如下：
 
 ```shell
@@ -823,7 +819,7 @@ defer func called
 
 defer 触发的出栈时机是当前函数的作用域结束，而 return 作为当前函数的最后一条语句显然是在函数结束之前需要执行完的语句，所以在 return 语句动作完成前不会触发 defer 出栈且执行 defer 之后的表达式语句。
 
-## 函数返回值遇见defer的情况
+
 
 在没有defer的情况下，其实函数的返回就是与return一致的，但是有了defer就不一样了。
 
@@ -842,7 +838,7 @@ func main() {
 }
 ```
 
-该returnButDefer() 的返回值本应为1，但是在return之后，又被defer的匿名func函数执行，所以t=t∗10被执行，最后returnButDefer() 返给上层main() 的结果为10，运行结果如下：
+该 returnButDefer() 的返回值本应为1，但是在 return 之后，又被 defer 的匿名 func 函数执行，所以 t=t∗10 被执行，最后 returnButDefer() 返给上层 main() 的结果为10，运行结果如下：
 
 ```
 $ go run test.go
@@ -853,11 +849,7 @@ $ go run test.go
 
 能够触发 defer 的情况是遇见 return（或函数体到末尾）和遇见 panic。
 
-defer 遇见 return，是先执行 return 语句，然后 defer 的语句才会依次出栈并且执行。
-
-当遇到 panic 时，会遍历本协程的 defer 链表，并执行 defer。在执行 defer 的过程中，如果遇到 recover，则停止panic，返回 recover 处继续往下执行。如果没有遇到 recover，则遍历完本协程的 defer 链表后，向 stderr 抛出panic 信息，如图8.5所示。
-
-<img src="image/image-20250925181038461.png" alt="image-20250925181038461" style="zoom:50%;" />
+在执行 defer 的过程中，如果遇到 recover，则停止 panic，继续往下执行。如果没有遇到 recover，则遍历完本协程的 defer 链表后，向 stderr 抛出 panic 信息。
 
 ### defer遇见panic，但是并不捕获异常的情况
 
@@ -880,7 +872,7 @@ func defer_call() {
 
 运行结果如下：
 
-```
+```shell
 defer: panic 之前2
 defer: panic 之前1
 panic: 异常内容
@@ -931,11 +923,11 @@ defer: panic 之前1, 捕获异常
 main 正常结束
 ```
 
-defer最大的功能是panic后依然有效，所以defer可以保证一些资源一定会被关闭，从而避免一些异常出现的问题。
+defer 最大的功能是 panic 后依然有效，所以 defer 可以保证一些资源一定会被关闭，从而避免一些异常出现的问题。
 
 ## defer中包含panic
 
-如果defer后面的表达式中也有panic或者触发panic的动作，则最终捕获到的是哪个panic呢？还是通过一段程序来得到结果，代码如下：
+如果 defer 后面的表达式中也有 panic 或者触发 panic 的动作，则最终捕获到的是哪个 panic 呢？还是通过一段程序来得到结果，代码如下：
 
 ```go
 func main()  {
@@ -962,7 +954,7 @@ func main()  {
 defer panic
 ```
 
-panic仅有最后一个可以被recover捕获。触发panic(＂panic＂)后defer按顺序出栈执行，第1个被执行的defer中会有panic(＂defer panic＂)异常语句，这个异常将会覆盖main中的异常panic(＂panic＂)，最后这个异常被第2个执行的defer捕获。
+panic 仅有最后一个可以被 recover 捕获。触发 `panic("panic")` 后 defer 按顺序出栈执行，第1个被执行的 defer 中会有 `panic("defer panic")` 异常语句，这个异常将会覆盖 main 中的异常 `panic("panic")` ，最后这个异常被第2个执行的 defer 捕获。
 
 ## defer下的函数参数包含子函数
 
