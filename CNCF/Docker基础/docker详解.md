@@ -3,6 +3,7 @@
 | 20220826 | v1.0 | eden   | 梳理整体流程、删除不必要文字和样式 |
 | 20240203 | v2.0 | eden   | 回顾docker基本结构                 |
 | 20250526 |      |        | 贯穿路线                           |
+| 20250927 |      |        | 复习，准备面试                     |
 
 
 
@@ -1088,7 +1089,31 @@ VOLUME /app/data
 
 ### 多阶段构建
 
- 这是构建一个springboot项目的文件结构![image-20220329142517230](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220329142517230.png)
+**1. 是什么？**
+
+Docker多阶段构建（Multi-stage Build）允许在一个 `Dockerfile`中定义多个**构建阶段**（通常用 `FROM`语句标识）。每个阶段从一个基础镜像开始，执行一系列指令，并可以将其产出物有选择地复制到后续阶段。最终镜像仅包含最后一个阶段的内容。
+
+**2. 为什么需要？（解决什么问题？）**
+
+核心痛点：构建环境与运行环境的需求不同。
+
+- **构建环境**：需要编译器、构建工具、开发库等。例如，您的示例中 `maven:3.6.1-jdk-8-alpine`提供了Maven和JDK（含编译器），用于将源代码编译打包成 `app.jar`。这个镜像通常比较大。
+- **运行环境**：只需要运行时的依赖。例如，您的示例中 `openjdk:8-jre-alpine`仅包含JRE（Java运行时环境），足以运行 `app.jar`。这个镜像非常小巧。
+
+如果没有多阶段构建，传统做法通常有两种，都有明显缺陷：
+
+- **单阶段构建**：在同一个镜像中包含构建和运行环境，导致最终镜像极其臃肿，包含了大量运行时不需要的软件，增加了安全风险和传输部署成本。
+- **脚本分离构建**：在Docker外部先用本地工具构建，再通过 `Dockerfile`的 `COPY`将构建产物（如jar包）加入镜像。这要求维护者本地环境和CI/CD环境必须一致，**破坏了容器化“可重现构建”的初衷**。
+
+**可重现构建**
+
+“可重现构建”（Reproducible Build）指的是：在任何时间、任何地点（不同的开发机器、不同的CI/CD服务器），只要给定同一份源代码和同一个构建命令，就能得到完全相同的、比特位级别一致的构建产物（比如jar包）。
+
+
+
+ 这是构建一个springboot项目的文件结构
+
+<img src="https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220329142517230.png" alt="image-20220329142517230" style="zoom:50%;" />
 
 ```dockerfile
 FROM  maven:3.6.1-jdk-8-alpine AS buildapp
@@ -1123,7 +1148,36 @@ ENV PARAMS=""
 ENTRYPOINT [ "sh", "-c", "java -Djava.security.egd=file:/dev/./urandom $JAVA_OPTS -jar /app.jar $PARAMS" ]
 ```
 
-多阶段构建的好处就是：我们只需要jar和jre环境，但是如果从头到尾都在一个阶段的话就会引入maven、jdk这些最终不要的东西，导致最后的镜像变得冗余，maven、jdk是生成jar需要的东西，所以我们将这个阶段剥离出来，称之为第一阶段，对于执行jar的话我们只需要jre环境，并且把上一阶段的jar包copy到当前阶段，这样最终生成的镜像就会变得短小精悍。
+您的Dockerfile清晰地展示了两个阶段：
+
+**第一阶段：构建阶段（标签：`buildapp`）**
+
+```
+FROM maven:3.6.1-jdk-8-alpine AS buildapp # 1. 基础镜像是包含Maven和JDK的构建环境
+WORKDIR /app
+COPY pom.xml .
+COPY src .                              # 2. 复制源代码
+RUN mvn clean package -Dmaven.test.skip=true # 3. 执行Maven命令，编译打包生成jar包
+RUN cp /app/target/*.jar  /app.jar      # 4. 将生成的jar包复制到根目录，方便下一阶段提取
+```
+
+- **目的**：在隔离的容器环境中，可靠地生成构建产物 `app.jar`。
+- **特点**：此阶段结束后，会产生一个中间镜像，其中包含源代码、Maven、JDK、编译产生的`target/`目录等。**这些在最终镜像中都不会存在**。
+
+**第二阶段：运行阶段（最终阶段）**
+
+```
+FROM openjdk:8-jre-alpine # 1. 基础镜像是仅包含JRE的轻量级运行环境
+RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && echo 'Asia/Shanghai' >/etc/timezone # 2. （优化项）设置容器时区
+LABEL maintainer="534096094@qq.com"
+COPY --from=buildapp /app.jar /app.jar # 3. 【关键操作】从上一阶段（buildapp）复制仅需要的jar包
+ENV JAVA_OPTS=""
+ENV PARAMS=""
+ENTRYPOINT [ "sh", "-c", "java -Djava.security.egd=file:/dev/./urandom $JAVA_OPTS -jar /app.jar $PARAMS" ] # 4. 启动应用
+```
+
+- **目的**：创建一个用于生产环境部署的最小化镜像。
+- **特点**：通过 `COPY --from=buildapp`这个“魔法指令”，它只从庞大的上一阶段中取走了唯一需要的文件——`/app.jar`。最终镜像**不包含**源代码、Maven、JDK，甚至不包含第一阶段的`target`目录，极其精简和安全。
 
 
 
@@ -1424,285 +1478,6 @@ docker exec -it tomcat02 ip a
 ![image-20210428113332383](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20210428113332383.png)
 
 ![image-20210428113904951](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20210428113904951.png)
-
-## 4、深入分析container网络-Bridge
-
-### 4.1 docker默认bridge
-
-```
-(1)查看centos的网络:ip a，可以发现
-
-3: docker0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default 
-    link/ether 02:42:5d:ba:2d:3f brd ff:ff:ff:ff:ff:ff
-    inet 172.17.0.1/16 brd 172.17.255.255 scope global docker0
-       valid_lft forever preferred_lft forever
-    inet6 fe80::42:5dff:feba:2d3f/64 scope link 
-       valid_lft forever preferred_lft forever
-
-(2)查看容器tomcat01、tomcat02的网络
-```
-
-![image-20210428114641560](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20210428114641560.png)
-
-```
-(3)在centos中可以ping通tomcat01、tomcat02的网络
-
-(4)既然可以ping通，而且centos和tomcat1又属于不同的network namespace，是怎么连接的？
-很显然，跟之前的实战是一样的，画个图
-```
-
-![image-20210428134655767](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20210428134655767.png)
-
-```
-(5)也就是说，在tomcat01中有一个eth0和centos的docker0中有一个veth3是成对的，类似于之前实战中的
-veth-ns1和veth-ns2，不妨再通过一个命令确认下：brctl
-安装一下：yum install bridge-utils
-brctl show
-```
-
-![image-20210428140140681](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20210428140140681.png)
-
-![image-20210428140026430](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20210428140026430.png)
-
-```
-(6)那为什么tomcat01和tomcat02能ping通呢？不多说，直接上图
-对于我的演示来说就是docker0网桥的if9网卡与tomcat01容器的if10网卡配对
-docker0网桥的if11与tomcat02容器的if12网卡配对
-```
-
-![image-20210428140159559](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20210428140159559.png)
-
-```
-(7)这种网络连接方法我们称之为Bridge，其实也可以通过命令查看docker中的网络模式：docker network ls
-bridge也是docker中默认的网络模式
-```
-
-![image-20210428140545554](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20210428140545554.png)
-
-```json
-(8)不妨检查一下bridge：docker network inspect bridge
-也可以查看该容器详情：docker inspect nginx
-
-[root@w2 ~]# docker network inspect bridge
-[
-    {
-        "Name": "bridge",
-        "Id": "f55daf7a2a0106125216da3044c83e5cf2c2825579271ce0d0b870a9801d451e",
-        "Created": "2021-04-27T01:16:01.523474104-04:00",
-        "Scope": "local",
-        "Driver": "bridge",
-        "EnableIPv6": false,
-        "IPAM": {
-            "Driver": "default",
-            "Options": null,
-            "Config": [
-                {
-                    "Subnet": "172.17.0.0/16",
-                    "Gateway": "172.17.0.1"
-                }
-            ]
-        },
-        "Internal": false,
-        "Attachable": false,
-        "Ingress": false,
-        "ConfigFrom": {
-            "Network": ""
-        },
-        "ConfigOnly": false,
-		# 此处完整的展示出了连在这个桥上的容器
-        "Containers": {
-            "9054cd105fa48aa00fdd0711967ff0a52fa58678db2949afe38a082ddfdff2cf": {
-                "Name": "tomcat02",
-                "EndpointID": "6cc0127a8935adeb27e170596cd847248314af5ba406be2ccfbac07407c80703",
-                "MacAddress": "02:42:ac:11:00:03",
-                "IPv4Address": "172.17.0.3/16",
-                "IPv6Address": ""
-            },
-            "da8485f7ab45cf4806f4707723a4630dcc6794cf973b1fcbd4b0f458649f5343": {
-                "Name": "tomcat01",
-                "EndpointID": "458f12fdd6e5c407abc3b8b5d5ee5bd6198e5d401fbd8bdb2cad4c25c80085cd",
-                "MacAddress": "02:42:ac:11:00:02",
-                "IPv4Address": "172.17.0.2/16",
-                "IPv6Address": ""
-            }
-        },
-        "Options": {
-            "com.docker.network.bridge.default_bridge": "true",
-            "com.docker.network.bridge.enable_icc": "true",
-            "com.docker.network.bridge.enable_ip_masquerade": "true",
-            "com.docker.network.bridge.host_binding_ipv4": "0.0.0.0",
-            "com.docker.network.bridge.name": "docker0",
-            "com.docker.network.driver.mtu": "1500"
-        },
-        "Labels": {}
-    }
-]
-[root@w2 ~]# 
-```
-
-```
-(9)在tomcat01容器中是可以访问互联网的，顺便把这张图画一下咯，NAT是通过iptables实现的
-```
-
-![image-20210428144039535](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20210428144039535.png)
-
-### 4.2 创建自己的network
-
-```
-(1)创建一个network，类型为bridge
-docker network create tomcat-net
-or
-docker network create --subnet=172.18.0.0/24 tomcat-net
-
-(2)查看已有的network：docker network ls
-[root@w2 ~]# docker network ls
-NETWORK ID          NAME                DRIVER              SCOPE
-f55daf7a2a01        bridge              bridge              local
-d5c6092b118f        host                host                local
-9a45110689a9        none                null                local
-1a7aa4aa5da7        tomcat-net          bridge              local
-[root@w2 ~]# 
-
-(3)查看tomcat-net详情信息：docker network inspect tomcat-net
-```
-
-![image-20210428150259777](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20210428150259777.png)
-
-```
-(4)创建tomcat的容器，并且指定使用tomcat-net
-docker run -d --name custom-net-tomcat --network tomcat-net tomcat
-
-(5)查看custom-net-tomcat的网络信息
-docker exec -it custom-net-tomcat ip a
-
-(6)查看网卡信息
-ip a
-
-(7)查看网桥接口
-brctl show
-如下：
-[root@w2 ~]# brctl show
-bridge name     bridge id               STP enabled     interfaces
-br-1a7aa4aa5da7         8000.024237b5fdc1       no              veth1f5332e
-docker0         8000.02425dba2d3f       no              veth080a04d
-                                                        veth94fcb27
-                                                        vetha9cd687
-[root@w2 ~]# 
-
-```
-
-![image-20210428150630929](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20210428150630929.png)
-
-![image-20210428150707262](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20210428150707262.png)
-
-![image-20210428150955582](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20210428150955582.png)
-
-```
-(8)此时在custom-net-tomcat容器中ping一下tomcat01的ip会如何？发现无法ping通
-
-(9)此时如果tomcat01容器能够连接到tomcat-net上应该就可以咯
-docker network connect tomcat-net tomcat01
-
-(10)查看tomcat-net网络，可以发现tomcat01这个容器也在其中
-
-(11)此时进入到tomcat01或者custom-net-tomcat中，不仅可以通过ip地址ping通，而且可以通过名字ping
-到，这时候因为都连接到了用户自定义的tomcat-net bridge上
-
-```
-
-查看tomcat-net网络，可以发现tomcat01这个容器也在其中
-
-![image-20210428151536854](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20210428151536854.png)
-
-查看tomcat01这个容器的网卡信息，新增了一个网卡
-
-![image-20210428151614348](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20210428151614348.png)
-
-这个时候加入tomcat-net网络的tomcat01容器可以ping通18网段了，且可以通过名字ping通
-
-![image-20210428151736505](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20210428151736505.png)
-
-宿主机也可以ping通刚加入tomcat-net网络的两个tomcat容器
-
-![image-20210428153354493](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20210428153354493.png)
-
-custom-net-tomcat也可以ping通tomcat02
-
-![image-20210428152025604](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20210428152025604.png)
-
-
-
-## 5、深入分析Container网络-Host & None
-
-### 5.1 Host
-
-```
-(1)创建一个tomcat容器，并且指定网络为none
-docker run -d --name my-tomcat-host --network host tomcat
-
-(2)查看ip地址
-docker exec -it my-tomcat-host ip a
-可以发现和centos是一样的
-
-(3)检查host网络
-```
-
-![image-20210428155503756](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20210428155503756.png)
-
-![image-20210428155857008](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20210428155857008.png)
-
-### 5.2 None
-
-```
-(1)创建一个tomcat容器，并且指定网络为none
-docker run -d --name my-tomcat-none --network none tomcat
-
-(2)查看ip地址
-docker exec -it my-tomcat-none ip a
-如下：
-[root@w2 ~]# docker exec -it my-tomcat-none ip a
-1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
-    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
-    inet 127.0.0.1/8 scope host lo
-       valid_lft forever preferred_lft forever
-2: tunl0@NONE: <NOARP> mtu 1480 qdisc noop state DOWN group default qlen 1000
-    link/ipip 0.0.0.0 brd 0.0.0.0
-[root@w2 ~]# 
-
-
-```
-
-![image-20210428162905109](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20210428162905109.png)
-
-
-
-# 熟悉docker-compose
-
-> https://docs.docker.com/compose/install/
-
-场景：一个复杂的应用系统通常不是仅仅启动一个容器就可以完成的，比如application = nginx + web + mysql + redis，意味着以后只有启动应用就需要docker run 4个镜像，并且需要保证网络和卷挂载正常。
-
-那有没有一种更好的解决方案呢？——docker-compose，通过编写yaml配置文件来实现。
-
-
-
-执行下面命令即可安装
-
-```shell
-sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-# 增加权限
-sudo chmod +x /usr/local/bin/docker-compose
-```
-
-下图就是官网的示例说明图，其实就是很简单的一个python web应用每次访问然后redis库中的值就+1，通过编写`compose.yaml`文件来实现。
-
-![image-20220330213323792](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220330213323792.png)
-
-这就是yaml文件，这两个容器处于同一个docker网络中，所以可以直接通过服务名访问。
-
-![image-20220330213708107](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220330213708107.png)
-
-![image-20220330214111002](https://eden-typora-picture.oss-cn-hangzhou.aliyuncs.com/img/image-20220330214111002.png)
 
 
 

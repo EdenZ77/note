@@ -958,7 +958,7 @@ panic 仅有最后一个可以被 recover 捕获。触发 `panic("panic")` 后 d
 
 ## defer下的函数参数包含子函数
 
-如果defer后面的表达式中函数调用拥有子函数调用会出现什么情况呢？来看下面的代码：
+来看下面的代码：
 
 ```go
 func function(index int, value int) int {
@@ -974,17 +974,17 @@ func main() {
 }
 ```
 
-这里有4个函数，它们的index序号分别为1、2、3、4。这4个函数的先后执行顺序是什么呢？这里有两个defer，所以defer一共会压栈两次，先进栈1，后进栈2。在压栈function1的时候，需要连同函数地址、函数形参一同进栈，为了得到function1的第2个参数的结果，所以就需要先执行function3将第2个参数算出，所以function3就被第1个执行。同理压栈function2，就需要执行function4算出function2的第2个参数的值，然后函数结束，先出栈function2，再出栈function1。
+这里有 4 个函数，它们的 index 序号分别为 1、2、3、4。这 4 个函数的先后执行顺序是什么呢？这里有两个defer，所以 defer 一共会压栈两次，先进栈 1，后进栈 2。在压栈 function1 的时候，需要连同函数地址、函数形参一同进栈，为了得到 function1 的第 2 个参数的结果，所以就需要先执行 function3 将第 2 个参数算出，所以 function3 就被第 1 个执行。同理压栈 function2，就需要执行 function4 算出 function2 的第 2 个参数的值。最后出栈 function2，再出栈 function1。
 
 执行顺序如下：
 
-(1)defer压栈function1，压栈函数地址、形参1、形参2（调用function3），打印3。
+(1) defer 压栈 function1，压栈函数地址、形参 1、形参 2（调用function3），打印 3。
 
-(2)defer压栈function2，压栈函数地址、形参1、形参2（调用function4），打印4。
+(2) defer 压栈 function2，压栈函数地址、形参 1、形参 2（调用function4），打印 4。
 
-(3)defer出栈function2，调用function，打印2。
+(3) defer 出栈 function2，调用 function，打印 2。
 
-(4)defer出栈function1，调用function1，打印1。
+(4) defer 出栈 function1，调用 function1，打印 1。
 
 运行的结果如下：
 
