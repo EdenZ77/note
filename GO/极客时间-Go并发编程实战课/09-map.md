@@ -1,6 +1,4 @@
 # 09 | map：如何实现线程安全的map类型？
-你好，我是鸟窝。
-
 哈希表（Hash Table）这个数据结构，我们已经非常熟悉了。它实现的就是key-value之间的映射关系，主要提供的方法包括Add、Lookup、Delete等。因为这种数据结构是一个基础的数据结构，每个key都会有一个唯一的索引值，通过索引可以很快地找到对应的值，所以使用哈希表进行数据的插入和读取都是很快的。Go语言本身就内建了这样一个数据结构，也就是 **map数据类型**。
 
 今天呢，我们就先来学习Go语言内建的这个map类型，了解它的基本使用方法和使用陷阱，然后再学习如何实现线程安全的map类型，最后我还会给你介绍Go标准库中线程安全的sync.Map类型。学完了这节课，你可以学会几种可以并发访问的map类型。
@@ -11,7 +9,6 @@ Go内建的map类型如下：
 
 ```
 map[K]V
-
 ```
 
 其中， **key类型的K必须是可比较的**（comparable），也就是可以通过 == 和 !=操作符进行比较；value的值和类型无所谓，可以是任意的类型，或者为nil。
@@ -38,7 +35,6 @@ func main() {
     key.key = 100
     fmt.Printf("再次查询m[key]=%s\n", m[key])
 }
-
 ```
 
 那该怎么办呢？如果要使用struct作为key，我们要保证struct对象在逻辑上是不可变的，这样才会保证map的逻辑没有问题。
@@ -528,3 +524,444 @@ Go内置的map类型使用起来很方便，但是它有一个非常致命的缺
 
 
 欢迎在留言区写下你的思考和答案，我们一起交流讨论。如果你觉得有所收获，也欢迎你把今天的内容分享给你的朋友或同事。
+
+
+
+# Map核心原理
+
+> https://mp.weixin.qq.com/s/PT1zpv3bvJiIJweN3mvX7g
+
+以一组 key-value 对写入 map 的流程为例进行简述：
+
+（1）通过哈希方法取得 key 的 hash 值；
+
+（2）hash 值对桶数组长度取模，确定其所属的桶；
+
+（3）在桶中插入 key-value 对。
+
+hash 的性质，保证了相同的 key 必然产生相同的 hash 值，因此能映射到相同的桶中，通过桶内遍历的方式锁定对应的 key-value 对。
+
+<img src="image/image-20250928110050993.png" alt="image-20250928110050993" style="zoom:60%;" />
+
+map 中，会通过长度为 2 的整数次幂的桶数组进行 key-value 对的存储：
+
+（1）每个桶固定可以存放 8 个 key-value 对；
+
+（2）倘若超过 8 个 key-value 对打到桶数组的同一个索引当中，此时会通过创建桶链表的方式来化解这一问题.
+
+<img src="image/image-20250928110110369.png" alt="image-20250928110110369" style="zoom:60%;" />
+
+## 解决hash冲突
+
+首先，由于 hash 冲突的存在，不同 key 可能存在相同的 hash 值；再者，hash 值会对桶数组长度取模，因此不同 hash 值可能被打到同一个桶中。
+
+综上，不同的 key-value 可能被映射到 map 的同一个桶当中。
+
+在 map 解决 hash 冲突问题时，实际上结合了拉链法和开放寻址法两种思路。以 map 的插入写流程为例，进行思路阐述：
+
+（1）桶数组中的每个桶，严格意义上是一个单向桶链表，以桶为节点进行串联；
+
+（2）每个桶固定可以存放 8 个 key-value 对；
+
+（3）当 key 命中一个桶时，首先根据开放寻址法，在桶的 8 个位置中寻找空位进行插入；
+
+（4）倘若桶的 8 个位置都已被占满，则基于桶的溢出桶指针，找到下一个桶，重复第（3）步；
+
+（5）倘若遍历到链表尾部，仍未找到空位，则基于拉链法，在桶链表尾部续接新桶，并插入 key-value 对。
+
+<img src="image/image-20250928111154623.png" alt="image-20250928111154623" style="zoom:70%;" />
+
+## 数据结构
+
+### hmap
+
+`hmap`是 map 的头结构，它管理着整个哈希表。你可以把它想象成 map 的“大脑”。
+
+```go
+// Go 运行时库中的 hmap 结构 (简化版以突出重点)
+type hmap struct {
+    count     int    // map 中当前存储的键值对数量。len() 函数直接返回这个值。
+    flags     uint8  // 状态标志位，可以标识出 map 是否被 goroutine 并发读写。
+    B         uint8  // 最重要的字段之一。表示当前桶数组长度的对数：len(buckets) = 2^B。
+                     // 例如，B=3 表示桶数组有 8 个桶；B=4 表示有 16 个桶。
+
+    noverflow uint16 // map 中溢出桶的数量
+    hash0     uint32 // 哈希种子，在创建 map 时随机生成。用于计算 key 的哈希值，防止哈希碰撞攻击。
+
+    buckets    unsafe.Pointer // 指向桶数组的指针。也就是指向第一个桶的地址。
+    oldbuckets unsafe.Pointer // 在扩容迁移时指向旧桶数组的指针。扩容完成后会被置为 nil。
+
+    nevacuate  uintptr        // 扩容时的进度标识，index 小于 nevacuate 的桶都已经由老桶转移到新桶中。
+
+    extra *mapextra // 预分配的的溢出桶
+}
+```
+
+`bmap`代表一个具体的桶。
+
+```go
+// 在运行时中，bmap 的结构并非直接这样定义，但其内存布局如下：
+type bmap struct {
+    tophash [bucketCnt]uint8 // 长度为 8 的数组，存储哈希值的高 8 位
+    // 后面紧跟 bucketCnt 个 key
+    // 再后面紧跟 bucketCnt 个 value
+    // 最后是一个溢出桶的指针
+}
+```
+
+一个 bmap 桶的内存布局 (以 map[string]int 为例)
+
+```shell
+┌─────────────────────────────────┐
+│           bmap 结构              │
+├─────────────────────────────────┤
+│   tophash [0]   |  uint8        │  <- 第一个键值对的哈希高8位
+├─────────────────────────────────┤
+│   tophash [1]   |  uint8        │
+├─────────────────────────────────┤
+│       ...       |    ...        │
+├─────────────────────────────────┤
+│   tophash [7]   |  uint8        │  <- 第八个键值对的哈希高8位
+├─────────────────────────────────┤
+│      keys [0]   |  string       │  <- 第一个键值对的 key
+├─────────────────────────────────┤
+│      keys [1]   |  string       │
+├─────────────────────────────────┤
+│       ...       |    ...        │
+├─────────────────────────────────┤
+│      keys [7]   |  string       │  <- 第八个键值对的 key
+├─────────────────────────────────┤
+│    values [0]   |  int          │  <- 第一个键值对的 value
+├─────────────────────────────────┤
+│    values [1]   |  int          │
+├─────────────────────────────────┤
+│       ...       |    ...        │
+├─────────────────────────────────┤
+│    values [7]   |  int          │  <- 第八个键值对的 value
+├─────────────────────────────────┤
+│    overflow     |  *bmap        │  -> 指向下一个溢出桶的指针
+└─────────────────────────────────┘
+
+整个 Go Map 的结构 (hmap + bmap + 溢出桶)
+┌────────────────────────────────────────────────────────────────────────┐
+│                                hmap                                    │
+├──────────────────────┬─────────────────────┬───────────────────────────┤
+│ count = 6            │ B = 1               │ buckets    ──────────────────┤
+│ flags = 0            │ hash0 = 0x...       │ oldbuckets = nil          │ 	│
+└──────────────────────┴─────────────────────┴───────────────────────────┘ 	│
+                                                                           	│
+    桶数组 (长度为 2^B = 2)                                                  │
+    ┌─────────────────┐                                                    	│
+    │   buckets[0]    │ ◄───────────────────────────────────────────────────┘
+    │   (bmap)        │
+    ├─────────────────┤        ┌─────────┐ 溢出桶机制
+    │   buckets[1]    │ ──────►│  bmap   │ ──────► ... (更多溢出桶)
+    │   (bmap)        │        └─────────┘
+    └─────────────────┘
+```
+
+在桶内遍历查找某个 key 时，首先会比较 `tophash`。如果目标的哈希值高 8 位与 `tophash`数组中的条目不匹配，就可以立即跳过键值对的比较，这比直接比较 key 本身要快得多。
+
+<img src="image/image-20250928144243250.png" alt="image-20250928144243250" style="zoom:70%;" />
+
+### mapextra
+
+```go
+type mapextra struct {
+    overflow    *[]*bmap
+    oldoverflow *[]*bmap
+
+    nextOverflow *bmap
+}
+```
+
+在 map 初始化时，倘若容量过大，会提前申请好一批溢出桶，以供后续使用，这部分溢出桶存放在 hmap.mapextra 当中：
+
+（1）mapextra.overflow：供桶数组 buckets 使用的溢出桶；
+
+（2）mapextra.oldoverFlow: 扩容流程中，供老桶数组 oldBuckets 使用的溢出桶；
+
+（3）mapextra.nextOverflow：下一个可用的溢出桶。
+
+## 构造方法
+
+当使用 `make(map[k]v)`或 `make(map[k]v, hint)`创建 map 时，实际上会调用 runtime/map.go 文件中的 makemap 方法，下面对源码展开分析：
+
+```go
+func makemap(t *maptype, hint int, h *hmap) *hmap {
+	mem, overflow := math.MulUintptr(uintptr(hint), t.Bucket.Size_)
+	if overflow || mem > maxAlloc {
+		hint = 0
+	}
+
+	// initialize Hmap
+	if h == nil {
+		h = new(hmap)
+	}
+	h.hash0 = fastrand()
+
+	B := uint8(0)
+	for overLoadFactor(hint, B) {
+		B++
+	}
+	h.B = B
+
+	if h.B != 0 {
+		var nextOverflow *bmap
+		h.buckets, nextOverflow = makeBucketArray(t, h.B, nil)
+		if nextOverflow != nil {
+			h.extra = new(mapextra)
+			h.extra.nextOverflow = nextOverflow
+		}
+	}
+
+	return h
+}
+```
+
+（1）hint 为 map 拟分配的容量；在分配前，会提前对拟分配的内存大小进行判断，倘若超限，会将 hint 置为零；
+
+```go
+	mem, overflow := math.MulUintptr(uintptr(hint), t.Bucket.Size_)
+	if overflow || mem > maxAlloc {
+		hint = 0
+	}
+```
+
+（2）通过 new 方法初始化 hmap；
+
+```go
+	if h == nil {
+		h = new(hmap)
+	}
+```
+
+（3）调用 fastrand，构造 hash 因子：hmap.hash0；
+
+```
+	h.hash0 = fastrand()
+```
+
+（4）计算桶数组的容量 B；
+
+```go
+	B := uint8(0)
+	for overLoadFactor(hint, B) {
+		B++
+	}
+	h.B = B
+```
+
+（5）调用 makeBucketArray 方法，初始化桶数组 hmap.buckets；
+
+```
+		var nextOverflow *bmap
+		h.buckets, nextOverflow = makeBucketArray(t, h.B, nil)
+```
+
+（6）倘若 map 容量较大，会提前申请一批溢出桶 hmap.extra。
+
+```go
+		if nextOverflow != nil {
+			h.extra = new(mapextra)
+			h.extra.nextOverflow = nextOverflow
+		}
+```
+
+### overLoadFactor
+
+通过 overLoadFactor 方法，决定是否继续增长 B 的数值：
+
+```go
+// 调用
+B := uint8(0)
+for overLoadFactor(hint, B) {
+    B++
+}
+h.B = B
+// 函数定义
+const loadFactorNum = 13
+const loadFactorDen = 2
+const goarch.PtrSize = 8
+const bucketCnt = 8
+
+func overLoadFactor(count int, B uint8) bool {
+	return count > bucketCnt && uintptr(count) > loadFactorNum*(bucketShift(B)/loadFactorDen)
+}
+func bucketShift(b uint8) uintptr {
+	return uintptr(1) << (b & (goarch.PtrSize*8 - 1))
+}
+```
+
+（1）倘若 map 预分配容量小于等于 8，B 取 0，桶的个数为 1；
+
+（2）保证 map 预分配容量小于等于桶数组长度 * 6.5。
+
+map 预分配容量、桶数组长度指数、桶数组长度之间的关系如下表：
+
+<img src="image/image-20250928155916447.png" alt="image-20250928155916447" style="zoom:60%;" />
+
+
+
+## 读流程
+
+<img src="image/image-20250928160138159.png" alt="image-20250928160138159" style="zoom:70%;" />
+
+map 读流程主要分为以下几步：
+
+（1）根据 key 取 hash 值；
+
+（2）根据 hash 值对桶数组取模，确定所在的桶；
+
+（3）沿着桶链表依次遍历各个桶内的 key-value 对；
+
+（4）命中相同的 key，则返回 value；倘若 key 不存在，则返回零值。
+
+
+
+## 写流程
+
+<img src="image/image-20250928162851785.png" alt="image-20250928162851785" style="zoom:70%;" />
+
+map 写流程主要分为以下几步：
+
+（1）根据 key 取 hash 值；
+
+（2）根据 hash 值对桶数组取模，确定所在的桶；
+
+（3）倘若 map 处于扩容，则迁移命中的桶，帮助推进渐进式扩容；
+
+（4）沿着桶链表依次遍历各个桶内的 key-value 对；
+
+（5）倘若命中相同的 key，则对 value 中进行更新；
+
+（6）倘若 key 不存在，则插入 key-value 对；
+
+（7）倘若发现 map 达成扩容条件，则会开启扩容模式，并重新返回第（2）步。
+
+有关渐进式扩容和扩容模式在后面扩容流程部分讲解。
+
+
+
+## 删流程
+
+<img src="image/image-20250928163448420.png" alt="image-20250928163448420" style="zoom:70%;" />
+
+map 删楚 kv 对流程主要分为以下几步：
+
+（1）根据 key 取 hash 值；
+
+（2）根据 hash 值对桶数组取模，确定所在的桶；
+
+（3）倘若 map 处于扩容，则迁移命中的桶，帮助推进渐进式扩容；
+
+（4）沿着桶链表依次遍历各个桶内的 key-value 对；
+
+（5）倘若命中相同的 key，删除对应的 key-value 对；并将当前位置的 tophash 置为 emptyOne，表示为空；
+
+（6）倘若当前位置为末位，或者下一个位置的 tophash 为 emptyRest，则沿当前位置向前遍历，将毗邻的 emptyOne 统一更新为 emptyRest。
+
+`tophash`数组中的两种特殊标记：
+
+- `emptyOne`(值为 1)：表示当前这个单元格是空的。但这个空位可能是“夹在”两个有效单元格之间的。
+- `emptyRest`(值为 0)：表示从当前这个单元格开始，一直到桶的末尾，所有单元格都是空的。
+
+
+
+## 遍历流程
+
+<img src="image/image-20250928164655401.png" alt="image-20250928164655401" style="zoom:70%;" />
+
+
+
+## 扩容流程
+
+<img src="image/image-20250928165502040.png" alt="image-20250928165502040" style="zoom:70%;" />
+
+map 的扩容类型分为两类，一类叫做增量扩容，一类叫做等量扩容.
+
+（1）增量扩容
+
+表现：扩容后，桶数组的长度增长为原长度的 2 倍；
+
+倘若此前未进入扩容模式，且 map 中 key-value 对的数量超过 8 个，且大于桶数组长度的 6.5 倍，则进入增量扩容
+
+```go
+const(
+   loadFactorNum = 13
+   loadFactorDen = 2
+   bucketCnt = 8
+)
+
+
+func overLoadFactor(count int, B uint8) bool {
+    return count > bucketCnt && uintptr(count) > loadFactorNum*(bucketShift(B)/loadFactorDen)
+}
+```
+
+<img src="image/image-20250928172103977.png" alt="image-20250928172103977" style="zoom:50%;" />
+
+（1）在等量扩容中，新桶数组长度与原桶数组相同；
+
+（2）key-value 对在新桶数组和老桶数组的中的索引号保持一致；
+
+（3）在增量扩容中，新桶数组长度为原桶数组的两倍；
+
+（4）把新桶数组中桶号对应于老桶数组的区域称为 x 区域，新扩展的区域称为 y 区域.
+
+（5）实际上，一个 key 属于哪个桶，取决于其 hash 值对桶数组长度取模得到的结果，最终依赖于其低位的 hash 值结果.；
+
+（6）在增量扩容流程中，新桶数组的长度会扩展一位，假定 key 原本从属的桶号为 i，则在新桶数组中从属的桶号只可能是 i （x 区域）或者 i + 老桶数组长度（y 区域）；
+
+（7）当 key 低位 hash 值向左扩展一位的 bit 位为 0，则应该迁往 x 区域的 i 位置；倘若该 bit 位为 1，应该迁往 y 区域对应的 i + 老桶数组长度的位置；
+
+（8）从旧桶 `i`的主桶开始，依次遍历其所有溢出桶，收集链上的所有键值对；对每个键值对，用其哈希值的新增高位（即第 `B+1`位）决定去向。
+
+**假设：**
+
+- 旧桶数组长度 `oldLen = 8`(`2^3`, 即 `oldB = 3`)。
+- 新桶数组长度 `newLen = 16`(`2^4`, 即 `newB = 4`)。
+- 有一个 key，它的哈希值是 `... 1011 1101`（我们只关心最后几位）。
+
+**原理：定位桶的算法**
+
+- 定位公式：`bucket_index = hash & (bucket_len - 1)` （在 Go 的 map 实现中，`hash & (bucket_len - 1)`这个位运算本质上就是 `hash % bucket_len`（取模运算），但它是通过位运算实现的，效率更高。）
+- 为什么是这个公式？因为桶长度永远是 2 的幂次，`bucket_len - 1`的二进制就是一串连续的 `1`。这个位运算 `&`的效果就是取哈希值的低位作为索引。
+  - 旧桶长度是 8 (`1000`)，`8-1=7`(`0111`)。`hash & 0111`就是取 hash 的最低 3 位。
+  - 新桶长度是 16 (`10000`)，`16-1=15`(`01111`)。`hash & 01111`就是取 hash 的最低 4 位。
+
+**迁移的确定性**
+
+现在，关键点来了：key 的新位置完全由它的哈希值的第 4 位（从低位开始数）决定。
+
+- 旧索引 `i`：由低 3 位决定，假设是 `101`（二进制）= 5（十进制）。
+- 新索引：由低 4 位决定。低 4 位只可能是 `0101`或 `1101`。如果第 4 位是 `0`，新索引是 `0101`（二进制）= 5（十进制）。这个位置正好对应图中描述的 x 区域，即和旧索引 `i`相同的位置。如果第 4 位是 `1`，新索引是 `1101`（二进制）= 13（十进制）。这个位置正好是 `i + oldLen = 5 + 8 = 13`。这个位置对应图中描述的 y 区域。
+
+
+
+（2）等量扩容
+
+表现：扩容后，桶数组的长度和之前保持一致；但是溢出桶的数量会下降。
+
+倘若溢出桶的数量大于 2^B 个（即桶数组的长度；B 大于 15 时取15），则进入等量扩容：
+
+```go
+func tooManyOverflowBuckets(noverflow uint16, B uint8) bool {
+    if B > 15 {
+        B = 15
+    }
+    return noverflow >= uint16(1)<<(B&15)
+}
+```
+
+等量扩容中，`newLen = oldLen`。因此，`hash & (newLen - 1)`和 `hash & (oldLen - 1)`这个计算过程是完全一样的，因为取模运算（位与操作）截取的位数相同。
+
+虽然索引号不变，但“重新哈希”的过程会遍历这个桶链表上的所有 key-value 对，并将它们重新紧凑地排列到新桶的主桶中。那些因为删除操作而产生的 `emptyOne`空隙会被抹除，过长的溢出链会被缩短甚至消除。最终，数据变得更紧凑，内存使用率更高，查询性能也得到恢复。
+
+
+
+- 等量扩容（`B`不变）：是一次 **“整理”**。在索引不变的情况下，对桶内部进行碎片整理和内存压缩，目标是提升空间利用率和查询速度。
+- 增量扩容（`B+1`）：是一次 **“扩张”**。它利用哈希值的特性，通过检查新增的高位，将旧桶中的数据一分为二，均匀地分散到扩大了一倍的新数组中，目标是降低负载，保证时间复杂度。
+
+# SyncMap核心原理
+
