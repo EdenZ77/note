@@ -1152,7 +1152,7 @@ ENTRYPOINT [ "sh", "-c", "java -Djava.security.egd=file:/dev/./urandom $JAVA_OPT
 
 **第一阶段：构建阶段（标签：`buildapp`）**
 
-```
+```dockerfile
 FROM maven:3.6.1-jdk-8-alpine AS buildapp # 1. 基础镜像是包含Maven和JDK的构建环境
 WORKDIR /app
 COPY pom.xml .
@@ -1161,12 +1161,12 @@ RUN mvn clean package -Dmaven.test.skip=true # 3. 执行Maven命令，编译打�
 RUN cp /app/target/*.jar  /app.jar      # 4. 将生成的jar包复制到根目录，方便下一阶段提取
 ```
 
-- **目的**：在隔离的容器环境中，可靠地生成构建产物 `app.jar`。
-- **特点**：此阶段结束后，会产生一个中间镜像，其中包含源代码、Maven、JDK、编译产生的`target/`目录等。**这些在最终镜像中都不会存在**。
+- 目的：在隔离的容器环境中，可靠地生成构建产物 `app.jar`。
+- 特点：此阶段结束后，会产生一个中间镜像，其中包含源代码、Maven、JDK、编译产生的`target/`目录等。这些在最终镜像中都不会存在。
 
 **第二阶段：运行阶段（最终阶段）**
 
-```
+```dockerfile
 FROM openjdk:8-jre-alpine # 1. 基础镜像是仅包含JRE的轻量级运行环境
 RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && echo 'Asia/Shanghai' >/etc/timezone # 2. （优化项）设置容器时区
 LABEL maintainer="534096094@qq.com"
@@ -1176,8 +1176,8 @@ ENV PARAMS=""
 ENTRYPOINT [ "sh", "-c", "java -Djava.security.egd=file:/dev/./urandom $JAVA_OPTS -jar /app.jar $PARAMS" ] # 4. 启动应用
 ```
 
-- **目的**：创建一个用于生产环境部署的最小化镜像。
-- **特点**：通过 `COPY --from=buildapp`这个“魔法指令”，它只从庞大的上一阶段中取走了唯一需要的文件——`/app.jar`。最终镜像**不包含**源代码、Maven、JDK，甚至不包含第一阶段的`target`目录，极其精简和安全。
+- 目的：创建一个用于生产环境部署的最小化镜像。
+- 特点：通过 `COPY --from=buildapp`这个“魔法指令”，它只从庞大的上一阶段中取走了唯一需要的文件——`/app.jar`。最终镜像不包含源代码、Maven、JDK，甚至不包含第一阶段的`target`目录，极其精简和安全。
 
 
 
