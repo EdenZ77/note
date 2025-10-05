@@ -42,7 +42,7 @@ miniblog 是一个小而美的项目，虽然项目不大，却同时实现了 H
 
 <img src="image/FoC6e5yVZji20MGdXhpBHdA9P5Ma" alt="img" style="zoom:50%;" />
 
-miniblog 项目使用 Gin 框架实现了 HTTP 服务，使用 gRPC 框架实现了 gRPC 服务，使用 grpc-gateway 实现了 HTTP 反向代理服务，用来将 HTTP 请求转发为 gRPC 服务。同时，miniblog 项目支持通过配置文件中的 tls.use-tls 配置项开启 TLS 认证。mb-apiserver 服务启动时，可通过配置文件中的 server-mode 配置项来配置启动的 Web 服务类型：
+miniblog 项目使用 Gin 框架实现了 HTTP 服务，使用 gRPC 框架实现了 gRPC 服务，使用 grpc-gateway 实现了 HTTP 反向代理服务，用来将 HTTP 请求转发给 gRPC 服务。同时，miniblog 项目支持通过配置文件中的 tls.use-tls 配置项开启 TLS 认证。mb-apiserver 服务启动时，可通过配置文件中的 server-mode 配置项来配置启动的 Web 服务类型：
 
 - server-mode=gin：启动使用 Gin Web 框架开发的 HTTP 服务；
 - server-mode=grpc：启动使用 grpc+grpc-gateway 框架开发的 gRPC 服务，同时支持 HTTP 请求。在 mb-apiserver 接收到 HTTP 请求后，HTTP 反向代理服务，会将 HTTP 请求转换为 gRPC 请求，并转发给 gRPC 服务接口。
