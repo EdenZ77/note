@@ -172,19 +172,244 @@ protoc: # 编译 protobuf 文件.
 
 以下是 protoc 命令参数的说明：
 
-- --proto_path 或 -I：用于指定编译源码的搜索路径，类似于 C/C++中的头文件搜索路径，在构建 .proto 文件时，protoc 会在这些路径下查找所需的 Protobuf 文件及其依赖；
-- --go_out：用于生成与 gRPC 服务相关的 Go 代码，并配置生成文件的路径和文件结构。例如 --go_out=plugins=grpc,paths=import:.。主要参数包括 plugins 和 paths。分别表示生成 Go 代码所使用的插件，以及生成的 Go 代码的位置。这里我们使用到了 paths 参数，它支持以下两个选项：
+- --proto_path 或 -I：用于指定编译源码的搜索路径，在构建 .proto 文件时，protoc 会在这些路径下查找所需的 Protobuf 文件及其依赖；
+- --go_out：用于生成与 gRPC 服务相关的 Go 代码，并配置生成文件的路径和文件结构。例如 `--go_out=plugins=grpc,paths=import:.`。主要参数包括 plugins 和 paths。分别表示生成 Go 代码所使用的插件，以及生成的 Go 代码的位置。这里我们使用到了 paths 参数，它支持以下两个选项：
   - import（默认值）：按照生成的 Go 代码包的全路径创建目录结构；
-  - source_relative：表示生成的文件应保持与输入文件相对路径一致。假设 Protobuf 文件位于 pkg/api/apiserver/v1/example.proto，启用该选项后，生成的代码也会位于 pkg/api/apiserver/v1/目录。如果没有设置 paths=source_relative，默认情况下，生成的 Go 文件的路径可能与包含路径有直接关系，并不总是与输入文件相对路径保持一致。
-- --go-grpc_out：功能与 --go_out 类似，但该参数用于指定生成的 *_grpc.pb.go 文件的存放路径。
+  - source_relative：表示生成的文件应保持与输入文件相对路径一致。假设 Protobuf 文件位于 pkg/api/apiserver/v1/example.proto，启用该选项后，生成的代码也会位于 pkg/api/apiserver/v1/ 目录。如果没有设置 paths=source_relative，默认情况下，生成的 Go 文件的路径可能与包含路径有直接关系，并不总是与输入文件相对路径保持一致。
+- --go-grpc_out：功能与 --go_out 类似，但该参数用于指定生成的 `*_grpc.pb.go` 文件的存放路径。
 
 在 pkg/api/apiserver/v1/apiserver.proto 文件中，通过以下语句导入了 empty.proto 文件：
 
+```
+import "google/protobuf/empty.proto";
+```
 
+因此，需要将 empty.proto 文件保存在匹配的路径下，并通过以下参数将其添加到 Protobuf 文件的搜索路径中：`--proto_path=$(PROJ_ROOT_DIR)/third_party/protobuf`。
 
+由于 empty.proto 是第三方项目的文件，根据目录结构规范，应将其存放在项目根目录下的 third_party 目录中。
 
+执行以下命令编译 Protobuf 文件：
 
+```
+$ make protoc
+```
 
+上述命令会在 [pkg/api/apiserver/v1/](https://github.com/onexstack/miniblog/tree/feature/s09/pkg/api/apiserver/v1) 目录下生成以下两类文件：
 
+- `*.pb.go`：包含与 Protobuf 文件中定义的消息类型（使用 message 关键字）对应的 Go 语言结构体、枚举类型、以及与这些结构体相关的序列化、反序列化代码。主要功能是将 Protobuf 数据格式与 Go 语言中的结构体进行映射，并支持 Protobuf 协议的数据序列化与反序列化操作；
+- `*_grpc.pb.go`：包含与 Protobuf 文件中定义的服务（使用 service 关键字）对应的 gRPC 服务代码。该文件会定义客户端和服务端用到的接口（interface），并包含注册服务的方法（如 RegisterService）。
 
+### （3）实现 gRPC 服务端
 
+启动 gRPC 服务，需要指定一些核心配置，例如 gRPC 服务监听的端口。所以，需要先给应用添加 gRPC 服务配置。根据 miniblog 应用构建模型，需要先添加初始化配置，再添加运行时配置，之后根据运行时配置创建一个 gRPC 服务实例。代码实现如代码清单 7-1 所示（位于 [cmd/mb-apiserver/app/options/options.go](https://github.com/onexstack/miniblog/blob/feature/s09/cmd/mb-apiserver/app/options/options.go#L25) 文件中）。
+
+代码清单 7-1 中，新增了 GRPCOptions 配置项，类型为 `*genericoptions.GRPCOptions`。这里有个开发技巧，像 HTTP、gRPC、MySQL、TLS、Redis、PostgreSQL 等项目中常的组件，其配置基本都是相同的，为了提高代码的复用度和开发效率，可以将这些配置定义为对应的配置结构体，以 options 包的形式统一对外提供。这样，其他项目不用再定义这些配置，直接使用即可。对应的 options 包，可以给个别名 genericoptions，说明这是通用的基础选项包。例如 github.com/onexstack/onexstack/pkg/options 包就预定义了很多此类配置：HTTPOptions、GRPCOptions、TLSOptions、MySQLOptions 等。上述配置类型命名格式为`<XXX>Options`，并且都有 `New<XXX>Options` 方法用来创建默认的配置实例。同时，上述配置类型都满足以下接口定义：
+
+```go
+// IOptions defines methods to implement a generic options.
+type IOptions interface {
+    // Validate validates all the required options. 
+    // It can also used to complete options if needed.
+    Validate() []error
+
+    // AddFlags adds flags related to given flagset.
+    AddFlags(fs *pflag.FlagSet, prefixes ...string)
+}
+```
+
+通过以上规范化、标准化定义，进一步提高代码的规范度，并能在一定程度上提高开发效率、减小代码理解成本。
+
+代码中支持了 gRPC 配置项后，配置文件 `$HOME/.miniblog/mb-apiserver.yaml` 需要新增 gRPC 配置：
+
+```yaml
+# GRPC 服务器相关配置
+grpc:
+  # GRPC 服务器监听地址
+  addr: :6666
+```
+
+apiserver.proto 被 protoc 编译器编译后，生成了 [apiserver_grpc.pb.go](https://github.com/onexstack/miniblog/blob/feature/s09/pkg/api/apiserver/v1/apiserver_grpc.pb.go) 文件，该文件中包含了启动 gRPC 服务所需的必要函数。可以在 [internal/apiserver/server.go](https://github.com/onexstack/miniblog/blob/feature/s09/internal/apiserver/server.go#L60) 文件中添加代码以启动一个 gRPC 服务器，代码如代码清单 7-2 所示。
+
+```go
+import (
+    ...
+    handler "github.com/onexstack/miniblog/internal/apiserver/handler/grpc"
+    ...
+)
+...
+// NewUnionServer 根据配置创建联合服务器.
+func (cfg *Config) NewUnionServer() (*UnionServer, error) {
+    lis, err := net.Listen("tcp", cfg.GRPCOptions.Addr)
+    if err != nil {
+        log.Fatalw("Failed to listen", "err", err)
+        return nil, err
+    }
+
+    // 创建 GRPC Server 实例
+    grpcsrv := grpc.NewServer()
+    apiv1.RegisterMiniBlogServer(grpcsrv, handler.NewHandler())
+
+    return &UnionServer{srv: grpcsrv, lis: lis}, nil
+}
+
+// Run 运行应用.
+func (s *UnionServer) Run() error {
+    // 打印一条日志，用来提示 GRPC 服务已经起来，方便排障
+    log.Infow("Start to listening the incoming requests on grpc address", "addr", s.cfg.GRPCOptions.Addr)
+    return s.srv.Serve(s.lis)
+}
+```
+
+代码清单 7-2 使用 `grpc.NewServer()` 函数创建了一个 gRPC 服务实例 grpcsrv，并使用 `apiv1.RegisterMiniBlogServer()` 方法将 MiniBlog 服务的处理器注册到 gRPC 服务器中。`handler.NewHandler()` 返回一个服务处理器实例，该实例实现了 MiniBlog 服务的业务逻辑。
+
+`reflection.Register(grpcsrv)` 的作用是向 gRPC 服务器注册反射服务，从而使得 gRPC 服务支持服务反射功能。gRPC 服务反射（gRPC Server Reflection）是 gRPC 框架提供的一种功能，它允许客户端动态查询 gRPC 服务器上的服务信息，而无需事先拥有 Protobuf 文件。这种功能在调试和测试 gRPC 服务时非常有用。另外，一些动态 gRPC 客户端（如某些语言的 gRPC 实现）可以通过服务反射动态生成客户端代码，而无需依赖预编译的 Protobuf 文件。以下是使用 gRPC 服务反射功能的一个示例，使用 grpcurl 工具动态查询服务信息：
+
+```shell
+$ go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
+$ grpcurl -plaintext localhost:6666 list # 需要先启动 miniblog gRPC服务，可以稍后测试
+grpc.reflection.v1.ServerReflection
+grpc.reflection.v1alpha.ServerReflection
+v1.MiniBlog
+```
+
+在实现了 gRPC 启动框架之后，还需要根据 MiniBlog RPC 服务的定义，实现其定义的 API 接口：
+
+```protobuf
+service MiniBlog {
+    // Healthz 健康检查
+    rpc Healthz(google.protobuf.Empty) returns (HealthzResponse) {}
+}
+```
+
+根据 miniblog 简洁架构设计，将 gRPC 接口在处理器层实现，代码位于 [internal/apiserver/handler](https://github.com/onexstack/miniblog/tree/feature/s09/internal/apiserver/handler) 目录中。miniblog 项目同时实现了 gRPC 服务和 HTTP 服务，为了提高代码可维护性，本课程将两类处理器层代码分别保存在 internal/apiserver/handler/grpc 和 internal/apiserver/handler/http 目录中。
+
+新建 [internal/apiserver/handler/grpc/handler.go](https://github.com/onexstack/miniblog/blob/feature/s09/internal/apiserver/handler/grpc/handler.go) 文件，实现 [Handler](https://github.com/onexstack/miniblog/blob/feature/s09/internal/apiserver/handler/grpc/handler.go#L14) 结构体类型，该结构体类型用来实现 MiniBlog 服务定义的 RPC 接口。handler.go 文件内容如代码清单 7-3 所示。
+
+```go
+package handler
+
+import (
+    apiv1 "github.com/onexstack/miniblog/pkg/api/apiserver/v1"
+)
+
+// Handler 负责处理博客模块的请求.
+type Handler struct {
+    apiv1.UnimplementedMiniBlogServer
+}
+
+// NewHandler 创建一个新的 Handler 实例.
+func NewHandler() *Handler {
+    return &Handler{}
+}
+```
+
+代码清单 7-3 中，github.com/onexstack/miniblog/pkg/api/apiserver/v1 被重命名为 apiv1，并且在 miniblog 项目的所有文件中，都会被重命名为 apiv1。这样重命名是为了跟其他包名为 v1 的包进行命名区分，例如：k8s.io/api/core/v1、k8s.io/apimachinery/pkg/apis/meta/v1。
+
+Handler 结构体必须内嵌 `apiv1.UnimplementedMiniBlogServer` 类型。这是为了提供默认实现，确保未实现的 gRPC 方法返回“未实现”错误，同时满足接口要求，简化服务端开发和向后兼容性。内嵌apiv1.UnimplementedMiniBlogServer 更详细的介绍见 [docs/book/unimplemented.md](https://github.com/onexstack/miniblog/blob/feature/s09/docs/book/unimplemented.md) 文件或者自行咨询 GPT 类工具。
+
+新建 [internal/apiserver/handler/grpc/healthz.go](https://github.com/onexstack/miniblog/blob/feature/s09/internal/apiserver/handler/grpc/healthz.go) 文件，在该文件中实现 Healthz 接口，代码如代码清单 7-4 所示。
+
+```go
+package handler
+
+import (
+    "context"
+    "time"
+
+    emptypb "google.golang.org/protobuf/types/known/emptypb"
+
+    apiv1 "github.com/onexstack/miniblog/pkg/api/apiserver/v1"
+)
+
+// Healthz 服务健康检查.
+func (h *Handler) Healthz(ctx context.Context, rq *emptypb.Empty) (*apiv1.HealthzResponse, error) {
+    return &apiv1.HealthzResponse{
+        Status:    apiv1.ServiceStatus_Healthy,
+        Timestamp: time.Now().Format(time.DateTime),
+    }, nil
+}
+```
+
+为了提高代码的可维护性，这里建议将代码按资源分类保存在不同的文件中。例如健康类接口保存在 healthz.go 文件中，用户类接口保存在 user.go 文件中，博客类接口保存在 post.go 文件中。
+
+### （4）实现 gRPC 客户端
+
+在实现了 gRPC 服务端之后，可以开发一个 gRPC 客户端，连接 gPRC 服务器，并调用其提供的 RPC 接口，测试服务是否开发成功。gRPC 客户端实现代码如代码清单 7-5 所示。
+
+```go
+package main
+
+import (
+    "context"
+    "encoding/json"
+    "flag"
+    "fmt"
+    "log"
+    "time"
+
+    "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
+
+    apiv1 "github.com/onexstack/miniblog/pkg/api/apiserver/v1"
+)
+
+var (
+    // 定义命令行选项
+    addr  = flag.String("addr", "localhost:6666", "The grpc server address to connect to.") // gRPC 服务的地址
+    limit = flag.Int64("limit", 10, "Limit to list users.")                                 // 限制列出用户的数量
+)
+
+func main() {
+    flag.Parse() // 解析命令行参数
+
+    // 建立与 gRPC 服务器的连接
+    conn, err := grpc.Dial(*addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+    // grpc.Dial 用于建立客户端与 gRPC 服务端的连接
+    // grpc.WithTransportCredentials(insecure.NewCredentials()) 表示使用不安全的传输（即不使用 TLS）
+    if err != nil {
+        log.Fatalf("Failed to connect to grpc server: %v", err) // 如果连接失败，记录错误并退出程序
+    }
+    defer conn.Close() // 确保在函数结束时关闭连接，避免资源泄漏
+
+    // 创建 MiniBlog 客户端
+    client := apiv1.NewMiniBlogClient(conn) // 使用连接创建一个 MiniBlog 的 gRPC 客户端实例
+
+    // 设置上下文，带有 3 秒的超时时间
+    ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+    // context.WithTimeout 用于设置调用的超时时间，防止请求无限等待
+    defer cancel() // 在函数结束时取消上下文，释放资源
+
+    // 调用 MiniBlog 的 Healthz 方法，检查服务健康状况
+    resp, err := client.Healthz(ctx, nil) // 发起 gRPC 请求，Healthz 是一个简单的健康检查方法
+    if err != nil {
+        log.Fatalf("Failed to call healthz: %v", err) // 如果调用失败，记录错误并退出程序
+    }
+
+    // 将返回的响应数据转换为 JSON 格式
+    jsonData, _ := json.Marshal(resp) // 使用 json.Marshal 将响应对象序列化为 JSON 格式
+    fmt.Println(string(jsonData))     // 输出 JSON 数据到终端
+}
+```
+
+代码清单 7-5，通过 apiv1.NewMiniBlogClient(conn) 创建了一个 gRPC 客户端，之后就可以像调用本地函数一样调用 gRPC 服务端提供的各种 API 接口，例如：client.Healthz(ctx, nil)。根据目录规范，需要将代码清单 7-5 中的代码保存在文件 [examples/client/health/main.go](https://github.com/onexstack/miniblog/blob/feature/s09/examples/client/health/main.go) 中。
+
+### （5）测试 gRPC 服务
+
+打开 Linux 终端执行以下命令启动 gRPC 服务：
+
+```shell
+$ make protoc
+$ make build
+$ _output/mb-apiserver 
+```
+
+新建一个 Linux 终端，运行以下命令，测试 gRPC 服务是否成功启动、Healthz 接口是否可以成功访问：
+
+```
+$ go run examples/client/health/main.go
+{"timestamp":"2025-02-01 13:42:15"}
+```
+
+上述输出说明，Healthz 接口可以成功访问，并且返回的 status 字段值为 0，根据 healthz.proto 文件中 [ServiceStatus](https://github.com/onexstack/miniblog/blob/feature/s09/pkg/api/apiserver/v1/healthz.proto#L15) 枚举类型定义，说明 gRPC 接口返回健康状态。
+
+至此，成功实现了一个简单的 gRPC 服务，完整代码见 [feature/s09](https://github.com/onexstack/miniblog/tree/feature/s09) 分支。
