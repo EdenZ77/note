@@ -14,7 +14,7 @@
 
 在 Kubernetes 中，开发 API 接口最核心的第一步是资源定义。另外 2 项：API 接口的请求方法、请求路径在 Kubernetes 中都会根据资源定义自动生成。
 
-资源定义是一个开发动作，定义出来的资源在 Kubernetes 也叫资源对象，在 Kubernetes 中其实就是一个 Go 结构体。 ~~这个 Go 结构体对象我们也可以称之为 Kubernetes （资源）对象（其实就是一种编程对象）。~~
+资源定义是一个开发动作，定义出来的资源在 Kubernetes 也叫资源对象，在 Kubernetes 中其实就是一个 Go 结构体。
 
 本小节，我就通过介绍 Kubernetes 的资源对象，来给你介绍下 Kubernetes 是如何定义标准化的资源对象的，也即如何定义 REST API 接口的。
 
