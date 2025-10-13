@@ -60,7 +60,7 @@ chmod +x kubebuilder && sudo mv kubebuilder /usr/local/bin/
 kubebuilder version
 ```
 
-本节课要演示使用的kubebuilder版本为：v3.6.0
+本节课要演示使用的 kubebuilder 版本为：v3.6.0
 
 ## 3.3 架构图
 
@@ -233,7 +233,7 @@ metadata:
   name: example-configmap-c-b5bdf7982h
 ```
 
-- Secret 针对敏感数据，同样它真正来源一般来自其他地方，比如 password.txt 密钥文件，使用 secretGenerator。
+- Secret 针对敏感数据，同样它来源一般来自其他地方，比如 password.txt 密钥文件，使用 secretGenerator。
 
 ```shell
 cat <<EOF >./password.txt
@@ -431,19 +431,47 @@ spec:
 
 ## 9.1 Makefile文件介绍
 
-- generate 生成crd文件
-- manifests 生成部署需要的文件
-- build 编译operator
-- install 安装crd
-- run 运行operator
+- generate：生成 DeepCopy、DeepCopyInto、DeepCopyObject 等实现
+- manifests：生成 ClusterRole、CRD 等
+- install：安装 CRD 到 K8S 集群中
+- build：编译项目输出到 bin/manager（go build -o bin/manager cmd/main.go）
+- run：本地运行项目（go run ./cmd/main.go）
 
 ## 9.2 执行命令
 
-```
+```shell
 make generate
 make manifests
-make build
 make install
+make build
 make run
+
+# 在K8S集群中apply CR
+root@debian:~/golang/src/github.com/onexstack/demo/config/samples# kubectl apply -f demo_v1_app.yaml
+app.demo.mashibing.com/app-sample created
+root@debian:~/golang/src/github.com/onexstack/demo/config/samples# kubectl get apps
+NAME         AGE
+app-sample   71s
+root@debian:~/golang/src/github.com/onexstack/demo/config/samples# kubectl get apps app-sample -oyaml
+apiVersion: demo.mashibing.com/v1
+kind: App
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"demo.mashibing.com/v1","kind":"App","metadata":{"annotations":{},"labels":{"app.kubernetes.io/managed-by":"kustomize","app.kubernetes.io/name":"demo"},"name":"app-sample","namespace":"default"},"spec":{"action":"Hello","object":"World"}}
+  creationTimestamp: "2025-10-13T03:33:51Z"
+  generation: 1
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: demo
+  name: app-sample
+  namespace: default
+  resourceVersion: "39726"
+  uid: 40fb544d-8bf9-4d2e-821e-8b55157f83ba
+spec:
+  action: Hello
+  object: World
+status:
+  result: Hello,World
 ```
 
