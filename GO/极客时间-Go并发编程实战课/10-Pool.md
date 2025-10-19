@@ -3,7 +3,7 @@
 
 Go是一个自动垃圾回收的编程语言，采用 [三色并发标记算法](https://go.dev/blog/ismmkeynote) 标记对象并回收。和其它没有自动垃圾回收的编程语言不同，使用Go语言创建对象的时候，我们没有回收/释放的心理负担，想用就用，想创建就创建。
 
-但是， **如果你想使用Go开发一个高性能的应用程序的话，就必须考虑垃圾回收给性能带来的影响**，毕竟，Go的自动垃圾回收机制还是有一个STW（stop-the-world，程序暂停）的时间，而且，大量地创建在堆上的对象，也会影响垃圾回收标记的时间。
+但是， 如果你想使用Go开发一个高性能的应用程序的话，就必须考虑垃圾回收给性能带来的影响，毕竟，Go的自动垃圾回收机制还是有一个STW（stop-the-world，程序暂停）的时间，而且，大量地创建在堆上的对象，也会影响垃圾回收标记的时间。
 
 所以，一般我们做性能优化的时候，会采用对象池的方式，把不用的对象回收起来，避免被垃圾回收掉，这样使用的时候就不必在堆上重新创建了。
 
@@ -98,7 +98,7 @@ victim中的元素如果被Get取走，那么这个元素就很幸运，因为�
 
 下面的代码是垃圾回收时sync.Pool的处理逻辑：
 
-```
+```go
 func poolCleanup() {
     // 丢弃当前victim, STW所以不用加锁
     for _, p := range oldPools {
@@ -116,7 +116,6 @@ func poolCleanup() {
 
     oldPools, allPools = allPools, nil
 }
-
 ```
 
 在这段代码中，你需要关注一下local字段，因为所有当前主要的空闲可用的元素都存放在local字段中，请求元素时也是优先从local字段中查找可用的元素。local字段包含一个poolLocalInternal字段，并提供CPU缓存对齐，从而避免false sharing。
@@ -206,7 +205,7 @@ func (p *Pool) getSlow(pid int) interface{} {
 
 我们来看看Put方法的具体实现原理。
 
-```
+```go
 func (p *Pool) Put(x interface{}) {
     if x == nil { // nil值直接丢弃
         return
@@ -221,7 +220,6 @@ func (p *Pool) Put(x interface{}) {
     }
     runtime_procUnpin()
 }
-
 ```
 
 Put的逻辑相对简单，优先设置本地private，如果private字段已经有值了，那么就把此元素push到本地队列中。
@@ -302,7 +300,7 @@ http.Client实现连接池的代码是在Transport类型中，它使用idleConn�
 
 它的使用套路如下：
 
-```
+```go
 // 工厂模式，提供创建连接的工厂方法
 factory    := func() (net.Conn, error) { return net.Dial("tcp", "127.0.0.1:4000") }
 
@@ -326,14 +324,13 @@ p.Close()
 
 // 当前池子中的连接的数量
 current := p.Len()
-
 ```
 
 虽然我一直在说TCP，但是它管理的是更通用的net.Conn，不局限于TCP连接。
 
 它通过把net.Conn包装成PoolConn，实现了拦截net.Conn的Close方法，避免了真正地关闭底层连接，而是把这个连接放回到池中：
 
-```
+```go
     type PoolConn struct {
 		net.Conn
 		mu       sync.RWMutex
@@ -354,12 +351,11 @@ current := p.Len()
 		}
 		return p.c.put(p.Conn)
 	}
-
 ```
 
 它的Pool是通过Channel实现的，空闲的连接放入到Channel中，这也是Channel的一个应用场景：
 
-```
+```go
     type channelPool struct {
 		// 存储连接池的channel
 		mu    sync.RWMutex
@@ -369,7 +365,6 @@ current := p.Len()
 		// net.Conn 的产生器
 		factory Factory
 	}
-
 ```
 
 ## 数据库连接池
