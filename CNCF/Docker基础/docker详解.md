@@ -1296,7 +1296,6 @@ $
 
 ```
 ip netns list #查看当前机器上的network namespace
-ip netns list #查看 
 ip netns add ns1 #添加 
 ip netns delete ns1 #删除
 ```
