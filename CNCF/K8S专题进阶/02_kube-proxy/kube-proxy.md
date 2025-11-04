@@ -284,9 +284,7 @@ kube-proxy 使用了 iptables 的 filter 表和 nat 表，并对 iptables 的链
 
 kube-proxy 是以 daemonSet 的形式部署在所有节点上的，所以每个节点都会有相同的 iptables 规则（所有节点具有相同的负载均衡规则）。
 
-在 Kubernetes 网络中，从 Node 节点直接访问 Service 和从该 Node 上的 Pod 访问 Service，在流量路径上是有区别的。下面我们详细分析一下。
-
-1、流量路径对比
+在 Kubernetes 网络中，从 Node 节点直接访问 Service 和从该 Node 上的 Pod 访问 Service，在流量路径上是有区别的。
 
 从 Node 节点直接访问 Service：
 
@@ -300,49 +298,19 @@ Node进程 → 节点网络栈 → iptables OUTPUT 链 → KUBE-SERVICES 链 →
 Pod进程 → Pod网络栈 → veth pair → 节点网络栈 → iptables PREROUTING 链 → KUBE-SERVICES 链 → DNAT → 后端Pod
 ```
 
-2、关键区别分析
-
-SNAT 行为不同（最重要！）
-
-Node 直接访问：
-
-```shell
-# 通常需要额外的 SNAT 规则
--A KUBE-POSTROUTING -m comment --comment "kubernetes service traffic requiring SNAT" \
-  -j MASQUERADE --random-fully
-```
-
-Pod 访问：
-
-```shell
-# 有专门的标记规则，避免不必要的 SNAT
--A KUBE-POSTROUTING -m comment --comment "kubernetes service traffic requiring SNAT" \
-  -m mark --mark 0x4000/0x4000 -j MASQUERADE --random-fully
-```
-
-
-
 
 
 <img src="image/v2-aa04268490b931fcc64e4927d33b28a8_1440w.jpg" alt="img" style="zoom:67%;" />
 
 
 
-创建一个 ClusterIP 访问方式的 service 以及带有两个副本，从 POD 中访问 ClusterIP 的 iptables 规则流向为：
+### 使用 tcpdump
 
-```
-PREROUTING --> KUBE-SERVICE --> KUBE-SVC-XXX --> KUBE-SEP-XXX
-```
-
-
-
-
-
-### 使用tcpdump
+> https://morningspace.github.io/tech/k8s-net-service-2/
 
 <img src="image/test-svc-2.png" alt="img" style="zoom:40%;" />
 
-假设我们从位于节点 kube-node-2 上的 lab-sleeper 容器内部向位于节点 kube-node-1 上的 test-pod 容器发起一个HTTP请求，Kubernetes在网络层面到底做了哪些事情呢？
+假设我们从位于节点 kube-node-2 上的 lab-sleeper 容器内部向位于节点 kube-node-1 上的 test-pod 容器发起一个HTTP请求，Kubernetes 在网络层面到底做了哪些事情呢？
 
 为此，我们在节点 kube-node-2 安装了`tcpdump`工具。利用它，我们可以对流经该节点网络接口的数据包进行分析。
 
@@ -355,7 +323,7 @@ $ kubectl exec -it lab-sleeper-7ff95f64d7-6p7bh ip link
     link/ether ae:6c:5c:6d:d5:83 brd ff:ff:ff:ff:ff:ff link-netnsid 0
 ```
 
-可以看到，@符号后面跟的序号为11，这说明和它相对应的宿主机一端的veth接口序号为11。再来看一下宿主机上的网络接口：
+可以看到，@符号后面跟的序号为11，这说明和它相对应的宿主机一端的 veth 接口序号为11。再来看一下宿主机上的网络接口：
 
 ```shell
 $ ip link
@@ -365,9 +333,9 @@ $ ip link
 ... ...
 ```
 
-这里，序号为11的网络接口为veth707db50e，这就是我们要监听的接口。而且，veth707db50e的@符号后面跟的序号为5，这说明容器端和它相对应的veth接口，其序号也应该是5。这和我们前面查看容器内网络接口的输出结果是一致的。
+这里，序号为11的网络接口为 veth707db50e，这就是我们要监听的接口。而且，veth707db50e 的@符号后面跟的序号为 5，这说明容器端和它相对应的 veth 接口，其序号也应该是 5。这和我们前面查看容器内网络接口的输出结果是一致的。
 
-下面我们开始监控veth707db50e接口，在kube-node-2上执行如下命令：
+下面我们开始监控 veth707db50e 接口，在 kube-node-2 上执行如下命令：
 
 ```shell
 $ tcpdump -i veth707db50e -nn
@@ -377,7 +345,13 @@ listening on veth707db50e, link-type EN10MB (Ethernet), capture size 262144 byte
 
 这里，参数`-i`用于指定监控的网络接口，即：veth707db50e；参数`-nn`用于告诉`tcpdump`，在输出结果里以数字方式显示IP和端口。
 
-然后，我们从另一个终端窗口登录到master节点，在lab-sleeper容器里执行curl命令，向test-svc发送请求：
+然后，我们从另一个终端窗口登录到 master 节点，在 lab-sleeper 容器里执行 curl 命令，向 test-svc 发送请求：
+
+```
+$ kubectl exec -it lab-sleeper-7ff95f64d7-6p7bh curl http://test-svc
+```
+
+这个时候，我们会在`tcpdump`所在的终端窗口看到类似下面这样的输出：
 
 ```shell
 08:14:47.120669 IP 10.244.3.5.34361 > 10.96.0.10.53: 90+ A? test-svc.default.svc.cluster.local. (52)
@@ -396,17 +370,17 @@ listening on veth707db50e, link-type EN10MB (Ethernet), capture size 262144 byte
 
 这里我们可以看到，前4行显示，容器（IP地址为`10.244.3.5`）是在和kube-dns（IP地址为`10.96.0.10`）进行通信；从第5行开始，就在和test-svc（IP地址为`10.107.169.79`）进行真正的HTTP通信了。因此，对容器来说，所有发送出去的数据包，其目标地址都是Service的IP地址；相应地，所有返回的数据包，其源地址也都是Service的IP地址。在容器看来，它始终都是在和Service通信，并没有和“躲”在Service背后的Pod有直接交流。
 
-接下来，我们再往上一层，看一看流经宿主机网卡eth0的数据包，所有从当前节点发往其他节点的数据包都会经过这个网络接口：
+接下来，我们再往上一层，看一看流经宿主机网卡 eth0 的数据包，所有从当前节点发往其他节点的数据包都会经过这个网络接口：
 
-```
+```shell
 $ tcpdump -i eth0 -nn port 53 or port 80
 tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
 listening on eth0, link-type EN10MB (Ethernet), capture size 262144 bytes
 ```
 
-这里，我们给`tcpdump`加了过滤条件。这样可以让我们真正关心的数据包不会淹没在大量无关的输出结果里。通过参数`port`，我们告诉`tcpdump`只监听端口53和80。前者是DNS服务的端口；后者是HTTP服务的端口，即lab-web，也就是躲在test-svc背后我们要访问的目标Pod。
+这里，我们给`tcpdump`加了过滤条件。这样可以让我们真正关心的数据包不会淹没在大量无关的输出结果里。通过参数`port`，我们告诉`tcpdump`只监听端口 53 和 80。前者是DNS服务的端口；后者是HTTP服务的端口，即 test-pod，也就是躲在 test-svc 背后我们要访问的目标 Pod。
 
-再次从lab-sleeper容器里通过curl命令发起对test-svc的请求，我们得到了类似下面这样的输出：
+再次从 lab-sleeper 容器里通过 curl 命令发起对 test-svc 的请求，我们得到了类似下面这样的输出：
 
 ```shell
 10:22:17.990253 IP 10.192.0.4.39982 > 10.244.2.2.53: 19731+ A? test-svc.default.svc.cluster.local. (52)
@@ -427,7 +401,7 @@ listening on eth0, link-type EN10MB (Ethernet), capture size 262144 bytes
 10:22:18.009422 IP 10.192.0.4.38010 > 10.244.2.4.80: Flags [.], ack 852, win 247, options [nop,nop,TS val 217780597 ecr 217780597], length 0
 ```
 
-可以看到，和之前一样，前面4行仍然是容器和DNS服务之间的通信；从第5行开始，则是容器和HTTP服务之间的通信。不同的地方在于，从容器里发送出来的数据包在经过eth0的时候，源地址已经变成了节点的IP。在我们的例子里，也就是kube-node-2的IP地址`10.192.0.4`。相应地，所有eth0接收到的数据包，其目标地址也变成了`10.192.0.4`。
+可以看到，和之前一样，前面4行仍然是容器和DNS服务之间的通信；从第5行开始，则是容器和HTTP服务之间的通信。不同的地方在于，从容器里发送出来的数据包在经过 eth0 的时候，源地址已经变成了节点的 IP。在我们的例子里，也就是 kube-node-2 的IP地址`10.192.0.4`。相应地，所有 eth0 接收到的数据包，其目标地址也变成了`10.192.0.4`。
 
 另外，在和DNS服务交互的数据包里，DNS服务的IP地址也变成了真正提供服务的Pod——coredns的地址了。如果查一下kube-system下的Pod就会发现，coredns的IP地址就是`10.244.2.2`：
 
@@ -438,11 +412,27 @@ coredns-fb8b8dccf-nggnj               1/1     Running   0          7h47m   10.24
 ... ...
 ```
 
-最后，原来test-svc的IP地址，也被替换成了真正提供HTTP服务的Pod地址，即：位于节点kube-node-1上的lab-web，IP地址为`10.244.2.4`。
+最后，原来 test-svc 的IP地址，也被替换成了真正提供HTTP服务的 Pod 地址，即：位于节点 kube-node-1 上的test-pod，IP地址为`10.244.2.4`。
 
-从lab-sleeper发出的数据包，其目标地址总是Service的虚拟IP，包括kube-dns和我们的test-svc。但当经过主机的eth0以后，目标地址就会被替换成真正提供服务的后端Pod，即coredns和test-pod，而源地址则会被替换成主机的IP。同样地，对于返回的数据包，其源地址和目标地址又会被逆向还原。这样，在lab-sleeper看来，它始终是在和Service进行通信，而没有和Service所管理的后端Pod存在任何直接的交流。
+从 lab-sleeper 发出的数据包，其目标地址总是 Service 的虚拟 IP，包括 kube-dns 和我们的 test-svc。但当经过主机的 eth0 以后，目标地址就会被替换成真正提供服务的后端 Pod，即 coredns 和 test-pod，而源地址则会被替换成主机的 IP。同样地，对于返回的数据包，其源地址和目标地址又会被逆向还原。这样，在 lab-sleeper 看来，它始终是在和 Service 进行通信，而没有和 Service 所管理的后端 Pod 存在任何直接的交流。
 
+### veth pair
 
+veth pair是Linux内核提供的基础网络设施，与CNI插件无关：
+
+1. 网络命名空间隔离：每个容器都有自己的网络命名空间
+2. veth pair桥梁：veth pair是连接容器网络命名空间和宿主机根网络命名空间的"网络电缆"
+3. 容器运行时创建：由Docker、containerd等容器运行时自动创建
+
+不同CNI插件的差异在更高层级，虽然veth接口的创建是相同的，但不同CNI插件在veth之上的处理不同：
+
+| CNI插件 | veth接口之上的处理                                   |
+| :------ | :--------------------------------------------------- |
+| Flannel | veth连接到网桥，然后通过VXLAN或host-gw实现跨节点通信 |
+| Calico  | veth接口配置路由规则，通过BGP协议传播路由            |
+| Cilium  | veth接口与eBPF程序配合，实现高性能网络和数据平面     |
+
+### 使用 iptables
 
 我们在 lab-sleeper Pod 所在的 kube-node-2 上执行`iptables-save`命令，将会得到了类似下面这样的输出：
 
@@ -480,7 +470,7 @@ $ iptables-save
 ⑥ -A KUBE-SVC-W3OX4ZP4Y24AQZNW -j KUBE-SEP-E2HMOHPUOGTHZJEP
 ```
 
-首先，我们略去了无关的规则，只保留了关心的部分；其次，为了方便后面解释说明，我们在某些规则前面加上了序号。
+我们略去了无关的规则，只保留了关心的部分；其次，为了方便后面解释说明，我们在某些规则前面加上了序号。
 
 - 当数据包从 lab-sleeper Pod 发出，并经过 eth0 的时候，首先会命中行①处的 PREROUTING 规则。因为没有任何额外的匹配条件，所以这条规则总是会命中；
 - 紧接着，根据行①的规则，它会跳转到 KUBE-SERVICES 链，即：从行②处开始的一系列 KUBE-SERVICES 规则。这里前几条规则都是和DNS服务相关的，因为原理大同小异，所以我们就略过了。假设目前这个数据包就是发往 test-svc 的，那么最后它将匹配行③处的 KUBE-SERVICES；
@@ -490,6 +480,64 @@ $ iptables-save
 - 行⑤处的 KUBE-SERVICES 同样匹配目标地址为`10.107.169.79`，端口号为`80`的数据包，它将跳到行⑥处的 KUBE-SVC-W3OX4ZP4Y24AQZNW 规则，然后再到行⑦处开始的 KUBE-SEP-E2HMOHPUOGTHZJEP 链上；
 - 从行⑦处开始的两条 KUBE-SEP-E2HMOHPUOGTHZJEP 规则里，只有第二条规则满足我们的数据包，即行⑧处。这里，我们会进行一次针对目标地址的网络地址转换(DNAT)，把目标地址替换成`10.244.2.4:80`，即真正在 test-svc 后端提供HTTP服务的 test-pod。这也是为什么我们在 eth0 上监控到发送出去的数据包里，目标地址被替换成 test-pod 的 IP 的原因；
 - 最后，从行⑨处开始我们进入 POSTROUTING 链，然后跳转到行⑩处的 KUBE-POSTROUTING 规则；
-- 行⑩处的 KUBE-POSTROUTING 规则会对数据包进行判断，如果发现它有`0x4000/0x4000`标记，就会跳到MASQUERADE规则，也就是真正对数据包的源地址进行IP地址伪装。具体来说，就是自动把数据包里的源地址替换成主机网卡eth0的IP地址，即：`10.192.0.4`。这也是为什么我们在eth0上监控到发送出去的数据包里，源地址被替换成主机IP的原因；
+- 行⑩处的 KUBE-POSTROUTING 规则会对数据包进行判断，如果发现它有`0x4000/0x4000`标记，就会跳到MASQUERADE规则，也就是真正对数据包的源地址进行 IP 地址伪装。具体来说，就是自动把数据包里的源地址替换成主机网卡 eth0 的IP地址，即：`10.192.0.4`。这也是为什么我们在 eth0 上监控到发送出去的数据包里，源地址被替换成主机 IP 的原因；
 
-最后，数据包在经过网络地址转换以后，被发送到了 test-pod，当有数据包从 test-pod 返回的时候，操作系统（实际上是位于Linux kernel层的 netfilter）会进行相应的逆向转换，把地址又重新替换成原来的值。所以，在 lab-sleeper看来，它是一直在和 test-svc 打交道。
+最后，数据包在经过网络地址转换以后，被发送到了 test-pod，当有数据包从 test-pod 返回的时候，操作系统（实际上是位于Linux kernel层的 netfilter）会进行相应的逆向转换，把地址又重新替换成原来的值。所以，在 lab-sleeper 看来，它是一直在和 test-svc 打交道。
+
+### 多Pod间的负载均衡
+
+下面我们来看一下，Service 后端连接多个 Pod 的情况。看一下在多个 Pod 的情况下，Service 是如何做负载均衡的。我们先利用`kubectl scale`命令，把 test-pod 的个数从当前的1个扩展到3个：
+
+```shell
+$ kubectl scale --replicas=3 deployment/test-pod
+deployment.extensions/test-pod scaled
+```
+
+然后通过`kubectl get pods`命令确认所有 test-pod 都已经成功启动：
+
+```shell
+$ kubectl get pods -o wide
+NAME                           READY   STATUS    RESTARTS   AGE   IP           NODE          NOMINATED NODE   READINESS GATES
+lab-sleeper-7ff95f64d7-6p7bh   1/1     Running   0          23h   10.244.3.5   kube-node-2   <none>           <none>
+test-pod-9dd7d4f7b-56znc       1/1     Running   0          27h   10.244.2.4   kube-node-1   <none>           <none>
+test-pod-9dd7d4f7b-7jtcv       1/1     Running   0          15s   10.244.3.6   kube-node-2   <none>           <none>
+test-pod-9dd7d4f7b-qdmvd       1/1     Running   0          15s   10.244.2.6   kube-node-1   <none>           <none>
+```
+
+最后，再次执行`iptables-save`命令，并把输出结果和扩展 Pod 之前的结果进行对比，我们发现下面几条`iptables`规则是新加的：
+
+```shell
+⎢ -A KUBE-SEP-EEXR7SABLH35O4XP -s 10.244.3.6/32 -j KUBE-MARK-MASQ
+⎢ -A KUBE-SEP-EEXR7SABLH35O4XP -p tcp -m tcp -j DNAT --to-destination 10.244.3.6:80
+⎢ -A KUBE-SEP-WFXGQBTRL5EC2R2Y -s 10.244.2.6/32 -j KUBE-MARK-MASQ
+⎢ -A KUBE-SEP-WFXGQBTRL5EC2R2Y -p tcp -m tcp -j DNAT --to-destination 10.244.2.6:80
+① -A KUBE-SVC-W3OX4ZP4Y24AQZNW -m statistic --mode random --probability 0.33332999982 -j KUBE-SEP-E2HMOHPUOGTHZJEP
+② -A KUBE-SVC-W3OX4ZP4Y24AQZNW -m statistic --mode random --probability 0.50000000000 -j KUBE-SEP-WFXGQBTRL5EC2R2Y
+③ -A KUBE-SVC-W3OX4ZP4Y24AQZNW -j KUBE-SEP-EEXR7SABLH35O4XP
+```
+
+其中，前4条规则是 test-pod 扩展以后，针对新生成的两个 Pod 进行网络地址转换用的。因为原理相同，所以这里我们就略过了。下面我们重点关注一下后 3 条规则。
+
+我们看到，行①和行②处的规则使用了`statistic`模块，这是对进入网卡的数据包进行概率计算用的，即：通过概率计算的结果来决定是否匹配规则。下面我们具体来看一下：
+
+<img src="image/test-svc-3.png" alt="img" style="zoom:30%;" />
+
+- 假设数据包现在到达行①处，由于行①设定的概率值为`0.33332999982`，所以在所有数据包里，将会有 1/3 的数据包匹配这条规则，而剩下 2/3 的数据包则会到达行②。和当前规则相匹配的数据包，它的目标地址会被替换成`10.244.2.4`，对应`test-pod-9dd7d4f7b-56znc`；
+- 由于行②设定的概率值为`0.50000000000`，所以在余下的数据包里，将会有 1/2 的数据包匹配这条规则，而剩下 1/2 的数据包则会到达行③。这里，2/3 的一半就是 1/3。和当前规则相匹配的数据包，它的目标地址会被替换成`10.244.2.6`，对应`test-pod-9dd7d4f7b-qdmvd`；
+- 最后还剩下 1/3 的数据包到达了行③，由于行③并没有设定概率值，所以相当于概率值为`1`，即：所有剩下的数据包都将匹配这条规则。匹配这条规则的数据包，其目标地址会被替换成`10.244.3.6`，对应`test-pod-9dd7d4f7b-7jtcv`；
+
+经过上述处理以后，发往 test-svc 的数据包最终被平均分布到了 3 个 test-pod 上，从而实现了负载均衡。
+
+这种负载均衡有一个要求，那就是和 Service 相连的每一个后端 Pod，提供的应该都是相同的服务。而且，因为经过负载均衡处理以后，发往同一 Service 的前后两次请求无法保证会到达同一 Pod，所以这些 Pod 应该都是无状态的，也就是不依赖于任何客户端状态。
+
+### 主机访问的iptables规则
+
+我们不仅可以从 Pod 内部访问集群里的某个 Service，还可以直接在主机（即：集群节点）上对 Service 进行访问，这同样是通过设置`iptables`规则做到的。
+
+如果我们回顾前面`iptables-save`的输出结果，应该会注意到里面有一条类型为OUTPUT的规则：
+
+```shell
+-A OUTPUT -m comment --comment "kubernetes service portals" -j KUBE-SERVICES
+```
+
+根据`iptables`的文档，如果数据包是直接由本地应用产生的，那么OUTPUT链就会被触发。在集群节点的主机上直接发起`curl`命令访问test-svc，就属于这种情况。因此，就会匹配这条OUTPUT规则，并跳转到KUBE-SERVICES链上。而对照前面的分析，从这条规则往后，数据包在`iptables`规则链上的走向就和来自Pod内部的普通数据包一摸一样了。不过，由于主机没有配置使用kube-dns，所以我们只能用IP地址访问Service，而无法通过名称来访问。
