@@ -290,7 +290,7 @@ $ kubectl create -f deployment.yaml
 
 你可能会问，如果创建资源时没有直接指定 HTTP 请求路径，又是如何向 kube-apiserver 发送 HTTP 请求的呢？我们来看下 deployment.yaml 的内容：
 
-<img src="image/Fub8MSc2Yg3av1hZ7dd2DngUGKPk" alt="img" style="zoom: 33%;" />
+<img src="image/Fub8MSc2Yg3av1hZ7dd2DngUGKPk" alt="img" style="zoom: 25%;" />
 
 在创建 Deployment 资源的 YAML 格式的参数定义中，我们通过 apiVersion 参数指定了 `<group>/<version>`，通过 kind 指定了资源类型。kubectl 命令行工具会从 YAML 文件中解析出 apiVersion 和 kind 参数，并使用其值来构建出 HTTP 请求路径：`/apis/apps/v1/namespaces/default/deployments`。
 

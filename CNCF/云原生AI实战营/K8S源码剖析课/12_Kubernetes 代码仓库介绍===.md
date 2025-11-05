@@ -276,7 +276,7 @@ Kubernetes cmd/ 目录下有很多组件，v1.30.2 版本下，cmd/ 目录下有
 
 1. **`k8s.io/api`(位于独立仓库 `kubernetes/api`)**：
    - 定位：官方、稳定、面向外部的 API 定义。
-   - 内容：包含了 Kubernetes 所有核心 API 对象（如 Pod、Service、Deployment 等）的 Go 结构体（struct）定义。这些结构体直接对应着 etcd 中存储的对象形态以及用户通过 `kubectl`或 API 操作的对象。
+   - 内容：包含了 Kubernetes 所有核心 API 对象（如 Pod、Service、Deployment 等）的 Go 结构体（struct）定义。
    - 使用者：强烈推荐所有 Kubernetes 集群外部的项目使用。这包括：
      - 自定义控制器 / Operator（使用 `controller-runtime`或 `client-go`）
      - kubectl 插件
