@@ -260,21 +260,47 @@ Original Packet: 172.17.0.14:xxxx --> 10.111.175.78:80
 
 我们来跟踪这个数据包流向来逐条查看 iptables 的规则，分析 ClusterIP 类型的 Service 的实现。
 
+可直接看“总结”部分的示例。
 
+### NodePort
 
+从大体上讲，NodePort 类型的 Service 的 iptables 规则基本和 ClusterIP 的类似。下面仅列出几处不同的地方，首先是在 nat 的 KUBE-SERVICES 表处：
 
+```shell
+Chain KUBE-SERVICES (2 references)
+ pkts bytes target     prot opt in     out     source               destination         
+    ...
+1264 75952 KUBE-NODEPORTS  all  --  *      *       0.0.0.0/0            0.0.0.0/0            /* kubernetes service nodeports; NOTE: this must be the last rule in this chain */ ADDRTYPE match dst-type LOCAL
+```
 
+发往 NodePort 类型的数据包会命中最后一条，进入 nat 表的 KUBE-NODEPORTS 链：
 
+```shell
+Chain KUBE-NODEPORTS (1 references)
+ pkts bytes target     prot opt in     out     source               destination         
+    ...
+    0     0 KUBE-MARK-MASQ  tcp  --  *      *       0.0.0.0/0            0.0.0.0/0            /* default/nginx-service: */ tcp dpt:31628
+    0     0 KUBE-SVC-GKN7Y2BSGW4NJTYL  tcp  --  *      *       0.0.0.0/0            0.0.0.0/0            /* default/nginx-service: */ tcp dpt:31628
+    ...
+```
 
+可以看到数据包先会命中第一条规则 KUBE-MARK-MASQ：
 
+```shell
+Chain KUBE-MARK-MASQ (21 references)
+ pkts bytes target     prot opt in     out     source               destination         
+    0     0 MARK       all  --  *      *       0.0.0.0/0            0.0.0.0/0            MARK or 0x4000
+```
 
+在这里数据包会被标记上 0x4000 标记，然后回到 KUBE-NODEPORTS 链中继续匹配下一条规则，我们发现下一条规则就是 KUBE-SVC-GKN7Y2BSGW4NJTYL，接下来一路到 nat 的 POSTROUTING 为止都与 ClusterIP 模式相同，但在接下来的 nat 的 KUBE-POSTROUTING 阶段：
 
+```shell
+Chain KUBE-POSTROUTING (1 references)
+ pkts bytes target     prot opt in     out     source               destination         
+    0     0 MASQUERADE  all  --  *      *       0.0.0.0/0            0.0.0.0/0            /* kubernetes service traffic requiring SNAT */ mark match 0x4000/0x4000 random-fully
+```
 
-
-
-
-
-
+这里由于我们的数据包在 KUBE-MARK-MASQ 被打上了 0x4000 标记，在这里会命中这条规则，从而被MASQUERADE（SNAT）。
 
 
 
@@ -297,8 +323,6 @@ Node进程 → 节点网络栈 → iptables OUTPUT 链 → KUBE-SERVICES 链 →
 ```
 Pod进程 → Pod网络栈 → veth pair → 节点网络栈 → iptables PREROUTING 链 → KUBE-SERVICES 链 → DNAT → 后端Pod
 ```
-
-
 
 <img src="image/v2-aa04268490b931fcc64e4927d33b28a8_1440w.jpg" alt="img" style="zoom:67%;" />
 
@@ -347,7 +371,7 @@ listening on veth707db50e, link-type EN10MB (Ethernet), capture size 262144 byte
 
 然后，我们从另一个终端窗口登录到 master 节点，在 lab-sleeper 容器里执行 curl 命令，向 test-svc 发送请求：
 
-```
+```shell
 $ kubectl exec -it lab-sleeper-7ff95f64d7-6p7bh curl http://test-svc
 ```
 
@@ -368,7 +392,7 @@ $ kubectl exec -it lab-sleeper-7ff95f64d7-6p7bh curl http://test-svc
 08:14:47.127164 IP 10.244.3.5.41408 > 10.107.169.79.80: Flags [F.], seq 73, ack 851, win 247, options [nop,nop,TS val 217014590 ecr 217014590], length 0
 ```
 
-这里我们可以看到，前4行显示，容器（IP地址为`10.244.3.5`）是在和kube-dns（IP地址为`10.96.0.10`）进行通信；从第5行开始，就在和test-svc（IP地址为`10.107.169.79`）进行真正的HTTP通信了。因此，对容器来说，所有发送出去的数据包，其目标地址都是Service的IP地址；相应地，所有返回的数据包，其源地址也都是Service的IP地址。在容器看来，它始终都是在和Service通信，并没有和“躲”在Service背后的Pod有直接交流。
+这里我们可以看到，前4行显示，容器（IP地址为`10.244.3.5`）是在和kube-dns（IP地址为`10.96.0.10`）进行通信；从第5行开始，就在和test-svc（IP地址为`10.107.169.79`）进行真正的HTTP通信了。因此，对容器来说，所有发送出去的数据包，其目标地址都是 Service 的 IP 地址；相应地，所有返回的数据包，其源地址也都是Service的IP地址。在容器看来，它始终都是在和 Service 通信，并没有和“躲”在 Service 背后的 Pod 有直接交流。
 
 接下来，我们再往上一层，看一看流经宿主机网卡 eth0 的数据包，所有从当前节点发往其他节点的数据包都会经过这个网络接口：
 
@@ -401,9 +425,9 @@ listening on eth0, link-type EN10MB (Ethernet), capture size 262144 bytes
 10:22:18.009422 IP 10.192.0.4.38010 > 10.244.2.4.80: Flags [.], ack 852, win 247, options [nop,nop,TS val 217780597 ecr 217780597], length 0
 ```
 
-可以看到，和之前一样，前面4行仍然是容器和DNS服务之间的通信；从第5行开始，则是容器和HTTP服务之间的通信。不同的地方在于，从容器里发送出来的数据包在经过 eth0 的时候，源地址已经变成了节点的 IP。在我们的例子里，也就是 kube-node-2 的IP地址`10.192.0.4`。相应地，所有 eth0 接收到的数据包，其目标地址也变成了`10.192.0.4`。
+可以看到，和之前一样，前面4行仍然是容器和DNS服务之间的通信；从第5行开始，则是容器和HTTP服务之间的通信。不同的地方在于，从容器里发送出来的数据包在经过 eth0 的时候，源地址已经变成了节点的 IP。在我们的例子里，也就是 kube-node-2 的 IP 地址`10.192.0.4`。相应地，所有 eth0 接收到的数据包，其目标地址也变成了`10.192.0.4`。
 
-另外，在和DNS服务交互的数据包里，DNS服务的IP地址也变成了真正提供服务的Pod——coredns的地址了。如果查一下kube-system下的Pod就会发现，coredns的IP地址就是`10.244.2.2`：
+另外，在和 DNS 服务交互的数据包里，DNS 服务的 IP 地址也变成了真正提供服务的 Pod —— coredns 的地址了。如果查一下 kube-system 下的 Pod 就会发现，coredns 的 IP 地址就是`10.244.2.2`：
 
 ```shell
 $ kubectl get pods -n kube-system -o wide
@@ -412,9 +436,11 @@ coredns-fb8b8dccf-nggnj               1/1     Running   0          7h47m   10.24
 ... ...
 ```
 
-最后，原来 test-svc 的IP地址，也被替换成了真正提供HTTP服务的 Pod 地址，即：位于节点 kube-node-1 上的test-pod，IP地址为`10.244.2.4`。
+最后，原来 test-svc 的IP地址，也被替换成了真正提供HTTP服务的 Pod 地址，即：位于节点 kube-node-1 上的 test-pod，IP地址为`10.244.2.4`。
 
 从 lab-sleeper 发出的数据包，其目标地址总是 Service 的虚拟 IP，包括 kube-dns 和我们的 test-svc。但当经过主机的 eth0 以后，目标地址就会被替换成真正提供服务的后端 Pod，即 coredns 和 test-pod，而源地址则会被替换成主机的 IP。同样地，对于返回的数据包，其源地址和目标地址又会被逆向还原。这样，在 lab-sleeper 看来，它始终是在和 Service 进行通信，而没有和 Service 所管理的后端 Pod 存在任何直接的交流。
+
+kube-proxy 负责"哪个Pod"（服务发现和负载均衡），CNI插件负责"如何到达"（网络连通性）。
 
 ### veth pair
 
@@ -475,10 +501,10 @@ $ iptables-save
 - 当数据包从 lab-sleeper Pod 发出，并经过 eth0 的时候，首先会命中行①处的 PREROUTING 规则。因为没有任何额外的匹配条件，所以这条规则总是会命中；
 - 紧接着，根据行①的规则，它会跳转到 KUBE-SERVICES 链，即：从行②处开始的一系列 KUBE-SERVICES 规则。这里前几条规则都是和DNS服务相关的，因为原理大同小异，所以我们就略过了。假设目前这个数据包就是发往 test-svc 的，那么最后它将匹配行③处的 KUBE-SERVICES；
 - 行③处的规则代表了目标地址为`10.107.169.79`，端口号为`80`的数据包，它将跳转到行④处的 KUBE-MARK-MASQ 规则；
-- 行④处的 KUBE-MARK-MASQ 实际代表了IP地址伪装(MASQUERADE)，准确地说是对源地址进行伪装。至于怎么伪装，我们等一下再说。因为目前还在 PREROUTING 链上，所以这里并不是进行真正地伪装，而是利用`--set-xmark`设置了一个特殊的标记`0x4000/0x4000`，表示这个数据包是需要地址伪装的。后面，我们会看POSTROUTING 链是如何根据这个标记对数据包进行IP地址伪装的；
+- 行④处的 KUBE-MARK-MASQ 实际代表了 IP 地址伪装(MASQUERADE)，准确地说是对源地址进行伪装。至于怎么伪装，我们等一下再说。因为目前还在 PREROUTING 链上，所以这里并不是进行真正地伪装，而是利用`--set-xmark`设置了一个特殊的标记`0x4000/0x4000`，表示这个数据包是需要地址伪装的。后面，我们会看POSTROUTING 链是如何根据这个标记对数据包进行 IP 地址伪装的；
 - 由于行④处的 KUBE-MARK-MASQ 规则后面跟了一个非终止目标（non-terminating target，即：不像ACCEPT，DROP，REJECT那样，会终止整个`iptables`规则链的解析），所以它会重新跳回行③处，沿着KUBE-SERVICES 链继续往下走到行⑤处；
 - 行⑤处的 KUBE-SERVICES 同样匹配目标地址为`10.107.169.79`，端口号为`80`的数据包，它将跳到行⑥处的 KUBE-SVC-W3OX4ZP4Y24AQZNW 规则，然后再到行⑦处开始的 KUBE-SEP-E2HMOHPUOGTHZJEP 链上；
-- 从行⑦处开始的两条 KUBE-SEP-E2HMOHPUOGTHZJEP 规则里，只有第二条规则满足我们的数据包，即行⑧处。这里，我们会进行一次针对目标地址的网络地址转换(DNAT)，把目标地址替换成`10.244.2.4:80`，即真正在 test-svc 后端提供HTTP服务的 test-pod。这也是为什么我们在 eth0 上监控到发送出去的数据包里，目标地址被替换成 test-pod 的 IP 的原因；
+- 从行⑦处开始的两条 KUBE-SEP-E2HMOHPUOGTHZJEP 规则里，只有第二条规则满足我们的数据包，即行⑧处。这里，我们会进行一次针对目标地址的网络地址转换(DNAT)，把目标地址替换成`10.244.2.4:80`，即真正在 test-svc 后端提供 HTTP 服务的 test-pod。这也是为什么我们在 eth0 上监控到发送出去的数据包里，目标地址被替换成 test-pod 的 IP 的原因；
 - 最后，从行⑨处开始我们进入 POSTROUTING 链，然后跳转到行⑩处的 KUBE-POSTROUTING 规则；
 - 行⑩处的 KUBE-POSTROUTING 规则会对数据包进行判断，如果发现它有`0x4000/0x4000`标记，就会跳到MASQUERADE规则，也就是真正对数据包的源地址进行 IP 地址伪装。具体来说，就是自动把数据包里的源地址替换成主机网卡 eth0 的IP地址，即：`10.192.0.4`。这也是为什么我们在 eth0 上监控到发送出去的数据包里，源地址被替换成主机 IP 的原因；
 
@@ -540,4 +566,9 @@ test-pod-9dd7d4f7b-qdmvd       1/1     Running   0          15s   10.244.2.6   k
 -A OUTPUT -m comment --comment "kubernetes service portals" -j KUBE-SERVICES
 ```
 
-根据`iptables`的文档，如果数据包是直接由本地应用产生的，那么OUTPUT链就会被触发。在集群节点的主机上直接发起`curl`命令访问test-svc，就属于这种情况。因此，就会匹配这条OUTPUT规则，并跳转到KUBE-SERVICES链上。而对照前面的分析，从这条规则往后，数据包在`iptables`规则链上的走向就和来自Pod内部的普通数据包一摸一样了。不过，由于主机没有配置使用kube-dns，所以我们只能用IP地址访问Service，而无法通过名称来访问。
+根据`iptables`的文档，如果数据包是直接由本地应用产生的，那么OUTPUT链就会被触发。在集群节点的主机上直接发起`curl`命令访问 test-svc，就属于这种情况。因此，就会匹配这条OUTPUT规则，并跳转到 KUBE-SERVICES链上。而对照前面的分析，从这条规则往后，数据包在`iptables`规则链上的走向就和来自Pod内部的普通数据包一摸一样了。不过，由于主机没有配置使用 kube-dns，所以我们只能用 IP 地址访问 Service，而无法通过名称来访问。
+
+
+
+# IPVS 模式
+
