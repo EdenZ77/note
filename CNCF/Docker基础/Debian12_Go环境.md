@@ -349,7 +349,7 @@ dlv debug ./cmd/fg-apiserver/main.go --headless --listen=:2345 --api-version=2 -
             "mode": "debug",
             "program": "${workspaceFolder}/cmd/fg-apiserver/main.go",
             "args": ["-c", "configs/fg-apiserver.yaml"],
-            "cwd": "${workspaceFolder}",// Current Working Directory​​（当前工作目录）
+            "cwd": "${workspaceFolder}",// Current Working Directory（当前工作目录）
             "env": {
                 "GIN_MODE": "debug"  // 可选：设置环境变量
             }

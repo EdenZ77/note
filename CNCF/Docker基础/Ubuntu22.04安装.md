@@ -1,6 +1,6 @@
 # 安装
 
-具体安装细节直接网上搜就可以了，比较简单
+具体安装细节直接网上搜就可以了，比较简单，image/VMware安装Ubuntu22.04.pdf
 
 > https://blog.csdn.net/qq_44490498/article/details/138259678
 
