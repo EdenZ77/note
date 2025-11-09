@@ -26,19 +26,11 @@ Operator VS Controller
 
 ## 2.3 声明式 API 的设计
 
-- 定义一个想要的结构
+- 定义一个结构
 - 注册这个结构
 - 提交符合这个结构的请求
 - 计算
 - 返回计算结果
-
-
-
-## 2.4 总结
-
-- RESTful API 是交互式的，一次请求一次响应。
-- RESTful API 是没有状态的，每次请求中没有一个组件来维护它的上下文。这也是HTTP的特点。
-- k8s 的声明式 API 是声明一个最终的期望状态，并不是命令式的一步一步达到期望。
 
 # 3 认识kubebuilder
 
@@ -183,7 +175,7 @@ git commit -m "kuberbuild create api"
 
 # 6 简单分析两个命令都做了什么
 
-> 代码仓库：https://github.com/EdenZ77/demo-1
+> 代码仓库：https://github.com/EdenZ77/demo
 
 ## 6.1 init 命令
 
@@ -191,10 +183,200 @@ git commit -m "kuberbuild create api"
 - 创建了管理项目的makefile文件
 - 创建了必要的配置文件
 
+### makefile
+
+我们先看看帮助文档，下面的帮助文档是通过指定格式来解析生成的，相当灵活，值得借鉴。
+
+```shell
+root@debian:~/golang/src/github.com/onexstack/demo# make help
+
+Usage:
+  make <target>
+
+General
+  help             Display this help.
+
+Development
+  manifests        Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
+  generate         Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
+  fmt              Run go fmt against code.
+  vet              Run go vet against code.
+  test             Run tests.
+  setup-test-e2e   Set up a Kind cluster for e2e tests if it does not exist
+  test-e2e         Run the e2e tests. Expected an isolated environment using Kind.
+  cleanup-test-e2e  Tear down the Kind cluster used for e2e tests
+  lint             Run golangci-lint linter
+  lint-fix         Run golangci-lint linter and perform fixes
+  lint-config      Verify golangci-lint linter configuration
+
+Build
+  build            Build manager binary.
+  run              Run a controller from your host.
+  docker-build     Build docker image with the manager.
+  docker-push      Push docker image with the manager.
+  docker-buildx    Build and push docker image for the manager for cross-platform support
+  build-installer  Generate a consolidated YAML with CRDs and deployment.
+
+Deployment
+  install          Install CRDs into the K8s cluster specified in ~/.kube/config.
+  uninstall        Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+  deploy           Deploy controller to the K8s cluster specified in ~/.kube/config.
+  undeploy         Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+
+Dependencies
+  kustomize        Download kustomize locally if necessary.
+  controller-gen   Download controller-gen locally if necessary.
+  setup-envtest    Download the binaries required for ENVTEST in the local bin directory.
+  envtest          Download setup-envtest locally if necessary.
+  golangci-lint    Download golangci-lint locally if necessary.
+```
+
+### +kubebuilder
+
+Kubebuilder 使用 `controller-gen`工具来扫描和生成代码，`controller-gen`会递归扫描项目中的所有 Go 文件，查找以 `// +kubebuilder:`开头的特殊注释，根据标记生成相应的代码。
+
+这就是 Kubebuilder 的代码生成机制，让工具能够安全地修改用户代码而不破坏现有逻辑。这些注释是 Kubebuilder 的"脚手架锚点"。
+
+```go
+// 包级别标记（控制代码生成范围），为此包生成deepcopy方法
+// groupversion_info.go
+// +kubebuilder:object:generate=true
+// +groupName=demo.mashibing.com  # 基于 --group 参数
+package v1
+```
+
+```go
+// 类型级别标记（定义CRD行为）
+// +kubebuilder:object:root=true           // 这是一个根类型（CRD）
+// +kubebuilder:subresource:status         // 启用状态子资源
+// +kubebuilder:validation:Optional        // 验证规则
+
+AppList上的 // +kubebuilder:object:root=true
+这个根类型作用体现在不同的地方：
+1、在 zz_generated.deepcopy.go中：
+// DeepCopyObject 方法被生成，说明标记生效了
+func (in *AppList) DeepCopyObject() runtime.Object {
+    if c := in.DeepCopy(); c != nil {
+        return c
+    }
+    return nil
+}
+2、在 CRD 中的体现：
+spec:
+  names:
+    kind: App           # 主资源类型
+    listKind: AppList   # 👈 这里！列表类型自动关联
+    plural: apps
+    singular: app
+```
+
+#### 状态子资源
+
+`// +kubebuilder:subresource:status`是一个非常重要的标记，它启用了 Kubernetes 的状态子资源（Status Subresource）机制。
+
+权限分离：
+
+```go
+// 用户/管理员只能操作主资源（更新 spec）
+kubectl apply -f app.yaml  # 只能修改 spec
+
+// 控制器只能操作状态子资源（更新 status）
+// 控制器代码中使用：
+err := r.Status().Update(ctx, &app)
+
+
+// 用户只能修改 spec
+kubectl patch app my-app --type='merge' -p='{"spec":{"action":"hello"}}'  # ✅ 允许
+
+// 用户不能直接修改 status
+kubectl patch app my-app --type='merge' -p='{"status":{"result":"hello"}}'  # ❌ 拒绝
+
+// 控制器可以安全更新 status
+err := r.Status().Update(ctx, &app)  # ✅ 控制器专用方法
+```
+
+启用后，CRD 会包含：
+
+```
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+spec:
+  versions:
+  - name: v1
+    subresources:
+      status: {}  # 👈 这里！
+```
+
+更安全的权限控制：
+
+```yaml
+# 控制器的 RBAC 权限
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+rules:
+- apiGroups: ["demo.mashibing.com"]
+  resources: ["apps"]
+  verbs: ["get", "list", "watch"]        # 只能读取主资源
+- apiGroups: ["demo.mashibing.com"]  
+  resources: ["apps/status"]
+  verbs: ["get", "patch", "update"]      # 可以更新状态子资源
+
+# 用户的 RBAC 权限  
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+rules:
+- apiGroups: ["demo.mashibing.com"]
+  resources: ["apps"]
+  verbs: ["get", "list", "watch", "update", "patch"]  # 可以修改主资源
+# 用户默认没有 apps/status 的更新权限
+```
+
+
+
 ## 6.2 create api 命令
 
 - 创建了api相关的代码
 - 更新了api相关的配置
+
+
+
+## 6.3 新增group、kind
+
+可以在当前项目根目录继续增加 kind，如下：
+
+```shell
+root@debian:~/golang/src/github.com/onexstack/demo# kubebuilder create api --group demo --version v1 --kind Bpp
+INFO Create Resource [y/n]
+y
+INFO Create Controller [y/n]
+y
+INFO Writing kustomize manifests for you to edit...
+INFO Writing scaffold for you to edit...
+INFO api/v1/bpp_types.go
+INFO api/v1/groupversion_info.go
+INFO internal/controller/suite_test.go
+INFO internal/controller/bpp_controller.go
+INFO internal/controller/bpp_controller_test.go
+INFO Update dependencies
+INFO Running make
+/root/golang/src/github.com/onexstack/demo/bin/controller-gen object:headerFile="hack/boilerplate.go.txt" paths="./..."
+Next: implement your new API and generate the manifests (e.g. CRDs,CRs) with:
+$ make manifests
+root@debian:~/golang/src/github.com/onexstack/demo#
+```
+
+但是，Kubebuilder 默认不支持多组（multi-group）项目，默认是单组项目模式。
+
+```shell
+root@debian:~/golang/src/github.com/onexstack/demo# kubebuilder create api --group webapp --version v1 --kind Backend
+INFO Create Resource [y/n]
+y
+INFO Create Controller [y/n]
+y
+Error: failed to create API: unable to inject the resource to "base.go.kubebuilder.io/v4": multiple groups are not allowed by default, to enable multi-group visit https://kubebuilder.io/migration/multi-group.html
+```
+
+
 
 # 7 kustomize 介绍
 
@@ -333,6 +515,22 @@ spec:
         name: nginx
 ```
 
+通用标签 (commonLabels)
+
+```yaml
+# 原始标签: app: nginx
+# 被 commonLabels 覆盖为:
+labels:
+  app: web  # 所有地方的 app 标签都变成了 web
+
+# 包括:
+# - metadata.labels
+# - spec.selector.matchLabels  
+# - spec.template.metadata.labels
+```
+
+
+
 ## 7.3 组合和定制资源集合
 
 ```shell
@@ -417,6 +615,67 @@ spec:
     run: my-nginx
 ```
 
+## 7.4 Kustomize 的目录结构要求
+
+标准的 Kubebuilder 项目结构
+
+```shell
+# default下的kustomization.yaml文件
+namespace: demo-system
+namePrefix: demo-
+resources:
+- ../crd
+- ../rbac
+- ../manager
+
+root@debian:~/golang/src/github.com/onexstack/demo# tree -L 3 config/
+config/
+|-- crd
+|   |-- bases
+|   |   `-- demo.mashibing.com_apps.yaml
+|   |-- kustomization.yaml		# ← 必须有！
+|   `-- kustomizeconfig.yaml
+|-- default
+|   |-- kustomization.yaml		# ← 你提供的这个文件
+|   |-- manager_metrics_patch.yaml
+|   `-- metrics_service.yaml
+|-- manager
+|   |-- kustomization.yaml		# ← 必须有！
+|   `-- manager.yaml
+|-- rbac
+|   |-- kustomization.yaml		# ← 必须有！
+|   |-- role.yaml
+|   |-- role_binding.yaml
+|   `-- service_account.yaml
+```
+
+当运行 `bin/kustomize build config/default`时：
+
+- 读取 `config/default/kustomization.yaml`
+- 递归处理每个 `resources`条目：
+  - 找到 `../crd/kustomization.yaml`→ 处理 CRD 资源
+  - 找到 `../rbac/kustomization.yaml`→ 处理 RBAC 资源
+  - 找到 `../manager/kustomization.yaml`→ 处理 Manager 资源
+- 应用所有转换（命名空间、前缀、补丁等）
+- 输出合并后的 YAML
+
+处理顺序：从内到外
+
+```shell
+原始资源文件 (YAML)
+    ↓
+子目录 kustomization.yaml 处理 (第一层转换)  
+    ↓
+父目录 kustomization.yaml 处理 (第二层转换)
+    ↓
+最终输出
+```
+
+关注点分离
+
+- 子层 kustomization：处理组件特定的配置（如镜像版本）
+- 父层 kustomization：处理环境特定的配置（如命名空间、前缀）
+
 # 8 编写我们的operator
 
 ## 8.1 编写结构定义部分
@@ -429,13 +688,11 @@ spec:
 
 # 9 运行我们的operator
 
+运行之前需要将Makefile文件中“Dependencies”部分的依赖安装完成。
+
 ## 9.1 Makefile文件介绍
 
-- generate：生成 DeepCopy、DeepCopyInto、DeepCopyObject 等实现
-- manifests：生成 ClusterRole、CRD 等
-- install：安装 CRD 到 K8S 集群中
-- build：编译项目输出到 bin/manager（go build -o bin/manager cmd/main.go）
-- run：本地运行项目（go run ./cmd/main.go）
+
 
 ## 9.2 执行命令
 
@@ -447,12 +704,12 @@ make build
 make run
 
 # 在K8S集群中apply CR
-root@debian:~/golang/src/github.com/onexstack/demo/config/samples# kubectl apply -f demo_v1_app.yaml
+root@debian:~/golang/src/github.com/onexstack/demo# kubectl apply -f config/samples/demo_v1_app.yaml
 app.demo.mashibing.com/app-sample created
-root@debian:~/golang/src/github.com/onexstack/demo/config/samples# kubectl get apps
+root@debian:~/golang/src/github.com/onexstack/demo# kubectl get apps
 NAME         AGE
-app-sample   71s
-root@debian:~/golang/src/github.com/onexstack/demo/config/samples# kubectl get apps app-sample -oyaml
+app-sample   29s
+root@debian:~/golang/src/github.com/onexstack/demo# kubectl get apps app-sample -oyaml
 apiVersion: demo.mashibing.com/v1
 kind: App
 metadata:
@@ -473,5 +730,10 @@ spec:
   object: World
 status:
   result: Hello,World
+  
+
+root@master:~# kubectl api-resources
+NAME                                SHORTNAMES                                      APIVERSION                        NAMESPACED   KIND
+apps                                                                                demo.mashibing.com/v1             true         App
 ```
 
