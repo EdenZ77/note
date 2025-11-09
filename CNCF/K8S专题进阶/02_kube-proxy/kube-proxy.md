@@ -39,7 +39,7 @@ webapp-wd6db   IPv4          8080    10.60.166.160,10.60.104.46   119m
 
 ![image-20250718162041706](image/image-20250718162041706.png)
 
-## kube-proxy的代理模式
+# kube-proxy的代理模式
 
 kube-proxy 目前提供了以下几种代理模式(通过启动参数 --proxy-mode 设置)。
 
