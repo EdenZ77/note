@@ -264,7 +264,7 @@ Original Packet: 172.17.0.14:xxxx --> 10.111.175.78:80
 
 ### NodePort
 
-从大体上讲，NodePort 类型的 Service 的 iptables 规则基本和 ClusterIP 的类似。下面仅列出几处不同的地方，首先是在 nat 的 KUBE-SERVICES 表处：
+从大体上讲，NodePort 类型的 Service 的 iptables 规则基本和 ClusterIP 的类似。下面仅列出几处不同的地方，首先是在 nat 的 KUBE-SERVICES 链：
 
 ```shell
 Chain KUBE-SERVICES (2 references)
@@ -392,7 +392,7 @@ $ kubectl exec -it lab-sleeper-7ff95f64d7-6p7bh curl http://test-svc
 08:14:47.127164 IP 10.244.3.5.41408 > 10.107.169.79.80: Flags [F.], seq 73, ack 851, win 247, options [nop,nop,TS val 217014590 ecr 217014590], length 0
 ```
 
-这里我们可以看到，前4行显示，容器（IP地址为`10.244.3.5`）是在和kube-dns（IP地址为`10.96.0.10`）进行通信；从第5行开始，就在和test-svc（IP地址为`10.107.169.79`）进行真正的HTTP通信了。因此，对容器来说，所有发送出去的数据包，其目标地址都是 Service 的 IP 地址；相应地，所有返回的数据包，其源地址也都是Service的IP地址。在容器看来，它始终都是在和 Service 通信，并没有和“躲”在 Service 背后的 Pod 有直接交流。
+这里我们可以看到，前4行显示，容器（IP地址为`10.244.3.5`）是在和 kube-dns（IP地址为`10.96.0.10`）进行通信；从第5行开始，就在和 test-svc（IP地址为`10.107.169.79`）进行真正的HTTP通信了。因此，对容器来说，所有发送出去的数据包，其目标地址都是 Service 的 IP 地址；相应地，所有返回的数据包，其源地址也都是 Service 的IP地址。在容器看来，它始终都是在和 Service 通信，并没有和“躲”在 Service 背后的 Pod 有直接交流。
 
 接下来，我们再往上一层，看一看流经宿主机网卡 eth0 的数据包，所有从当前节点发往其他节点的数据包都会经过这个网络接口：
 
@@ -571,4 +571,73 @@ test-pod-9dd7d4f7b-qdmvd       1/1     Running   0          15s   10.244.2.6   k
 
 
 # IPVS 模式
+
+> https://zhuanlan.zhihu.com/p/94418251
+
+<img src="image/image-20251111171145860.png" alt="image-20251111171145860" style="zoom:50%;" />
+
+创建一个 ClusterIP Service 如下：
+
+```shell
+# kubectl get svc | grep kubernetes-bootcamp-v1
+kubernetes-bootcamp-v1   ClusterIP   10.96.54.11   <none>        8080/TCP   2m11s
+```
+
+查看 ipvs 配置如下：
+
+```shell
+# 在K8S集群任意节点均可以
+# ipvsadm -S -n | grep 10.96.54.11
+-A -t 10.96.54.11:8080 -s rr
+-a -t 10.96.54.11:8080 -r 10.244.1.2:8080 -m -w 1
+-a -t 10.96.54.11:8080 -r 10.244.1.3:8080 -m -w 1
+-a -t 10.96.54.11:8080 -r 10.244.2.2:8080 -m -w 1
+
+# RS为Pod的IP
+```
+
+ipvs 的 VIP 必须在本地存在，我们可以验证：
+
+```shell
+# 在K8S集群任意节点均可以
+# ip addr show kube-ipvs0
+4: kube-ipvs0: <BROADCAST,NOARP> mtu 1500 qdisc noop state DOWN group default
+    link/ether 46:6b:9e:af:b0:60 brd ff:ff:ff:ff:ff:ff
+    inet 10.96.0.1/32 brd 10.96.0.1 scope global kube-ipvs0
+       valid_lft forever preferred_lft forever
+    inet 10.96.0.10/32 brd 10.96.0.10 scope global kube-ipvs0
+       valid_lft forever preferred_lft forever
+    inet 10.96.54.11/32 brd 10.96.54.11 scope global kube-ipvs0
+       valid_lft forever preferred_lft forever
+# ethtool -i kube-ipvs0 | grep driver
+driver: dummy
+```
+
+可见 kube-proxy 首先会创建一个 dummy 虚拟网卡 kube-ipvs0，然后把所有的 Service IP 添加到 kube-ipvs0 中。
+
+我们知道基于 iptables 的 Service，ClusterIP 是一个虚拟的 IP，因此这个 IP 是 ping 不通的，但 ipvs 中这个 IP 是在每个节点上真实存在的，因此可以 ping 通:
+
+![img](image/v2-011b726b9b04551cf3849a5a285f75db_1440w.jpg)
+
+接下来研究下 ClusterIP 如何传递的。当我们通过如下命令连接服务时：
+
+```
+curl 10.96.54.11:8080
+```
+
+经过 ipvs，ipvs 会从 RS ip 列中选择其中一个 Pod ip 作为目标 IP，假设为 10.244.2.2：
+
+```
+节点实际IP:随机端口 -> 10.96.54.11:8080
+                 |
+                 | IPVS
+                 v
+节点实际IP:随机端口 -> 10.244.2.2:8080
+```
+
+我们查看OUTPUT安全组规则如下：
+
+```
+
+```
 
