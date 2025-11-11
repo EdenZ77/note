@@ -619,25 +619,396 @@ driver: dummy
 
 ![img](image/v2-011b726b9b04551cf3849a5a285f75db_1440w.jpg)
 
-接下来研究下 ClusterIP 如何传递的。当我们通过如下命令连接服务时：
+在Linux网络栈中，数据包有两条主要路径：
 
-```
+<img src="image/cd1893a0887298.png" alt="cd1893a0887298" style="zoom:30%;" />
+
+## 节点访问ClusterIP
+
+```shell
+# 在节点上执行
 curl 10.96.54.11:8080
 ```
 
-经过 ipvs，ipvs 会从 RS ip 列中选择其中一个 Pod ip 作为目标 IP，假设为 10.244.2.2：
+数据包流向：
+
+<img src="image/391e5743b69d38.png" alt="391e5743b69d38" style="zoom:50%;" />
+
+由于 kube-proxy 已经将 Service IP 绑定到了 kube-ipvs0 网卡，因为目标IP是本机IP，所以数据包不应该发送到外部网络，应该交给本机的上层协议栈处理，因此数据包进入INPUT链，而不是直接到POSTROUTING。
+
+步骤1：OUTPUT链处理
+
+```shell
+# 数据包刚从curl进程发出
+源IP: 192.168.240.104:12345
+目标IP: 10.96.54.11:8080
+
+# 经过OUTPUT链，匹配规则：
+-A KUBE-SERVICES ! -s 10.244.0.0/16 -m set --match-set KUBE-CLUSTER-IP dst,dst -j KUBE-MARK-MASQ
+
+# 打上标记0x4000
+```
+
+步骤2：路由判断
+
+```shell
+# 内核查询路由表：目标10.96.54.11应该发到哪里？
+ip route get 10.96.54.11
+
+# 结果：local 10.96.54.11 dev kube-ipvs0 src 192.168.240.104
+# 关键：显示为"local"，表示是本机地址
+```
+
+步骤3：进入INPUT链
+
+因为目标IP是本机地址，数据包进入INPUT链，在这里被IPVS拦截：
+
+```shell
+# IPVS在INPUT链的钩子检测到数据包
+# 发现目标10.96.54.11:8080对应IPVS服务
+# 执行DNAT：
+目标IP: 10.96.54.11:8080 → 10.244.2.2:8080
+```
+
+步骤4：重新路由
+
+DNAT后目标IP变成了Pod IP，需要重新路由：
+
+```shell
+# 重新查询路由
+ip route get 10.244.2.2
+# 10.244.2.2 via 10.244.0.0 dev flannel.1 src 10.244.0.0
+
+# 这次目标不是本机，应该通过flannel.1发送出去
+```
+
+步骤5：POSTROUTING处理
+
+```shell
+# 数据包进入POSTROUTING链
+# 匹配之前的标记0x4000
+-A KUBE-POSTROUTING -m mark --mark 0x4000/0x4000 -j MASQUERADE
+
+# 执行MASQUERADE SNAT：
+源IP: 192.168.240.104:12345 → 10.244.0.0:12345
+```
+
+## 外部客户端访问NodePort
 
 ```
-节点实际IP:随机端口 -> 10.96.54.11:8080
-                 |
-                 | IPVS
-                 v
-节点实际IP:随机端口 -> 10.244.2.2:8080
+外部客户端 (192.168.1.100) 
+         ↓
+节点IP: 192.168.240.104:30080
+         ↓
+Service ClusterIP: 10.96.54.11:80
+         ↓
+Pod IP: 10.244.2.2:8080
 ```
 
-我们查看OUTPUT安全组规则如下：
+![3a587cb521b6a8](image/3a587cb521b6a8.png)
+
+步骤1：外部客户端发送请求
+
+```shell
+# 外部客户端执行
+curl 192.168.240.104:30080
+
+# 初始数据包：
+源IP: 192.168.1.100:54321
+目标IP: 192.168.240.104:30080
+```
+
+步骤2：数据包到达节点网络接口
+
+数据包通过物理网卡(eth0)进入节点：
+
+```shell
+eth0: 接收数据包
+源: 192.168.1.100:54321 → 目标: 192.168.240.104:30080
+```
+
+步骤3：PREROUTING链处理
+
+数据包首先进入PREROUTING链，这里可能有Kubernetes规则：
+
+```shell
+# 查看PREROUTING链规则
+iptables -t nat -S PREROUTING | grep KUBE
+
+# 典型规则：
+-A PREROUTING -j KUBE-SERVICES
+-A KUBE-SERVICES -p tcp -m tcp --dport 30080 -j KUBE-NODE-PORT
+```
+
+**关键点**：PREROUTING链主要用于外部流入的数据包，这里可能进行初步的标记或跳转。
+
+步骤4：路由判断
+
+内核查询路由表，判断目标IP是否为本机IP：
+
+```shell
+# 查询路由
+ip route get 192.168.240.104
+# local 192.168.240.104 dev lo src 192.168.240.104
+
+# 结果显示"local"，确认是本机IP
+```
+
+步骤5：进入INPUT链（IPVS拦截）
+
+因为目标IP是本机IP，数据包进入INPUT链，在这里被IPVS拦截：
+
+```shell
+# IPVS规则匹配NodePort
+ipvsadm -Ln | grep 30080
+# TCP  192.168.240.104:30080 rr
+
+# IPVS执行DNAT：
+目标: 192.168.240.104:30080 → 10.244.2.2:8080
+```
+
+此时数据包变为：
+
+```shell
+源: 192.168.1.100:54321 → 目标: 10.244.2.2:8080
+```
+
+步骤6：重新路由判断
+
+DNAT后需要重新路由：
+
+```shell
+# 查询Pod IP的路由
+ip route get 10.244.2.2
+# 10.244.2.2 via 10.244.0.0 dev flannel.1 src 10.244.0.0
+
+# 需要通过网络插件(flannel.1)发送
+```
+
+步骤7：POSTROUTING链的MASQUERADE
+
+数据包进入POSTROUTING链，这里进行SNAT处理：
+
+```shell
+# 查看NodePort相关的MASQUERADE规则
+iptables -t nat -S KUBE-POSTROUTING
+iptables -t nat -S KUBE-SERVICES | grep nodeport
+
+# NodePort特定规则示例：
+-A KUBE-SERVICES -p tcp -m tcp --dport 30080 -j KUBE-MARK-MASQ
+```
+
+MASQUERADE执行：
+
+```
+源: 192.168.1.100:54321 → 目标: 10.244.2.2:8080
+                         ↓ SNAT
+源: 10.244.0.0:54321 → 目标: 10.244.2.2:8080
+```
+
+步骤8：通过网络插件发送
+
+数据包通过 flannel.1 设备发送：
+
+```shell
+# 通过VXLAN隧道封装发送
+源: 10.244.0.0 → 目标: 10.244.2.2 (Pod所在节点)
+```
+
+
+
+## Pod内部访问Service
+
+```shell
+# 环境拓扑
+源Pod: 10.244.1.2 (在节点A上)
+目标Service: ClusterIP 10.96.54.11:8080
+后端Pod: 
+  - 10.244.1.3:8080 (节点A, 同节点)
+  - 10.244.2.2:8080 (节点B, 跨节点)
+网络插件: flannel (VXLAN)
+
+# 相关网络配置
+# 节点A网络接口
+eth0: 192.168.240.104
+flannel.1: 10.244.0.0
+cni0: 10.244.1.1
+vethxxx: 连接到Pod 10.244.1.2
+
+# 节点B网络接口  
+eth0: 192.168.240.105
+flannel.1: 10.244.0.1  
+cni0: 10.244.2.1
 
 ```
 
+![7d3e57e30f495](image/7d3e57e30f495.png)
+
+步骤1：Pod内部发起请求
+
+```shell
+# 在Pod 10.244.1.2内部执行
+curl 10.96.54.11:8080
+
+# 初始数据包：
+源IP: 10.244.1.2:54321
+目标IP: 10.96.54.11:8080
 ```
 
+步骤2：数据包离开Pod网络命名空间
+
+通过veth pair进入主机网络栈：
+
+```shell
+vethxxx → 主机网络栈
+源: 10.244.1.2:54321 → 目标: 10.96.54.11:8080
+```
+
+步骤3：路由判断和关键差异
+
+这是最关键的区别：Pod发出的数据包源IP属于Pod网段(10.244.0.0/16)
+
+```shell
+# 查看MASQ规则的条件
+iptables -t nat -S KUBE-SERVICES | grep MASQ
+# -A KUBE-SERVICES ! -s 10.244.0.0/16 -m set --match-set KUBE-CLUSTER-IP dst,dst -j KUBE-MARK-MASQ
+
+# 条件判断：
+源IP(10.244.1.2) ∈ 10.244.0.0/16  ✅
+! -s 10.244.0.0/16  ❌ (条件不成立)
+# 因此不会打MASQUERADE标记！
+```
+
+步骤4：路由到本机INPUT链
+
+内核路由判断目标10.96.54.11是本机IP（在kube-ipvs0上）：
+
+```shell
+ip route get 10.96.54.11
+# local 10.96.54.11 dev kube-ipvs0 src 10.244.1.2
+```
+
+数据包进入INPUT链，被IPVS拦截。
+
+步骤5：IPVS DNAT处理
+
+```shell
+# IPVS规则匹配
+ipvsadm -Ln | grep 10.96.54.11:8080
+# TCP  10.96.54.11:8080 rr
+
+# IPVS执行DNAT（假设选择10.244.2.2）：
+目标: 10.96.54.11:8080 → 10.244.2.2:8080
+```
+
+此时数据包：
+
+```
+源: 10.244.1.2:54321 → 目标: 10.244.2.2:8080
+```
+
+步骤6：重新路由判断
+
+查询目标Pod的路由：
+
+```shell
+# 查询10.244.2.2的路由
+ip route get 10.244.2.2
+# 10.244.2.2 via 10.244.0.1 dev flannel.1 src 10.244.1.2
+
+这个输出告诉我们：
+目标：10.244.2.2（节点B上的Pod）
+下一跳：10.244.0.1（节点B的flannel.1 IP）
+出接口：flannel.1（节点A的flannel设备）
+建议源IP：10.244.1.2（但实际使用Pod的真实源IP）
+```
+
+步骤7：跨节点转发路径
+
+由于目标Pod在节点B，数据包通过 flannel.1 发送：
+
+关键点：因为源IP是Pod IP(10.244.1.2)，不需要MASQUERADE！
+
+```shell
+数据包直接发送：
+源: 10.244.1.2:54321 → 目标: 10.244.2.2:8080
+```
+
+步骤8：VXLAN封装和传输
+
+```shell
+# flannel进行VXLAN封装
+外层: 源 192.168.240.104 → 目标 192.168.240.105
+内层: 源 10.244.1.2 → 目标 10.244.2.2
+```
+
+## 同节点Pod通信
+
+```
+节点A (192.168.240.104):
+- eth0: 192.168.240.104
+- flannel.1: 10.244.0.0/32
+- cni0: 10.244.1.1/24 (网桥)
+  ├── veth1: 连接到 Pod1 (10.244.1.2)
+  └── veth2: 连接到 Pod2 (10.244.1.3)
+```
+
+路由查询结果分析
+
+```
+# 在节点A上查询同节点Pod的路由
+ip route get 10.244.1.3
+# 10.244.1.3 dev cni0 src 10.244.1.1
+
+关键字段解释：
+10.244.1.3: 目标Pod IP
+dev cni0: 通过cni0网桥设备直接连接
+src 10.244.1.1: cni0网桥的IP地址（建议的源IP）
+```
+
+![c62c5160fc877](image/c62c5160fc877.png)
+
+步骤1：Pod内部发起请求
+
+```shell
+# 在Pod1(10.244.1.2)内部执行
+curl 10.96.54.11:8080
+
+# 初始数据包：
+源IP: 10.244.1.2:54321
+目标IP: 10.96.54.11:8080
+```
+
+步骤2：数据包进入主机网络栈
+
+通过veth pair从Pod网络命名空间进入主机根命名空间。
+
+步骤3：IPVS DNAT处理
+
+```shell
+# IPVS将ClusterIP转换为同节点Pod IP
+目标: 10.96.54.11:8080 → 10.244.1.3:8080
+
+# 此时数据包：
+源IP: 10.244.1.2:54321 → 目标IP: 10.244.1.3:8080
+```
+
+步骤4：路由查询的关键分析
+
+```shell
+ip route get 10.244.1.3
+# 10.244.1.3 dev cni0 src 10.244.1.1
+
+这个结果说明：
+直接连接：dev cni0表示目标IP与cni0在同一个子网
+二层转发：不需要路由到其他节点，直接在网桥内转发
+src字段的意义：src 10.244.1.1是cni0网桥的IP，但实际源IP保持Pod IP
+```
+
+数据包路径：
+
+```
+源Pod → veth → 主机网络栈 → IPVS DNAT → cni0网桥 → 目标Pod
+```
+
+完全在节点内部完成，不经过overlay网络。
