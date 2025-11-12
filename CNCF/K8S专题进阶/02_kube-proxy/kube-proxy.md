@@ -324,8 +324,6 @@ Node进程 → 节点网络栈 → iptables OUTPUT 链 → KUBE-SERVICES 链 →
 Pod进程 → Pod网络栈 → veth pair → 节点网络栈 → iptables PREROUTING 链 → KUBE-SERVICES 链 → DNAT → 后端Pod
 ```
 
-<img src="image/v2-aa04268490b931fcc64e4927d33b28a8_1440w.jpg" alt="img" style="zoom:67%;" />
-
 
 
 ### 使用 tcpdump
@@ -459,6 +457,8 @@ veth pair是Linux内核提供的基础网络设施，与CNI插件无关：
 | Cilium  | veth接口与eBPF程序配合，实现高性能网络和数据平面     |
 
 ### 使用 iptables
+
+<img src="image/v2-aa04268490b931fcc64e4927d33b28a8_1440w.jpg" alt="img" style="zoom:67%;" />
 
 我们在 lab-sleeper Pod 所在的 kube-node-2 上执行`iptables-save`命令，将会得到了类似下面这样的输出：
 
@@ -677,9 +677,12 @@ DNAT后目标IP变成了Pod IP，需要重新路由：
 ```shell
 # 重新查询路由
 ip route get 10.244.2.2
-# 10.244.2.2 via 10.244.0.0 dev flannel.1 src 10.244.0.0
+# 10.244.2.2 via 10.244.0.1 dev flannel.1 src xxxx
 
-# 这次目标不是本机，应该通过flannel.1发送出去
+# 正确的理解：
+- 数据包通过flannel.1设备发送
+- 下一跳是10.244.0.1（节点B的flannel.1）
+- MASQUERADE使用flannel.1设备的IP，不是via的IP
 ```
 
 步骤5：POSTROUTING处理
@@ -690,8 +693,65 @@ ip route get 10.244.2.2
 -A KUBE-POSTROUTING -m mark --mark 0x4000/0x4000 -j MASQUERADE
 
 # 执行MASQUERADE SNAT：
-源IP: 192.168.240.104:12345 → 10.244.0.0:12345
+原始数据包：源 192.168.240.104 → 目标 10.244.2.2
+# MASQUERADE执行过程：
+1. 查看出接口：flannel.1
+2. 获取接口IP：ip addr show flannel.1 → 10.244.0.0
+3. 执行SNAT：源IP改为 10.244.0.0
+# 结果：
+源 10.244.0.0 → 目标 10.244.2.2
 ```
+
+### Flannel网络路由表
+
+假设我们有3个节点的集群：
+
+```
+节点A: 192.168.240.104, Pod子网: 10.244.1.0/24, flannel.1 IP: 10.244.0.0
+节点B: 192.168.240.105, Pod子网: 10.244.2.0/24, flannel.1 IP: 10.244.0.1  
+节点C: 192.168.240.106, Pod子网: 10.244.3.0/24, flannel.1 IP: 10.244.0.2
+```
+
+节点A的完整路由表分析
+
+```shell
+# 节点A的路由表
+ip route show
+
+# 关键路由条目：
+xxxx
+10.244.1.0/24 dev cni0 proto kernel scope link src 10.244.1.1
+10.244.2.0/24 via 10.244.0.1 dev flannel.1 onlink
+10.244.3.0/24 via 10.244.0.2 dev flannel.1 onlink
+xxxx
+```
+
+详细解析：
+
+本地Pod子网路由
+
+```shell
+10.244.1.0/24 dev cni0 proto kernel scope link src 10.244.1.1
+
+# 目的网络：10.244.1.0/24（节点A的Pod子网）
+# 出口设备：cni0（本地网桥）
+# 源IP：10.244.1.1（cni0网桥IP）
+# 含义：发往本节点Pod的流量直接通过cni0网桥转发
+```
+
+远程Pod子网路由
+
+```shell
+10.244.2.0/24 via 10.244.0.1 dev flannel.1 onlink
+10.244.3.0/24 via 10.244.0.2 dev flannel.1 onlink
+
+# 目的网络：其他节点的Pod子网
+# 下一跳：目标节点的flannel.1 IP
+# 出口设备：flannel.1（VXLAN隧道端点）
+# 含义：发往其他节点Pod的流量通过VXLAN隧道
+```
+
+
 
 ## 外部客户端访问NodePort
 
@@ -780,7 +840,7 @@ DNAT后需要重新路由：
 ```shell
 # 查询Pod IP的路由
 ip route get 10.244.2.2
-# 10.244.2.2 via 10.244.0.0 dev flannel.1 src 10.244.0.0
+# 10.244.2.2 via 10.244.0.1 dev flannel.1 src xxxx
 
 # 需要通过网络插件(flannel.1)发送
 ```
@@ -800,10 +860,11 @@ iptables -t nat -S KUBE-SERVICES | grep nodeport
 
 MASQUERADE执行：
 
-```
+```shell
 源: 192.168.1.100:54321 → 目标: 10.244.2.2:8080
                          ↓ SNAT
 源: 10.244.0.0:54321 → 目标: 10.244.2.2:8080
+网络插件(flannel.1)的IP
 ```
 
 步骤8：通过网络插件发送
@@ -944,7 +1005,7 @@ ip route get 10.244.2.2
 
 ## 同节点Pod通信
 
-```
+```shell
 节点A (192.168.240.104):
 - eth0: 192.168.240.104
 - flannel.1: 10.244.0.0/32
@@ -955,7 +1016,7 @@ ip route get 10.244.2.2
 
 路由查询结果分析
 
-```
+```shell
 # 在节点A上查询同节点Pod的路由
 ip route get 10.244.1.3
 # 10.244.1.3 dev cni0 src 10.244.1.1
@@ -1007,7 +1068,7 @@ src字段的意义：src 10.244.1.1是cni0网桥的IP，但实际源IP保持Pod 
 
 数据包路径：
 
-```
+```shell
 源Pod → veth → 主机网络栈 → IPVS DNAT → cni0网桥 → 目标Pod
 ```
 
