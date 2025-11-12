@@ -92,6 +92,12 @@ ipvs 模式要求 Linux Kernel 启用 IPVS 内核模块，如果 kube-proxy 在 
 >
 > https://morningspace.github.io/tech/k8s-net-service-2/
 
+Iptables模式在 K8S v1.1 版本开始使用，v1.2 版本 iptables 成为默认代理模式。
+
+一个 service 一般对应生成20条左右 iptables 规则，因此如果是中等规模的K8S集群（service有几百个）能够承受，但是大规模的集群（service有几千个）维护达几万条规则，性能较差。
+
+kube-proxy 在 iptables 模式下时间复杂度为O(n)。
+
 ## 监控Service和Endpoints对象
 
 kube-proxy 组件负责维护 node 节点上的防火墙规则和路由规则，在 iptables 模式下，会根据 Service 以及 Endpoints 对象的改变来实时刷新规则。
@@ -573,6 +579,10 @@ test-pod-9dd7d4f7b-qdmvd       1/1     Running   0          15s   10.244.2.6   k
 # IPVS 模式
 
 > https://zhuanlan.zhihu.com/p/94418251
+
+K8S v1.8 引入ipvs代理模块，v1.11 版本成为默认设置。流量的负载均衡功能由ipvs实现，余下的其他功能任由iptables完成。
+
+在IPVS模式下是使用 hash 表作为底层数据结构，时间复杂度为O(1)。
 
 <img src="image/image-20251111171145860.png" alt="image-20251111171145860" style="zoom:50%;" />
 
