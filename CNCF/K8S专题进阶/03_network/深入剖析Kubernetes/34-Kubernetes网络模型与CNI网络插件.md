@@ -1,6 +1,4 @@
 # 34 | Kubernetes网络模型与CNI网络插件
-你好，我是张磊。今天我和你分享的主题是：Kubernetes网络模型与CNI网络插件。
-
 在上一篇文章中，我以Flannel项目为例，为你详细讲解了容器跨主机网络的两种实现方法：UDP和VXLAN。
 
 不难看到，这些例子有一个共性，那就是用户的容器都连接在docker0网桥上。而网络插件则在宿主机上创建了一个特殊的设备（UDP模式创建的是TUN设备，VXLAN模式创建的则是VTEP设备），docker0与这个设备之间，通过IP转发（路由表）进行协作。
@@ -47,11 +45,11 @@ Kubernetes之所以要设置这样一个与docker0网桥功能几乎一样的CNI
 - 一方面，Kubernetes项目并没有使用Docker的网络模型（CNM），所以它并不希望、也不具备配置docker0网桥的能力；
 - 另一方面，这还与Kubernetes如何配置Pod，也就是Infra容器的Network Namespace密切相关。
 
-我们知道，Kubernetes创建一个Pod的第一步，就是创建并启动一个Infra容器，用来“hold”住这个Pod的Network Namespace（这里，你可以再回顾一下专栏第13篇文章 [《为什么我们需要Pod？》](https://time.geekbang.org/column/article/40092) 中的相关内容）。
+我们知道，Kubernetes创建一个Pod的第一步，就是创建并启动一个Infra容器，用来“hold”住这个Pod的Network Namespace。
 
 所以，CNI的设计思想，就是： **Kubernetes在启动Infra容器之后，就可以直接调用CNI网络插件，为这个Infra容器的Network Namespace，配置符合预期的网络栈。**
 
-> 备注：在前面第32篇文章 [《浅谈容器网络》](https://time.geekbang.org/column/article/64948) 中，我讲解单机容器网络时，已经和你分享过，一个Network Namespace的网络栈包括：网卡（Network Interface）、回环设备（Loopback Device）、路由表（Routing Table）和iptables规则。
+## CNI插件
 
 那么，这个网络栈的配置工作又是如何完成的呢？
 
