@@ -15,9 +15,8 @@
 
 在这里，Kubernetes为Flannel分配的子网范围是10.244.0.0/16。这个参数可以在部署的时候指定，比如：
 
-```
+```shell
 $ kubeadm init --pod-network-cidr=10.244.0.0/16
-
 ```
 
 也可以在部署完成后，通过修改kube-controller-manager的配置文件来指定。
@@ -26,7 +25,7 @@ $ kubeadm init --pod-network-cidr=10.244.0.0/16
 
 此时，Node 1上的路由表，如下所示：
 
-```
+```shell
 # 在Node 1上
 $ route -n
 Kernel IP routing table
@@ -35,7 +34,6 @@ Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
 10.244.0.0      0.0.0.0         255.255.255.0   U     0      0        0 cni0
 10.244.1.0      10.244.1.0      255.255.255.0   UG    0      0        0 flannel.1
 172.17.0.0      0.0.0.0         255.255.0.0     U     0      0        0 docker0
-
 ```
 
 因为我们的IP包的目的IP地址是10.244.1.3，所以它只能匹配到第二条规则，也就是10.244.1.0对应的这条路由规则。
@@ -63,7 +61,7 @@ Kubernetes之所以要设置这样一个与docker0网桥功能几乎一样的CNI
 
 在安装完成后，你可以在宿主机的/opt/cni/bin目录下看到它们，如下所示：
 
-```
+```shell
 $ ls -al /opt/cni/bin/
 total 73088
 -rwxr-xr-x 1 root root  3890407 Aug 17  2017 bridge
@@ -78,7 +76,6 @@ total 73088
 -rwxr-xr-x 1 root root  2605279 Aug 17  2017 sample
 -rwxr-xr-x 1 root root  2808402 Aug 17  2017 tuning
 -rwxr-xr-x 1 root root  3475750 Aug 17  2017 vlan
-
 ```
 
 这些CNI的基础可执行文件，按照功能可以分为三类：
@@ -105,7 +102,7 @@ total 73088
 
 这个CNI配置文件的内容如下所示：
 
-```
+```shell
 $ cat /etc/cni/net.d/10-flannel.conflist
 {
   "name": "cbr0",
@@ -125,7 +122,6 @@ $ cat /etc/cni/net.d/10-flannel.conflist
     }
   ]
 }
-
 ```
 
 需要注意的是，在Kubernetes中，处理容器网络相关的逻辑并不会在kubelet主干代码里执行，而是会在具体的CRI（Container Runtime Interface，容器运行时接口）实现里完成。对于Docker项目来说，它的CRI实现叫作dockershim，你可以在kubelet的代码里找到它。
@@ -172,13 +168,12 @@ CNI的ADD操作需要的参数包括：容器里网卡的名字eth0（CNI\_IFNAM
 
 不过，需要注意的是，Flannel的CNI配置文件（ /etc/cni/net.d/10-flannel.conflist）里有这么一个字段，叫作delegate：
 
-```
+```shell
 ...
      "delegate": {
         "hairpinMode": true,
         "isDefaultGateway": true
       }
-
 ```
 
 Delegate字段的意思是，这个CNI插件并不会自己做事儿，而是会调用Delegate指定的某种CNI内置插件来完成。对于Flannel来说，它调用的Delegate插件，就是前面介绍到的CNI bridge插件。
@@ -187,7 +182,7 @@ Delegate字段的意思是，这个CNI插件并不会自己做事儿，而是会
 
 经过Flannel CNI插件补充后的、完整的Delegate字段如下所示：
 
-```
+```shell
 {
     "hairpinMode":true,
     "ipMasq":false,
@@ -206,7 +201,6 @@ Delegate字段的意思是，这个CNI插件并不会自己做事儿，而是会
     "name":"cbr0",
     "type":"bridge"
 }
-
 ```
 
 其中，ipam字段里的信息，比如10.244.1.0/24，读取自Flannel在宿主机上生成的Flannel配置文件，即：宿主机上的/run/flannel/subnet.env文件。
@@ -223,18 +217,17 @@ Delegate字段的意思是，这个CNI插件并不会自己做事儿，而是会
 
 首先，CNI bridge插件会在宿主机上检查CNI网桥是否存在。如果没有的话，那就创建它。这相当于在宿主机上执行：
 
-```
+```shell
 # 在宿主机上
 $ ip link add cni0 type bridge
 $ ip link set cni0 up
-
 ```
 
 接下来，CNI bridge插件会通过Infra容器的Network Namespace文件，进入到这个Network Namespace里面，然后创建一对Veth Pair设备。
 
 紧接着，它会把这个Veth Pair的其中一端，“移动”到宿主机上。这相当于在容器里执行如下所示的命令：
 
-```
+```shell
 #在容器里
 
 # 创建一对Veth Pair设备。其中一个叫作eth0，另一个叫作vethb4963f3
@@ -248,7 +241,6 @@ $ ip link set vethb4963f3 netns $HOST_NS
 
 # 通过Host Namespace，启动宿主机上的vethb4963f3设备
 $ ip netns exec $HOST_NS ip link set vethb4963f3 up
-
 ```
 
 这样，vethb4963f3就出现在了宿主机上，而且这个Veth Pair设备的另一端，就是容器里面的eth0。
@@ -257,22 +249,20 @@ $ ip netns exec $HOST_NS ip link set vethb4963f3 up
 
 不过，CNI插件之所以要“反着”来，是因为CNI里对Namespace操作函数的设计就是如此，如下所示：
 
-```
+```go
 err := containerNS.Do(func(hostNS ns.NetNS) error {
   ...
   return nil
 })
-
 ```
 
 这个设计其实很容易理解。在编程时，容器的Namespace是可以直接通过Namespace文件拿到的；而Host Namespace，则是一个隐含在上下文的参数。所以，像上面这样，先通过容器Namespace进入容器里面，然后再反向操作Host Namespace，对于编程来说要更加方便。
 
 接下来，CNI bridge插件就可以把vethb4963f3设备连接在CNI网桥上。这相当于在宿主机上执行：
 
-```
+```shell
 # 在宿主机上
 $ ip link set vethb4963f3 master cni0
-
 ```
 
 在将vethb4963f3设备连接在CNI网桥之后，CNI bridge插件还会为它设置 **Hairpin Mode（发夹模式）**。这是因为，在默认情况下，网桥设备是不允许一个数据包从一个端口进来后，再从这个端口发出去的。但是，它允许你为这个端口开启Hairpin Mode，从而取消这个限制。
