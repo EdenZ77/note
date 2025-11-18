@@ -298,15 +298,7 @@ Chain KUBE-MARK-MASQ (21 references)
     0     0 MARK       all  --  *      *       0.0.0.0/0            0.0.0.0/0            MARK or 0x4000
 ```
 
-在这里数据包会被标记上 0x4000 标记，然后回到 KUBE-NODEPORTS 链中继续匹配下一条规则，我们发现下一条规则就是 KUBE-SVC-GKN7Y2BSGW4NJTYL，接下来一路到 nat 的 POSTROUTING 为止都与 ClusterIP 模式相同，但在接下来的 nat 的 KUBE-POSTROUTING 阶段：
-
-```shell
-Chain KUBE-POSTROUTING (1 references)
- pkts bytes target     prot opt in     out     source               destination         
-    0     0 MASQUERADE  all  --  *      *       0.0.0.0/0            0.0.0.0/0            /* kubernetes service traffic requiring SNAT */ mark match 0x4000/0x4000 random-fully
-```
-
-这里由于我们的数据包在 KUBE-MARK-MASQ 被打上了 0x4000 标记，在这里会命中这条规则，从而被MASQUERADE（SNAT）。
+在这里数据包会被标记上 0x4000 标记，然后回到 KUBE-NODEPORTS 链中继续匹配下一条规则，我们发现下一条规则就是 KUBE-SVC-GKN7Y2BSGW4NJTYL，接下来一路到 nat 的 POSTROUTING 为止都与 ClusterIP 模式相同。
 
 
 
