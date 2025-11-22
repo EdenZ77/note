@@ -1532,7 +1532,7 @@ docker build:
 
 <img src="images/本地添加远程仓库-02.png" alt="本地添加远程仓库-02" style="zoom:67%;" />
 
-# 暂时停止
+# 学此为止
 
 ### 3.5.10 在ArgoCd中创建项目
 
