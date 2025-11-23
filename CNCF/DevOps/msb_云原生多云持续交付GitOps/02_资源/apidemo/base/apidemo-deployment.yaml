@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: apidemo
+  name: apidemo
+  labels:
+    app: apidemo
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: apidemo
+  template:
+    metadata:
+      name: apidemo
+      labels:
+        app: apidemo
+    spec:
+      containers:
+        - name: apidemo
+          image: 192.168.10.21/apidemo/apidemo:v1.1.1
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 10088

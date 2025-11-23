@@ -1,0 +1,20 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-apidemo                    #自定义ingress名称
+  namespace: apidemo
+  annotations:
+    ingressclass.kubernetes.io/is-default-class: "true"
+    kubernetes.io/ingress.class: nginx
+spec:
+  rules:
+    - host: apidemo.alan.com                   # 自定义域名
+      http:
+        paths:
+          - pathType: Prefix
+            path: "/"
+            backend:
+              service:
+                name: apidemo     # 对应上面创建的service名称
+                port:
+                  number: 10088
