@@ -1,4 +1,4 @@
-# 架构图
+# 架构流程图
 
 <img src="image/image.png" alt="image" style="zoom: 80%;" />
 
@@ -33,7 +33,7 @@
 4. 自动执行：部署同步
    - 如果该Application配置了自动同步，Application Controller会立即开始同步过程。
    - 它会计算出需要执行的操作（更新现有部署的镜像、在新的集群中创建资源）。
-   - 最终，Application Controller通过Kubernetes API直接**部署**到各个目标集群，使集群状态与Git声明一致。
+   - 最终，Application Controller通过Kubernetes API直接部署到各个目标集群，使集群状态与Git声明一致。
 
 此触发方式的优势：全自动化，部署过程可追溯、可审计，确保了环境的一致性。
 
@@ -47,17 +47,24 @@
 2. 用户发起指令：用户通过以下方式与ArgoCD交互：
    - Web UI：在应用界面点击“Sync”按钮。
    - CLI：执行`argocd app sync <app-name>`命令。
-   - 这些操作本质上都是通过**gRPC/REST**接口调用API Server。
+   - 这些操作本质上都是通过gRPC/REST接口调用API Server。
 3. 执行同步：
    - API Server将同步指令下达给Application Controller。
    - 后续的同步部署流程与自动化流程的第4步完全相同。
-   - 在同步过程中，可以执行图中提到的**Sync Hooks**（用于数据库迁移、通知等）和**App Actions**（自定义操作）。
+   - 在同步过程中，可以执行图中提到的Sync Hooks（用于数据库迁移、通知等）和App Actions（自定义操作）。
 
 此触发方式的优势：人工审批，可控性强。可以在同步前预览变更内容，降低风险。
 
-触发方式三：周期性同步（补充保障）
+**触发方式三：周期性同步（补充保障）**
 
 虽然图中没有直接画出“定时器”图标，但ArgoCD支持此功能，它是上述流程的补充。
 
 - 原理：即使Webhook通知失败，Application Controller也会按照预设的时间间隔（例如每3分钟）自动执行一次“内部处理：状态获取与比较”的流程。
 - 作用：作为Webhook机制的兜底方案，确保最终一致性。
+
+
+
+
+
+# 学习流程
+
