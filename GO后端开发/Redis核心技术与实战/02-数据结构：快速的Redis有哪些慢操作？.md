@@ -67,6 +67,8 @@ Redis解决哈希冲突的方式，就是链式哈希。链式哈希也很容易
 
 这样就巧妙地把一次性大量拷贝的开销，分摊到了多次处理请求的过程中，避免了耗时操作，保证了数据的快速访问。
 
+渐进式rehash执行时，Redis本身还会有一个定时任务在执行rehash，如果没有键值对操作时，这个定时任务会周期性地（例如每100ms一次）搬移一些数据到新的哈希表中，这样可以缩短整个rehash的过程。
+
 好了，到这里，你应该就能理解，Redis的键和值是怎么通过哈希表组织的了。对于String类型来说，找到哈希桶就能直接增删改查了，所以，哈希表的O(1)操作复杂度也就是它的复杂度了。
 
 但是，对于集合类型来说，即使找到哈希桶了，还要在集合中再进一步操作。接下来，我们来看集合类型的操作效率又是怎样的。
@@ -109,7 +111,7 @@ Redis解决哈希冲突的方式，就是链式哈希。链式哈希也很容易
 
 <img src="images/268253/fb7e3612ddee8a0ea49b7c40673a0cf0.jpg" style="zoom:30%;" />
 
-### 不同操作的复杂度-
+### 不同操作的复杂度
 
 集合类型的操作类型很多，有读写单个集合元素的，例如HGET、HSET，也有操作多个元素的，例如SADD，还有对整个集合进行遍历操作的，例如SMEMBERS。这么多操作，它们的复杂度也各不相同。而复杂度的高低又是我们选择集合类型的重要依据。
 
@@ -153,8 +155,6 @@ Redis数据类型丰富，每个类型的操作繁多，我们通常无法一下
 2、数组对CPU高速缓存支持更友好，所以Redis在设计时，集合数据元素较少情况下，默认采用内存紧凑排列的方式存储，同时利用CPU高速缓存不会降低访问速度。当数据元素超过设定阈值后，避免查询时间复杂度太高，转为哈希和跳表数据结构存储，保证查询效率。
 
 
-
-渐进式rehash执行时，Redis本身还会有一个定时任务在执行rehash，如果没有键值对操作时，这个定时任务会周期性地（例如每100ms一次）搬移一些数据到新的哈希表中，这样可以缩短整个rehash的过程。
 
 
 
@@ -474,9 +474,145 @@ Redis中的使用：
 - 内存效率极高：相比链表可节省50%-80%内存
 - 遍历性能好：顺序遍历接近数组性能
 - 随机访问一般：需要顺序遍历，O(n)时间复杂度
-- 修改成本较高：插入删除可能触发内存重分配
+- 修改成本较高：插入删除可能触发连锁更新
 
 **压缩列表的价值**：在需要**高内存效率**且**数据规模不大**的场景下，它在数组的连续内存优势和链表的灵活性之间找到了最佳平衡点，特别适合Redis这种对内存敏感的系统。
 
 这就是为什么Redis在存储小规模数据时优先使用压缩列表——用稍微复杂的结构换来了巨大的内存节省，这对于内存数据库来说是至关重要的权衡。
 
+### Hash使用ziplist
+
+使用条件：
+
+```bash
+# Redis配置文件中相关配置
+hash-max-ziplist-entries 512    # 哈希字段数量阈值
+hash-max-ziplist-value 64       # 字段值长度阈值
+```
+
+当同时满足以下条件时，Hash使用压缩列表：
+
+- 字段数量 ≤ 512
+- 所有字段值的长度 ≤ 64字节
+
+在压缩列表中，Hash的存储格式是：
+
+```
+[field1, value1, field2, value2, field3, value3, ...]
+```
+
+字段和值交替存储，每个都是一个独立的压缩列表节点。
+
+```shell
+# Redis命令
+HSET user:1000 name "Alice" age "30" city "Beijing"
+
+# 压缩列表中的实际存储：
++----------+----------+----------+----------+----------+----------+
+| "name"   | "Alice"  | "age"    | "30"     | "city"   | "Beijing"|
++----------+----------+----------+----------+----------+----------+
+```
+
+操作示例：
+
+```bash
+# 初始状态 - 使用压缩列表
+> HSET product:1 name "iPhone" price "999" stock "100"
+(integer) 3
+> OBJECT ENCODING product:1
+"ziplist"
+
+# 当字段值超过64字节时，自动转换为哈希表
+> HSET product:1 description "This is a very long description that exceeds 64 bytes threshold..."
+(integer) 1
+> OBJECT ENCODING product:1
+"hashtable"
+
+# 或者当字段数量超过512时也会转换
+```
+
+### ZSet使用ziplist
+
+使用条件：
+
+```bash
+# Redis配置
+zset-max-ziplist-entries 128    # 元素数量阈值  
+zset-max-ziplist-value 64       # 元素值长度阈值
+```
+
+使用条件：
+
+- 元素数量 ≤ 128
+- 所有元素值的长度 ≤ 64字节
+
+有序集合在压缩列表中的存储比较特殊：
+
+```
+[element1, score1, element2, score2, element3, score3, ...]
+```
+
+按分值排序存储，元素和分值交替存储。
+
+```bash
+# Redis命令
+ZADD leaderboard 1000 "Alice" 2000 "Bob" 1500 "Charlie"
+
+# 压缩列表中的实际存储（按分值排序）：
++----------+-------+-------------+-------+----------+-------+
+| "Alice"  | 1000  | "Charlie"   | 1500  | "Bob"    | 2000  |
++----------+-------+-------------+-------+----------+-------+
+```
+
+操作特点：
+
+```bash
+# 初始使用压缩列表
+> ZADD game:scores 150 "player1" 200 "player2"
+(integer) 2
+> OBJECT ENCODING game:scores  
+"ziplist"
+
+# 插入长字符串元素时转换
+> ZADD game:scores 180 "This is a very long player name that exceeds the 64 bytes limit"
+(integer) 1
+> OBJECT ENCODING game:scores
+"skiplist"
+
+```
+
+### List使用ziplist
+
+使用条件：
+
+```bash
+# Redis配置（在Redis 3.2之前）
+list-max-ziplist-entries 512    # 元素数量阈值
+list-max-ziplist-value 64       # 元素值长度阈值
+```
+
+**注意：Redis 3.2之后，List的默认实现改为quicklist**
+
+Quicklist的内部结构：
+
+Quicklist是压缩列表和双向链表的结合：
+
+```bash
++---------+    +---------+    +---------+
+| ziplist |<-->| ziplist |<-->| ziplist |
+| (节点1) |    | (节点2) |    | (节点3) |
++---------+    +---------+    +---------+
+```
+
+每个Quicklist节点内部是一个压缩列表，节点之间通过指针连接。
+
+```bash
+# Redis命令
+LPUSH mylist "item1" "item2" "item3" "item4"
+
+# Quicklist内部可能的结构：
++-------------------+    +-------------------+
+| ziplist:          |    | ziplist:          |
+| ["item4", "item3"]|<=>| ["item2", "item1"]|
++-------------------+    +-------------------+
+```
