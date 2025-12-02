@@ -616,3 +616,60 @@ LPUSH mylist "item1" "item2" "item3" "item4"
 
 
 ## ZSet底层实现
+
+
+
+## listpack替代ziplist
+
+在 Redis 7.0 及更高版本中，ziplist 已经被 listpack 完全替代了。
+
+需要注意的是，Redis 中的 **quicklist**（List 的底层实现之一）在 Redis 7.0 中仍然存在，但 quicklist 的每个节点从包含 ziplist 变成了包含 listpack。
+
+在 Redis 7.0 之前，Hash 类型在小数据量时使用 ziplist（压缩列表），但 ziplist 有一个严重问题：**连锁更新**。
+
+```c
+// ziplist 中每个 entry 存储前一个 entry 的长度
+[prev_len][encoding][content]
+```
+
+如果前一个 entry 的长度发生变化，当前 entry 的 `prev_len`字段可能需要扩展，这又可能导致后一个 entry 需要更新，形成连锁反应。
+
+listpack 通过重新设计结构，彻底解决了连锁更新问题。
+
+```shell
++--------+----------+----------+----------+------------+
+|总字节数|元素个数|  entry1  |  entry2  | ... | END |
++--------+----------+----------+----------+------------+
+| 4字节  |  2字节  |  变长    |  变长    | ... | 1字节 |
+```
+
+单个 entry 的精妙结构
+
+```shell
++------------+-------------+-------------+
+| encoding   |    data     |  entry-len  |
++------------+-------------+-------------+
+| 变长(1-5字节) | 变长       | 变长(1-5字节) |
+```
+
+关键创新：entry-len 存储的是当前 entry 的总长度，且放在末尾！
+
+ziplist（有问题）：
+
+```c
+Entry1: [prev_len1][encoding1][data1]
+Entry2: [prev_len2][encoding2][data2]  // prev_len2 依赖 Entry1 的长度
+Entry3: [prev_len3][encoding3][data3]  // prev_len3 依赖 Entry2 的长度
+```
+
+修改 Entry1 → 可能影响 Entry2 的 prev_len2 → 可能影响 Entry3 的 prev_len3
+
+listpack（无问题）：
+
+```c
+Entry1: [encoding1][data1][entry-len1]
+Entry2: [encoding2][data2][entry-len2]  // entry-len2 只依赖自己
+Entry3: [encoding3][data3][entry-len3]  // entry-len3 只依赖自己
+```
+
+修改 Entry1 → 只影响 Entry1 自己的 entry-len1 → 不影响其他 Entry
