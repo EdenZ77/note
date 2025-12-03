@@ -14,7 +14,6 @@
 ```
 photo_id: 1101000051
 photo_obj_id: 3301000051
-
 ```
 
 可以看到，图片ID和图片存储对象ID正好一一对应，是典型的“键-单值”模式。所谓的“单值”，就是指键值对中的值就是一个值，而不是一个集合，这和String类型提供的“一个键对应一个值的数据”的保存形式刚好契合。
@@ -49,7 +48,7 @@ photo_obj_id: 3301000051
 
 但是，当你保存的数据中包含字符时，String类型就会用简单动态字符串（Simple Dynamic String，SDS）结构体来保存，如下图所示：
 
-![](images/279649/37c6a8d5abd65906368e7c4a6b938657.jpg)
+<img src="images/279649/37c6a8d5abd65906368e7c4a6b938657.jpg" style="zoom:20%;" />
 
 - **buf**：字节数组，保存实际数据。为了表示字节数组的结束，Redis会自动在数组最后加一个“\\0”，这就会额外占用1个字节的开销。
 - **len**：占4个字节，表示buf的已用长度。
@@ -63,7 +62,7 @@ photo_obj_id: 3301000051
 
 一个RedisObject包含了8字节的元数据和一个8字节指针，这个指针再进一步指向具体数据类型的实际数据所在，例如指向String类型的SDS结构所在的内存地址，可以看一下下面的示意图。关于RedisObject的具体结构细节，我会在后面的课程中详细介绍，现在你只要了解它的基本结构和元数据开销就行了。
 
-![](images/279649/3409948e9d3e8aa5cd7cafb9b66c2857.jpg)
+<img src="images/279649/3409948e9d3e8aa5cd7cafb9b66c2857.jpg" style="zoom:20%;" />
 
 为了节省内存空间，Redis还对Long类型整数和SDS的内存布局做了专门的设计。
 
@@ -75,7 +74,7 @@ photo_obj_id: 3301000051
 
 为了帮助你理解int、embstr和raw这三种编码模式，我画了一张示意图，如下所示：
 
-![](images/279649/ce83d1346c9642fdbbf5ffbe701bfbe3.jpg)
+<img src="images/279649/ce83d1346c9642fdbbf5ffbe701bfbe3.jpg" style="zoom:20%;" />
 
 好了，知道了RedisObject所包含的额外元数据开销，现在，我们就可以计算String类型的内存使用量了。
 
@@ -83,7 +82,7 @@ photo_obj_id: 3301000051
 
 我在 [第2讲](https://time.geekbang.org/column/article/268253) 中说过，Redis会使用一个全局哈希表保存所有键值对，哈希表的每一项是一个dictEntry的结构体，用来指向一个键值对。dictEntry结构中有三个8字节的指针，分别指向key、value以及下一个dictEntry，三个指针共24字节，如下图所示：
 
-![](images/279649/b6cbc5161388fdf4c9b49f3802ef53e7.jpg)
+<img src="images/279649/b6cbc5161388fdf4c9b49f3802ef53e7.jpg" style="zoom:20%;" />
 
 但是，这三个指针只有24字节，为什么会占用了32字节呢？这就要提到Redis使用的内存分配库jemalloc了。
 
@@ -137,7 +136,6 @@ used_memory:1039120
 127.0.0.1:6379> info memory
 # Memory
 used_memory:1039136
-
 ```
 
 在使用String类型时，每个记录需要消耗64字节，这种方式却只用了16字节，所使用的内存空间是原来的1/4，满足了我们节省内存空间的需求。

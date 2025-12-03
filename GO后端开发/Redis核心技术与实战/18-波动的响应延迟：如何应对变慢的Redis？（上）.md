@@ -1,6 +1,4 @@
 # 18 | 波动的响应延迟：如何应对变慢的Redis？（上）
-你好，我是蒋德钧。
-
 在Redis的实际部署应用中，有一个非常严重的问题，那就是Redis突然变慢了。一旦出现这个问题，不仅会直接影响用户的使用体验，还可能会影响到“旁人”，也就是和Redis在同一个业务系统中的其他系统，比如说数据库。
 
 举个小例子，在秒杀场景下，一旦Redis变慢了，大量的用户下单请求就会被拖慢，也就是说，用户提交了下单申请，却没有收到任何响应，这会给用户带来非常糟糕的使用体验，甚至可能会导致用户流失。
@@ -13,7 +11,7 @@
 
 这三个操作都需要保证事务原子性，所以，如果此时Redis的延迟增加，就会拖累App Server端整个事务的执行。这个事务一直完成不了，又会导致MySQL上写事务占用的资源无法释放，进而导致访问MySQL的其他请求被阻塞。很明显，Redis变慢会带来严重的连锁反应。
 
-![](images/286549/58555bc098b518e992136f1128430c64.jpg)
+<img src="images/286549/58555bc098b518e992136f1128430c64.jpg" style="zoom:20%;" />
 
 我相信，不少人遇到过这个问题，那具体该怎么解决呢？
 
@@ -49,7 +47,6 @@ Max latency so far: 119 microseconds.
 
 36481658 total runs (avg latency: 3.2893 microseconds / 3289.32 nanoseconds per run).
 Worst run took 36x longer than the average latency.
-
 ```
 
 需要注意的是，基线性能和当前的操作系统、硬件配置相关。因此，我们可以把它和Redis运行时的延迟结合起来，再进一步判断Redis性能是否变慢了。
@@ -65,7 +62,6 @@ Max latency so far: 915 microseconds.
 Max latency so far: 2193 microseconds.
 Max latency so far: 9343 microseconds.
 Max latency so far: 9871 microseconds.
-
 ```
 
 可以看到，由于虚拟化软件本身的开销，此时的基线性能已经达到了9.871ms。如果该Redis实例的运行时延迟为10ms，这并不能算作性能变慢，因为此时，运行时延迟只比基线性能增加了1.3%。如果你不了解基线性能，一看到较高的运行时延迟，就很有可能误判Redis变慢了。
@@ -84,7 +80,7 @@ Max latency so far: 9871 microseconds.
 
 医生诊断一般都是有章可循的。同样，Redis的性能诊断也有章可依，这就是影响Redis的关键因素。下面这张图你应该有印象，这是我们在 [第一节课](https://time.geekbang.org/column/article/268262) 画的Redis架构图。你可以重点关注下我在图上新增的红色模块，也就是Redis自身的操作特性、文件系统和操作系统，它们是影响Redis性能的三大要素。
 
-![](images/286549/cd026801924e197f5c79828c368cd706.jpg)
+<img src="images/286549/cd026801924e197f5c79828c368cd706.jpg" style="zoom:15%;" />
 
 接下来，我将从这三大要素入手，结合实际的应用场景，依次给你介绍从不同要素出发排查和解决问题的实践经验。这节课我先给你介绍Redis的自身操作特性的影响，下节课我们再重点研究操作系统和文件系统的影响。
 
@@ -111,14 +107,13 @@ Max latency so far: 9871 microseconds.
 
 还有一个比较容易忽略的慢查询命令，就是KEYS。它用于返回和输入模式匹配的所有key，例如，以下命令返回所有包含“name”字符串的keys。
 
-```
+```shell
 redis> KEYS *name*
 1) "lastname"
 2) "firstname"
-
 ```
 
-**因为KEYS命令需要遍历存储的键值对，所以操作延时高**。如果你不了解它的实现而使用了它，就会导致Redis性能变慢。所以， **KEYS命令一般不被建议用于生产环境中**。
+因为KEYS命令需要遍历存储的键值对，所以操作延时高。如果你不了解它的实现而使用了它，就会导致Redis性能变慢。所以， KEYS命令一般不被建议用于生产环境中。
 
 **2.过期key操作**
 
@@ -158,4 +153,3 @@ ACTIVE\_EXPIRE\_CYCLE\_LOOKUPS\_PER\_LOOP是Redis的一个参数，默认是20�
 
 请思考一下，在Redis中，还有哪些其他命令可以代替KEYS命令，实现同样的功能呢？这些命令的复杂度会导致Redis变慢吗？
 
-欢迎在留言区写下你的思考和答案，我们一起讨论，共同学习进步。如果你觉得有所收获，欢迎你把今天的内容分享给你的朋友。
