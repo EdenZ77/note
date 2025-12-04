@@ -88,7 +88,7 @@ Redis是内存数据库，内存使用量大，如果没有控制好内存的使
 
 操作系统本身会在后台记录每个进程的swap使用情况，即有多少数据量发生了swap。你可以先通过下面的命令查看Redis的进程号，这里是5332。
 
-```
+```shell
 $ redis-cli info | grep process_id
 process_id: 5332
 ```
@@ -117,11 +117,11 @@ Swap: 0 kB
 
 每一行Size表示的是Redis实例所用的一块内存大小，而Size下方的Swap和它相对应，表示这块Size大小的内存区域有多少已经被换出到磁盘上了。如果这两个值相等，就表示这块内存区域已经完全被换出到磁盘了。
 
-作为内存数据库，Redis本身会使用很多大小不一的内存块，所以，你可以看到有很多Size行，有的很小，就是4KB，而有的很大，例如462044KB。 **不同内存块被换出到磁盘上的大小也不一样**，例如刚刚的结果中的第一个4KB内存块，它下方的Swap也是4KB，这表示这个内存块已经被换出了；另外，462044KB这个内存块也被换出了462008KB，差不多有462MB。
+作为内存数据库，Redis本身会使用很多大小不一的内存块，所以，你可以看到有很多Size行，有的很小，就是4KB，而有的很大，例如462044KB。 不同内存块被换出到磁盘上的大小也不一样，例如刚刚的结果中的第一个4KB内存块，它下方的Swap也是4KB，这表示这个内存块已经被换出了；另外，462044KB这个内存块也被换出了462008KB，差不多有462MB。
 
 这里有个重要的地方，我得提醒你一下，当出现百MB，甚至GB级别的swap大小时，就表明，此时，Redis实例的内存压力很大，很有可能会变慢。所以，swap的大小是排查Redis性能变慢是否由swap引起的重要指标。
 
-一旦发生内存swap，最直接的解决方法就是 **增加机器内存**。如果该实例在一个Redis切片集群中，可以增加Redis集群的实例个数，来分摊每个实例服务的数据量，进而减少每个实例所需的内存量。
+一旦发生内存swap，最直接的解决方法就是增加机器内存。如果该实例在一个Redis切片集群中，可以增加Redis集群的实例个数，来分摊每个实例服务的数据量，进而减少每个实例所需的内存量。
 
 当然，如果Redis实例和其他操作大量文件的程序（例如数据分析程序）共享机器，你可以将Redis实例迁移到单独的机器上运行，以满足它的内存需求量。如果该实例正好是Redis主从集群中的主库，而从库的内存很大，也可以考虑进行主从切换，把大内存的从库变成主库，由它来处理客户端请求。
 
@@ -167,7 +167,7 @@ echo never /sys/kernel/mm/transparent_hugepage/enabled
 4. 是否存在bigkey？ 对于bigkey的删除操作，如果你的Redis是4.0及以上的版本，可以直接利用异步线程机制减少主线程阻塞；如果是Redis 4.0以前的版本，可以使用SCAN命令迭代删除；对于bigkey的集合查询和聚合操作，可以使用SCAN命令在客户端完成。
 5. Redis AOF配置级别是什么？业务层面是否的确需要这一可靠性级别？如果我们需要高性能，同时也允许数据丢失，可以将配置项no-appendfsync-on-rewrite设置为yes，避免AOF重写和fsync竞争磁盘IO资源，导致Redis延迟增加。当然， 如果既需要高性能又需要高可靠性，最好使用高速固态盘作为AOF日志的写入盘。
 6. Redis实例的内存使用是否过大？发生swap了吗？如果是的话，就增加机器内存，或者是使用Redis集群，分摊单机Redis的键值对数量和内存压力。同时，要避免出现Redis和其他内存需求大的应用共享机器的情况。
-7. 在Redis实例的运行环境中，是否启用了透明大页机制？如果是的话，直接关闭内存大页机制就行了。
+7. 在Redis实例的运行环境中，是否启用了内存大页机制？如果是的话，直接关闭内存大页机制就行了。
 8. 是否运行了Redis主从集群？如果是的话，把主库实例的数据量大小控制在2~4GB，以免主从复制时，从库因加载大的RDB文件而阻塞。
 9. 是否使用了多核CPU或NUMA架构的机器运行Redis实例？使用多核CPU时，可以给Redis实例绑定物理核；使用NUMA架构时，注意把Redis实例和网络中断处理程序运行在同一个CPU Socket上。
 
@@ -180,4 +180,104 @@ echo never /sys/kernel/mm/transparent_hugepage/enabled
 ## 每课一问
 
 这两节课，我向你介绍了系统性定位、排查和解决Redis变慢的方法。所以，我想请你聊一聊，你遇到过Redis变慢的情况吗？如果有的话，你是怎么解决的呢？
+
+关于如何分析、排查、解决Redis变慢问题，我总结的checklist如下： 
+
+1、使用复杂度过高的命令（例如SORT/SUION/ZUNIONSTORE/KEYS），或一次查询全量数据（例如LRANGE key 0 N，但N很大）
+
+分析：a) 查看slowlog是否存在这些命令 b) Redis进程CPU使用率是否飙升（聚合运算命令导致） 
+
+解决：a) 不使用复杂度过高的命令，或用其他方式代替实现（放在客户端做） b) 数据尽量分批查询（LRANGE key 0 N，建议N<=100，查询全量数据建议使用HSCAN/SSCAN/ZSCAN）
+
+2、操作bigkey
+
+分析：a) slowlog出现很多SET/DELETE变慢命令（bigkey分配内存和释放内存变慢） b) 使用redis-cli -h \$host -p \$port --bigkeys扫描出很多bigkey 
+
+解决：a) 优化业务，避免存储bigkey b) Redis 4.0+可开启lazy-free机制 
+
+3、大量key集中过期
+
+分析：a) 业务使用EXPIREAT/PEXPIREAT命令 b) Redis info中的expired_keys指标短期突增 
+
+解决：a) 优化业务，过期增加随机时间，把时间打散，减轻删除过期key的压力 b) 运维层面，监控expired_keys指标，有短期突增及时报警排查 
+
+4、Redis内存达到maxmemory
+
+分析：a) 实例内存达到maxmemory，且写入量大，淘汰key压力变大 b) Redis info中的evicted_keys指标短期突增 
+
+解决：a) 业务层面，根据情况调整淘汰策略（随机比LRU快） b) 运维层面，监控evicted_keys指标，有短期突增及时报警 c) 集群扩容，多个实例减轻淘汰key的压力
+
+5、大量短连接请求
+
+分析：Redis处理大量短连接请求，TCP三次握手和四次挥手也会增加耗时
+
+解决：使用长连接操作Redis
+
+6、生成RDB和AOF重写fork耗时严重
+
+分析：a) Redis变慢只发生在生成RDB和AOF重写期间 b) 实例占用内存越大，fork拷贝内存页表越久 c) Redis info中latest_fork_usec耗时变长
+
+解决：a) 实例尽量小 b) Redis尽量部署在物理机上 c) 优化备份策略（例如低峰期备份） d) 合理配置repl-backlog和slave client-output-buffer-limit，避免主从全量同步 e) 视情况考虑关闭AOF f) 监控latest_fork_usec耗时是否变长
+
+
+
+
+
+## 如何发现Bigkey
+
+1、使用 redis-cli --bigkeys 扫描
+
+```
+# 扫描整个数据库，找出各种数据类型的最大key
+redis-cli -h 127.0.0.1 -p 6379 --bigkeys
+
+# 输出示例：
+[00.00%] Biggest string found so far 'user:session:12345' with 10240 bytes
+[00.00%] Biggest hash   found so far 'product:metadata' with 100000 fields
+[00.00%] Biggest list   found so far 'message:queue' with 50000 items
+
+# 扫描结果总结：
+-------- summary -------
+Sampled 100000 keys in the keyspace!
+Total key length in bytes is 1345000 (avg len 13.45)
+
+Biggest string found 'user:session:12345' has 10240 bytes
+Biggest   list found 'message:queue' has 50000 items
+Biggest   hash found 'product:metadata' has 100000 fields
+```
+
+2、分析 Slowlog 中的 Bigkey 操作
+
+```
+# 查看慢查询日志，寻找与Bigkey相关的操作
+redis-cli slowlog get
+
+# 可能看到的Bigkey相关慢查询：
+1) 1) (integer) 143
+   2) (integer) 1634567800
+   3) (integer) 12500        # 执行12.5ms，很可能是Bigkey
+   4) 1) "HGETALL"
+      2) "product:metadata"   # 巨大的哈希表
+   5) "127.0.0.1:58364"
+
+2) 1) (integer) 142
+   2) (integer) 1634567790
+   3) (integer) 8500          # 8.5ms
+   4) 1) "LRANGE"
+      2) "message:queue"
+      3) "0"
+      4) "10000"              # 一次性获取10000个元素
+   5) "127.0.0.1:58364"
+```
+
+3、使用 MEMORY USAGE 命令
+
+```
+# 查看特定key的内存使用情况
+127.0.0.1:6379> MEMORY USAGE big_hash
+(integer) 10485760  # 10MB
+
+127.0.0.1:6379> MEMORY USAGE normal_key
+(integer) 128       # 128字节
+```
 
