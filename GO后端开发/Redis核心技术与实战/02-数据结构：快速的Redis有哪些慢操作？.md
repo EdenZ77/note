@@ -233,6 +233,14 @@ BLPOP list1 list2 list3 10
     全部为空则阻塞等待
 ```
 
+### 应用场景
+
+消息队列
+
+> https://xiaolincoding.com/redis/data_struct/command.html#%E5%BA%94%E7%94%A8%E5%9C%BA%E6%99%AF-2
+
+
+
 
 
 ## Hash(哈希)
@@ -352,6 +360,18 @@ ZCOUNT key min max
 # 统计80-90分的学生数量
 ZCOUNT student_scores 80 90
 ```
+
+
+
+## BitMap
+
+
+
+
+
+## Stream
+
+
 
 
 
@@ -612,6 +632,8 @@ LPUSH mylist "item1" "item2" "item3" "item4"
 | ["item4", "item3"]|<=>| ["item2", "item1"]|
 +-------------------+    +-------------------+
 ```
+
+通过控制每个链表节点中的压缩列表的大小或者元素个数，来规避连锁更新的问题。因为压缩列表元素越少或越小，连锁更新带来的影响就越小，从而提供了更好的访问性能。
 
 
 
