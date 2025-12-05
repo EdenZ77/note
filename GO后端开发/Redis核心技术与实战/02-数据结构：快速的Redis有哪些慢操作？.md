@@ -371,7 +371,595 @@ ZCOUNT student_scores 80 90
 
 ## Stream
 
+每个 Stream 消息包含：
 
+- **唯一 ID**：时间戳-序列号格式（如 `1640995200000-0`）
+- **字段值对**：类似 Hash 的键值对
+
+```
+Stream: mystream
+|
+├── ID: 1640995200000-0
+│   ├── field1: "value1"
+│   └── field2: "value2"
+│
+├── ID: 1640995201000-0
+│   ├── name: "Alice"
+│   └── age: "30"
+│
+└── ...
+```
+
+Stream 的 ID 格式为：`<毫秒时间戳>-<序列号>`
+
+- 示例：`1640995200000-0`
+- 第一部分：毫秒级时间戳
+- 第二部分：同一毫秒内的序列号（从0开始）
+
+Redis 要求新消息的 ID 必须**严格大于**Stream中当前的最大ID。比较规则：
+
+1. 先比较时间戳部分：数值越大，ID越大
+2. 时间戳相同时，比较序列号：序列号越大，ID越大
+
+### 基础操作
+
+**添加消息（XADD）**
+
+```shell
+# 基本语法
+XADD key ID field value [field value ...]
+
+# 自动生成ID
+127.0.0.1:6379> XADD mystream * name "Alice" age 30 city "Beijing"
+"1640995200000-0"
+
+# 指定ID（必须大于当前最大ID）
+127.0.0.1:6379> XADD mystream 1640995201000-0 name "Bob" age 25
+"1640995201000-0"
+
+# 限制Stream长度（近似修剪，更高效）
+127.0.0.1:6379> XADD mystream MAXLEN ~ 1000 * event "login" user_id "1001"
+
+# 精确限制长度
+127.0.0.1:6379> XADD mystream MAXLEN 1000 * event "purchase" amount "150.00"
+```
+
+**读取消息范围（XRANGE/XREVRANGE）**
+
+```shell
+# 读取所有消息
+127.0.0.1:6379> XRANGE mystream - +
+1) 1) "1640995200000-0"
+   2) 1) "name"
+      2) "Alice"
+      3) "age"
+      4) "30"
+      5) "city"
+      6) "Beijing"
+2) 1) "1640995201000-0"
+   2) 1) "name"
+      2) "Bob"
+      3) "age"
+      4) "25"
+
+# 指定时间范围
+127.0.0.1:6379> XRANGE mystream 1640995200000 1640995201000
+
+# 限制返回数量
+127.0.0.1:6379> XRANGE mystream - + COUNT 2
+
+# 倒序读取
+127.0.0.1:6379> XREVRANGE mystream + - COUNT 3
+```
+
+**实时监听消息 (XREAD)**
+
+```shell
+## 场景1：使用 $（只监听新消息）
+# 终端1
+127.0.0.1:6379> XREAD BLOCK 0 STREAMS mystream $
+# 阻塞中...
+
+# 终端2：发布消息
+127.0.0.1:6379> XADD mystream * msg "hello"
+
+# 终端1立即返回消息，然后命令结束：
+1) 1) "mystream"
+   2) 1) 1) "1640995200000-0"
+         2) 1) "msg"
+            2) "hello"
+
+127.0.0.1:6379>  # 回到Redis提示符，命令结束
+
+
+## 场景2：使用 0-0（历史+新消息）
+# 终端1
+127.0.0.1:6379> XREAD BLOCK 0 STREAMS mystream 0-0
+# 立即返回所有历史消息（如果有），然后阻塞等待新消息...
+
+# 终端2：发布消息
+127.0.0.1:6379> XADD mystream * msg "world"
+
+# 终端1返回新消息，然后命令结束：
+1) 1) "mystream"
+   2) 1) 1) "1640995201000-0"
+         2) 1) "msg"
+            2) "world"
+
+127.0.0.1:6379>  # 回到Redis提示符，命令结束
+```
+
+### Stream管理操作
+
+**查看Stream信息**
+
+```shell
+# 获取消息数量
+127.0.0.1:6379> XLEN mystream
+(integer) 150
+
+# 获取Stream详细信息
+127.0.0.1:6379> XINFO STREAM mystream
+ 1) "length"
+ 2) (integer) 150		# 消息数量，等同于XLEN
+ 3) "radix-tree-keys"	# 基数树键的数量
+ 4) (integer) 1			 # 实际存储的键数
+ 5) "radix-tree-nodes"	# 基数树节点数
+ 6) (integer) 1			# 树的节点数
+ 7) "last-generated-id"	 # 最后生成的ID
+ 8) "1640995300000-0"	# 最后一条消息的ID
+ 9) "groups"			# 消费者组数量
+10) (integer) 2			# 有2个消费者组
+11) "first-entry"		# 第一条消息
+12) 1) "1640995200000-0"
+    2) 1) "name"
+       2) "Alice"
+13) "last-entry"		# 最后一条消息
+14) 1) "1640995300000-0"
+    2) 1) "event"
+       2) "logout"
+```
+
+**消息修剪（XTRIM）**
+
+Redis Stream 默认不自动删除旧消息，如果持续写入，Stream 会变得非常大，可能导致内存耗尽。
+
+```shell
+# 按最大长度修剪（精确）
+# 修剪目标是：保留最多 100 条消息
+# 删除规则：删除最旧的消息，直到总消息数 ≤ 100
+# 返回结果：实际删除了 50 条消息
+127.0.0.1:6379> XTRIM mystream MAXLEN 100
+(integer) 50  # 删除了50条消息
+
+# 近似修剪（性能更好）
+# 性能更好：按宏节点批量删除
+# 结果近似：实际保留的消息数可能不是精确的100
+
+# 假设mystream有150条消息，存储在3个宏节点
+# 宏节点1: 60条消息
+# 宏节点2: 60条消息  
+# 宏节点3: 30条消息
+# 近似修剪：删除整个宏节点
+127.0.0.1:6379> XTRIM mystream MAXLEN ~ 100
+(integer) 60  # 删除了第一个宏节点（60条消息）
+# 实际保留：90条（60+30），不是100条
+
+
+# 按最小ID修剪
+# 删除所有ID小于 1640995250000-0 的消息
+# 返回：实际删除的消息数量
+# 保留：ID ≥ 1640995250000-0的所有消息
+127.0.0.1:6379> XTRIM mystream MINID 1640995250000-0
+```
+
+**删除消息（XDEL）**
+
+```shell
+XDEL key ID [ID ...]
+# key: Stream 的名称
+# ID: 要删除的消息ID，可以指定一个或多个
+```
+
+### 消费组操作
+
+**消费组管理**
+
+什么是消费者组？
+
+- 允许多个消费者并行处理同一个 Stream
+- 每条消息只会被组内的一个消费者处理（负载均衡）
+- 支持消息确认机制，确保消息不丢失
+- 提供挂起消息列表，支持消息重试
+
+**创建消费者组**
+
+1、从开头消费
+
+```shell
+127.0.0.1:6379> XGROUP CREATE mystream mygroup 0
+OK
+
+# mystream: Stream 名称
+# mygroup: 消费者组名称
+# 0: 起始ID，表示"从Stream的第一条消息开始消费"
+# 效果: 组内消费者会读取所有历史消息 + 新消息
+
+# 新上线的服务需要处理所有历史数据
+127.0.0.1:6379> XGROUP CREATE order_stream processing_group 0
+
+# 验证创建结果
+127.0.0.1:6379> XINFO GROUPS order_stream
+1) 1) "name"
+   2) "processing_group"
+   3) "consumers"
+   4) (integer) 0
+   5) "pending"
+   6) (integer) 0
+   7) "last-delivered-id"
+   8) "0-0"  # 注意：这里显示的是0-0
+```
+
+2、从最新消息开始消费
+
+```shell
+127.0.0.1:6379> XGROUP CREATE mystream mygroup2 $
+OK
+
+# $: 特殊ID，表示"从当前最新消息之后开始消费"
+# 效果: 组内消费者只消费新消息，忽略所有历史消息
+# last-delivered-id: 设置为当前最大ID
+
+# 先添加3条消息
+127.0.0.1:6379> DEL mystream
+127.0.0.1:6379> XADD mystream 1640995200000-0 msg "历史消息1"
+127.0.0.1:6379> XADD mystream 1640995201000-0 msg "历史消息2"
+127.0.0.1:6379> XADD mystream 1640995202000-0 msg "历史消息3"
+
+# 创建消费者组，从$开始
+127.0.0.1:6379> XGROUP CREATE mystream mygroup2 $
+
+# 查看组信息
+127.0.0.1:6379> XINFO GROUPS mystream
+1) 1) "name"
+   2) "mygroup2"
+   3) "consumers"
+   4) (integer) 0
+   5) "pending"
+   6) (integer) 0
+   7) "last-delivered-id"
+   8) "1640995202000-0"  # 设置为最后一条消息的ID
+```
+
+3、自动创建stream（MKSTREAM）
+
+```shell
+127.0.0.1:6379> XGROUP CREATE newstream mygroup3 $ MKSTREAM
+OK
+
+# MKSTREAM: 如果Stream不存在，自动创建
+
+127.0.0.1:6379> XINFO GROUPS newstream
+1)  1) "name"
+    2) "mygroup3"
+    3) "consumers"
+    4) (integer) 0
+    5) "pending"
+    6) (integer) 0
+    7) "last-delivered-id"
+    8) "0-0"
+```
+
+#### 完整示例
+
+生产者发送消息到 Stream
+
+```shell
+# 添加3个订单消息
+127.0.0.1:6379> XADD orders * order_id 1001 customer_id 201 status pending amount 199.99
+"1704038400000-0"
+
+127.0.0.1:6379> XADD orders * order_id 1002 customer_id 202 status pending amount 299.50
+"1704038401000-0"
+
+127.0.0.1:6379> XADD orders * order_id 1003 customer_id 203 status pending amount 50.00
+"1704038402000-0"
+
+# 查看 Stream 长度
+127.0.0.1:6379> XLEN orders
+(integer) 3
+
+# 查看所有消息
+127.0.0.1:6379> XRANGE orders - +
+1) 1) "1704038400000-0"
+   2) 1) "order_id"
+      2) "1001"
+      3) "customer_id"
+      4) "201"
+      5) "status"
+      6) "pending"
+      7) "amount"
+      8) "199.99"
+2) 1) "1704038401000-0"
+   2) 1) "order_id"
+      2) "1002"
+      3) "customer_id"
+      4) "202"
+      5) "status"
+      6) "pending"
+      7) "amount"
+      8) "299.50"
+3) 1) "1704038402000-0"
+   2) 1) "order_id"
+      2) "1003"
+      3) "customer_id"
+      4) "203"
+      5) "status"
+      6) "pending"
+      7) "amount"
+      8) "50.00"
+```
+
+创建消费者组并消费消息
+
+```shell
+# 创建消费者组
+127.0.0.1:6379> XGROUP CREATE orders order_processors 0
+OK
+# 消费者worker1加入消费者组并读取消息
+# 注意：消费者会自动创建
+# > ：>表示只读取那些尚未分配给任何消费者的消息
+127.0.0.1:6379> XREADGROUP GROUP order_processors worker1 COUNT 2 STREAMS orders >
+1) 1) "orders"
+   2) 1) 1) "1704038400000-0"
+         2) 1) "order_id"
+            2) "1001"
+            3) "customer_id"
+            4) "201"
+            5) "status"
+            6) "pending"
+            7) "amount"
+            8) "199.99"
+      2) 1) "1704038401000-0"
+         2) 1) "order_id"
+            2) "1002"
+            3) "customer_id"
+            4) "202"
+            5) "status"
+            6) "pending"
+            7) "amount"
+            8) "299.50"
+
+# 消费者worker2也加入同一个消费者组
+127.0.0.1:6379> XREADGROUP GROUP order_processors worker2 COUNT 1 STREAMS orders >
+1) 1) "orders"
+   2) 1) 1) "1704038402000-0"
+         2) 1) "order_id"
+            2) "1003"
+            3) "customer_id"
+            4) "203"
+            5) "status"
+            6) "pending"
+            7) "amount"
+            8) "50.00"
+```
+
+查看消费者组状态
+
+```shell
+# 查看消费者组信息
+127.0.0.1:6379> XINFO GROUPS orders
+1) 1) "name"
+   2) "order_processors"
+   3) "consumers"
+   4) (integer) 2
+   5) "pending"
+   6) (integer) 3
+   7) "last-delivered-id"
+   8) "1704038402000-0"
+
+# 查看所有消费者
+# idle 表示消费者空闲时间（单位：毫秒）
+127.0.0.1:6379> XINFO CONSUMERS orders order_processors
+1) 1) "name"
+   2) "worker1"
+   3) "pending"
+   4) (integer) 2
+   5) "idle"
+   6) (integer) 25000 # worker1已经 25000毫秒（25秒）没有从Redis读取消息
+2) 1) "name"
+   2) "worker2"
+   3) "pending"
+   4) (integer) 1
+   5) "idle"
+   6) (integer) 12000
+
+# 查看待处理（pending）消息
+127.0.0.1:6379> XPENDING orders order_processors
+1) (integer) 3          # 总共有3条pending消息
+2) "1704038400000-0"    # 最早的消息ID
+3) "1704038402000-0"    # 最晚的消息ID
+4) 1) 1) "worker1"      # 消费者1有2条pending消息
+      2) "2"
+   2) 1) "worker2"      # 消费者2有1条pending消息
+      2) "1"
+
+# 查看worker1的pending消息详情
+# 空闲时间 = 消息在消费者手中停留的时间
+127.0.0.1:6379> XPENDING orders order_processors - + 10 worker1
+1) 1) "1704038400000-0"  # 消息ID
+   2) "worker1"         # 消费者
+   3) (integer) 86400000 # 空闲时间（毫秒）
+   4) (integer) 1        # 投递次数
+2) 1) "1704038401000-0"
+   2) "worker1"
+   3) (integer) 86400000
+   4) (integer) 1
+```
+
+消费者确认消息处理完成
+
+```shell
+# worker1确认处理完第一条消息
+127.0.0.1:6379> XACK orders order_processors 1704038400000-0
+(integer) 1
+
+# worker2确认处理完消息
+127.0.0.1:6379> XACK orders order_processors 1704038402000-0
+(integer) 1
+
+# 查看确认后的pending状态
+127.0.0.1:6379> XPENDING orders order_processors
+1) (integer) 1
+2) "1704038401000-0"	# 最早的消息ID
+3) "1704038401000-0"	# 最晚的消息ID
+4) 1) 1) "worker1"
+      2) "1"
+```
+
+处理失败的消息（重新投递）
+
+模拟 worker1 处理第二条消息时失败：
+
+```shell
+# worker1声称自己处理失败，将消息放回pending列表
+# 先查看消息内容
+127.0.0.1:6379> XRANGE orders 1704038401000-0 1704038401000-0
+1) 1) "1704038401000-0"
+   2) 1) "order_id"
+      2) "1002"
+      3) "customer_id"
+      4) "202"
+      5) "status"
+      6) "pending"
+      7) "amount"
+      8) "299.50"
+
+# 假设worker1处理失败，可以重新投递消息
+# 使用XCLAIM将消息重新分配给worker2
+127.0.0.1:6379> XCLAIM orders order_processors worker2 3600000 1704038401000-0
+1) 1) "1704038401000-0"
+   2) 1) "order_id"
+      2) "1002"
+      3) "customer_id"
+      4) "202"
+      5) "status"
+      6) "pending"
+      7) "amount"
+      8) "299.50"
+
+# 现在worker2可以读取这条消息
+127.0.0.1:6379> XREADGROUP GROUP order_processors worker2 COUNT 1 STREAMS orders 0-0
+1) 1) "orders"
+   2) 1) 1) "1704038401000-0"
+         2) 1) "order_id"
+            2) "1002"
+            3) "customer_id"
+            4) "202"
+            5) "status"
+            6) "pending"
+            7) "amount"
+            8) "299.50"
+
+# worker2处理完成后确认
+127.0.0.1:6379> XACK orders order_processors 1704038401000-0
+(integer) 1
+
+>的特点：
+•只读取新消息：从未分配给当前消费者组中任何消费者的消息
+•跳过pending消息：不包含已分配给消费者但未确认的消息
+•实时处理：用于消费者正常运行时处理新到达的消息
+
+0-0的特点：
+•读取历史消息：从Stream的开始位置读取
+•包含pending消息：包含已分配但未确认的消息
+•重新处理：用于消费者重启或故障恢复时重新处理消息
+```
+
+查看最终状态
+
+```shell
+# 所有消息都已处理完成
+127.0.0.1:6379> XPENDING orders order_processors
+1) (integer) 0
+2) (nil)
+3) (nil)
+4) (nil)
+
+# 消费者组信息
+127.0.0.1:6379> XINFO GROUPS orders
+1) 1) "name"
+   2) "order_processors"
+   3) "consumers"
+   4) (integer) 2
+   5) "pending"
+   6) (integer) 0
+   7) "last-delivered-id"
+   8) "1704038402000-0"
+```
+
+#### 消费组和消费者的参数
+
+创建消费者组时设置的 `0`和消费者读取时设置的 `>`的关系：两者不冲突，分别控制不同阶段
+
+| 阶段           | 参数 | 作用                       | 控制范围                   |
+| -------------- | ---- | -------------------------- | -------------------------- |
+| 创建消费者组   | `0`  | 设置消费者组的**起始位置** | 整个消费者组从哪里开始消费 |
+| 消费者读取消息 | `>`  | 设置本次读取的**读取位置** | 单个消费者本次从哪里开始读 |
+
+具体工作机制
+
+```shell
+### 场景1：从头开始消费
+# 创建消费者组，从消息ID 0 开始
+127.0.0.1:6379> XGROUP CREATE orders order_processors 0
+OK
+
+# 消费者读取，使用 > 表示"从未分配给其他消费者的消息"
+127.0.0.1:6379> XREADGROUP GROUP order_processors worker1 COUNT 2 STREAMS orders >
+
+# 工作流程：
+# 1. 消费者组创建时，它的"最后投递ID"被设置为 0
+# 2. 当 worker1 使用 > 读取时，会从"最后投递ID"之后的消息开始读取
+# 3. 第一次读取，由于最后投递ID是 0，所以会从 Stream 开头读取
+
+
+### 场景2：从尾部开始消费
+# 创建消费者组，从 $ 开始（只消费新消息）
+127.0.0.1:6379> XGROUP CREATE orders order_processors $
+OK
+
+# 消费者读取，使用 > 表示"从未分配给其他消费者的消息"
+127.0.0.1:6379> XREADGROUP GROUP order_processors worker1 COUNT 2 STREAMS orders >
+
+# 工作流程：
+# 1. 消费者组创建时，它的"最后投递ID"被设置为 Stream 的最后一个消息ID
+# 2. 当 worker1 使用 > 读取时，会从"最后投递ID"之后的消息开始读取
+# 3. 第一次读取，由于最后投递ID是当前最后一个消息ID，所以只会读取新到达的消息
+```
+
+创建消费者组的起始位置参数对比
+
+```shell
+# 不同的起始位置设置
+XGROUP CREATE orders mygroup 0      # 从Stream开头消费（包括历史消息）
+XGROUP CREATE orders mygroup $      # 从当前时间点开始消费（只消费新消息）
+XGROUP CREATE orders mygroup 1704038400000-0  # 从指定消息ID开始消费
+```
+
+消费者读取位置参数对比
+
+```shell
+# 不同的读取位置
+XREADGROUP GROUP mygroup worker1 STREAMS orders >
+# 效果：从未分配给组内其他消费者的消息
+
+XREADGROUP GROUP mygroup worker1 STREAMS orders 0-0
+# 效果：从Stream开头开始，包括所有未确认消息
+
+XREADGROUP GROUP mygroup worker1 STREAMS orders 1704038400000-0
+# 效果：从指定消息ID开始
+```
 
 
 
