@@ -222,7 +222,7 @@ func (m *RWMap) Each(f func(k, v int) bool) { // 遍历map
 
 它默认采用32个分片， **GetShard是一个关键的方法，能够根据key计算出分片索引**。
 
-```
+```go
 
     var SHARD_COUNT = 32
 
@@ -249,12 +249,11 @@ func (m *RWMap) Each(f func(k, v int) bool) { // 遍历map
 	func (m ConcurrentMap) GetShard(key string) *ConcurrentMapShared {
 		return m[uint(fnv32(key))%uint(SHARD_COUNT)]
 	}
-
 ```
 
 增加或者查询的时候，首先根据分片索引得到分片对象，然后对分片对象加锁进行操作：
 
-```
+```go
 func (m ConcurrentMap) Set(key string, value interface{}) {
 		// 根据key计算出对应的分片
 		shard := m.GetShard(key)
@@ -272,7 +271,6 @@ func (m ConcurrentMap) Get(key string) (interface{}, bool) {
 		shard.RUnlock()
 		return val, ok
 }
-
 ```
 
 当然，除了GetShard方法，ConcurrentMap还提供了很多其他的方法。这些方法都是通过计算相应的分片实现的，目的是保证把锁的粒度限制在分片上。
